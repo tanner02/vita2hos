@@ -24,6 +24,10 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# Horizon relocates the executable at load time. This also covers static
+# dependencies such as the shader recompiler, whose code is linked into it.
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
 set(VITA_HEADERS ${CMAKE_SOURCE_DIR}/external/vita-headers)
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${NX_ARCH_SETTINGS} ${NX_COMMON_FLAGS} -idirafter ${VITA_HEADERS}/include")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${NX_ARCH_SETTINGS} ${NX_COMMON_FLAGS} -idirafter ${VITA_HEADERS}/include")
