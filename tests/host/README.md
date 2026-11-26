@@ -33,6 +33,11 @@ allocation/reallocation/free, overlapping moves, numeric parsing and a sorting
 callback. These host tests cannot prove the ARM32 ABI; the Switch build remains
 the compile/link check, and console runs are needed to verify execution.
 
+SceSysmem checks cover requested alignment, zero-filled memory, CDRAM alignment,
+invalid and freed UIDs, interior/end address lookup, malformed options, mapping
+failure cleanup, and 1,000 allocation/free cycles. GPU mapping is simulated;
+these checks do not establish real GPU visibility or cache behavior.
+
 These single-threaded checks do not validate Switch ABI details, locking,
 concurrent close operations, or hardware behavior. A Switch build and console
 testing are still required for those.

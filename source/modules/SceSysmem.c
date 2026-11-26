@@ -3,6 +3,7 @@
 #include <psp2/kernel/error.h>
 #include <psp2/kernel/sysmem.h>
 #include <stdatomic.h>
+#include <stddef.h>
 #include <stdlib.h>
 #include <switch.h>
 
@@ -22,9 +23,11 @@ static RwLock g_vita_memblock_infos_lock;
 static VitaMemBlockInfo *get_memblock_info_for_uid(SceUID uid)
 {
     VitaMemBlockInfo *block;
+    VitaMemBlockInfo **entry;
 
     rwlockReadLock(&g_vita_memblock_infos_lock);
-    block = *vita_memblock_info_dict_get(g_vita_memblock_infos, uid);
+    entry = vita_memblock_info_dict_get(g_vita_memblock_infos, uid);
+    block = entry ? *entry : NULL;
     rwlockReadUnlock(&g_vita_memblock_infos_lock);
 
     return block;
@@ -37,19 +40,38 @@ EXPORT(SceSysmem, 0xB9D5EBDE, SceUID, sceKernelAllocMemBlock, const char *name,
     uint32_t alignment;
     void *base;
     uint32_t memblock_flags;
+    size_t allocation_size;
 
     LOG("sceKernelAllocMemBlock: name: %s, size: 0x%x", name, size);
-
-    block = malloc(sizeof(*block));
-    if (!block)
-        return SCE_KERNEL_ERROR_NO_MEMORY;
 
     if (type == SCE_KERNEL_MEMBLOCK_TYPE_USER_CDRAM_RW)
         alignment = 256 * 1024;
     else
         alignment = 4 * 1024;
 
-    base = aligned_alloc(alignment, size);
+    if (size == 0 || size % alignment != 0)
+        return SCE_KERNEL_ERROR_ILLEGAL_SIZE;
+
+    if (opt) {
+        if (opt->size < offsetof(SceKernelAllocMemBlockOpt, alignment) + sizeof(opt->alignment))
+            return SCE_KERNEL_ERROR_INVALID_ARGUMENT_SIZE;
+        if (opt->attr & SCE_KERNEL_ALLOC_MEMBLOCK_ATTR_HAS_ALIGNMENT) {
+            if (opt->alignment == 0 || (opt->alignment & (opt->alignment - 1)) != 0)
+                return SCE_KERNEL_ERROR_INVALID_ARGUMENT;
+            alignment = MAX2(alignment, opt->alignment);
+        }
+    }
+
+    const size_t padding = (size_t)alignment - 1;
+    if (SIZE_MAX - (size_t)size < padding)
+        return SCE_KERNEL_ERROR_NO_MEMORY;
+    allocation_size = ((size_t)size + alignment - 1) & ~((size_t)alignment - 1);
+
+    block = malloc(sizeof(*block));
+    if (!block)
+        return SCE_KERNEL_ERROR_NO_MEMORY;
+
+    base = aligned_alloc(alignment, allocation_size);
     if (!base) {
         free(block);
         return SCE_KERNEL_ERROR_NO_MEMORY;
@@ -59,6 +81,7 @@ EXPORT(SceSysmem, 0xB9D5EBDE, SceUID, sceKernelAllocMemBlock, const char *name,
     block->uid = SceSysmem_get_next_uid();
     block->base = base;
     block->size = size;
+    memset(base, 0, size);
 
     switch (type) {
     case SCE_KERNEL_MEMBLOCK_TYPE_USER_RW:
@@ -76,6 +99,11 @@ EXPORT(SceSysmem, 0xB9D5EBDE, SceUID, sceKernelAllocMemBlock, const char *name,
     /* We also map all the allocated memory blocks to the GPU */
     block->dk_memblock = dk_map_memblock(g_dk_device, block->base, block->size,
                                          memblock_flags | DkMemBlockFlags_Image);
+    if (!block->dk_memblock) {
+        free(block->base);
+        free(block);
+        return SCE_KERNEL_ERROR_NO_MEMORY;
+    }
 
     rwlockWriteLock(&g_vita_memblock_infos_lock);
     vita_memblock_info_dict_set_at(g_vita_memblock_infos, block->uid, block);
@@ -91,11 +119,12 @@ EXPORT(SceSysmem, 0xA91E15EE, int, sceKernelFreeMemBlock, SceUID uid)
     if (!block)
         return SCE_KERNEL_ERROR_INVALID_UID;
 
-    dkMemBlockDestroy(block->dk_memblock);
-    free(block->base);
     rwlockWriteLock(&g_vita_memblock_infos_lock);
     vita_memblock_info_dict_erase(g_vita_memblock_infos, uid);
     rwlockWriteUnlock(&g_vita_memblock_infos_lock);
+    dkMemBlockDestroy(block->dk_memblock);
+    free(block->base);
+    free(block);
 
     return 0;
 }
@@ -141,7 +170,9 @@ VitaMemBlockInfo *SceSysmem_get_vita_memblock_info_for_addr(const void *addr)
     for (vita_memblock_info_dict_it(it, g_vita_memblock_infos); !vita_memblock_info_dict_end_p(it);
          vita_memblock_info_dict_next(it)) {
         pair = vita_memblock_info_dict_ref(it);
-        if (addr >= pair->value->base && addr < (pair->value->base + pair->value->size)) {
+        uintptr_t address = (uintptr_t)addr;
+        uintptr_t base = (uintptr_t)pair->value->base;
+        if (address >= base && address - base < pair->value->size) {
             block = pair->value;
             break;
         }

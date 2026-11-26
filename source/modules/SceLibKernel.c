@@ -381,6 +381,10 @@ DECLARE_LIBRARY(SceIofilemgr, 0xf2ff276e);
 
 int SceLibKernel_init(void)
 {
+    vita_opened_files_dict_init(g_vita_opened_files);
+    vita_opened_dirs_dict_init(g_vita_opened_dirs);
+    rwlockInit(&g_vita_opened_files_lock);
+    rwlockInit(&g_vita_opened_dirs_lock);
     ueventCreate(&g_process_exit_event, false);
 
     return 0;

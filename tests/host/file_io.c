@@ -42,8 +42,7 @@ int main(void)
 
     assert(native_fd >= 0);
     close(native_fd);
-    vita_opened_files_dict_init(g_vita_opened_files);
-    vita_opened_dirs_dict_init(g_vita_opened_dirs);
+    assert(SceLibKernel_init() == 0);
 
     check_bad_file(-1);
     check_bad_dir(-1);

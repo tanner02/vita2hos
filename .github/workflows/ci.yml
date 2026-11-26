@@ -21,6 +21,7 @@ jobs:
       image: ghcr.io/vita2hos/devcontainer/vita2hos:latest
       options: --user root
     strategy:
+      fail-fast: false
       matrix:
         build_type: [Debug, Release]
     steps:

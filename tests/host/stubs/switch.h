@@ -13,6 +13,7 @@ typedef int RwLock;
 typedef int Mutex;
 typedef int UEvent;
 typedef int Thread;
+static inline void rwlockInit(RwLock *lock) { *lock = 0; }
 static inline void rwlockReadLock(RwLock *lock) { (void)lock; }
 static inline void rwlockReadUnlock(RwLock *lock) { (void)lock; }
 static inline void rwlockWriteLock(RwLock *lock) { (void)lock; }
