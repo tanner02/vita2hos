@@ -20,7 +20,8 @@ extern const library_t __stop_exported_libraries[];
     extern const uint32_t __stop_##_name##_func_nidtable[];                                        \
     extern const void *__start_##_name##_func_table[];                                             \
     extern const void *__stop_##_name##_func_table[];                                              \
-    static const library_t _name##_library                                                         \
+    /* Pointer-bearing tables must be writable during loader relocation. */                       \
+    static library_t _name##_library                                                               \
         __attribute__((used, section("exported_libraries"))) = {                                   \
             .name                = #_name,                                                         \
             .nid                 = _nid,                                                           \
@@ -33,7 +34,7 @@ extern const library_t __stop_exported_libraries[];
 #define EXPORT_FUNC(library, nid, func)                                                            \
     static const uint32_t library##_##name##_##nid##_nid                                           \
         __attribute__((used, section(#library "_func_nidtable"))) = nid;                           \
-    static const void *const library##_##name##_##nid##_func                                       \
+    static const void *library##_##name##_##nid##_func                                             \
         __attribute__((used, section(#library "_func_table"))) = &func;
 
 #define EXPORT(library, nid, type, name, ...)                                                      \
