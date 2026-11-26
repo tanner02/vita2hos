@@ -19,9 +19,6 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vita2hos/devcontainer/vita2hos:latest
-      credentials:
-        username: ${{ github.actor }}
-        password: ${{ secrets.GHCR_PAT_VITA2HOS }}
       options: --user root
     strategy:
       matrix:
