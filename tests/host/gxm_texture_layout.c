@@ -44,7 +44,8 @@ int main(void)
     assert((uint32_t)gxm_texture_get_linear_layout(inner, &layout) == SCE_GXM_ERROR_INVALID_VALUE);
 
     assert(sceGxmTextureInitLinear(&texture, NULL, SCE_GXM_TEXTURE_FORMAT_R8, 8, 8, 1) == 0);
-    assert((uint32_t)gxm_texture_get_linear_layout(inner, &layout) == SCE_GXM_ERROR_UNSUPPORTED);
+    assert(gxm_texture_get_linear_layout(inner, &layout) == 0);
+    assert(layout.source_pitch == 8 && layout.pitch == 32);
     inner->type = SCE_GXM_TEXTURE_LINEAR_STRIDED >> 29;
     inner->mip_filter = 1;
     inner->min_filter = 3; /* Encoded stride: ((1 | 6) + 1) * 4 == 32. */
@@ -54,7 +55,7 @@ int main(void)
     inner->min_filter = 0;
     inner->mip_filter = 0;
     assert((uint32_t)gxm_texture_get_linear_layout(inner, &layout) == SCE_GXM_ERROR_INVALID_VALUE);
-    inner->type = SCE_GXM_TEXTURE_SWIZZLED >> 29;
+    inner->type = SCE_GXM_TEXTURE_CUBE >> 29;
     assert((uint32_t)gxm_texture_get_linear_layout(inner, &layout) == SCE_GXM_ERROR_UNSUPPORTED);
     assert((uint32_t)gxm_texture_get_linear_layout(NULL, &layout) == SCE_GXM_ERROR_INVALID_POINTER);
     assert(sceGxmTextureInitLinear(&texture, NULL, SCE_GXM_TEXTURE_FORMAT_UBC1_ABGR, 32, 32, 1) == 0);

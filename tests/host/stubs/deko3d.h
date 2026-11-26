@@ -1,5 +1,7 @@
 #ifndef TEST_DEKO3D_H
 #define TEST_DEKO3D_H
+#include <stddef.h>
+#include <stdint.h>
 typedef void *DkMemBlock;
 typedef void *DkDevice;
 typedef enum {
@@ -21,4 +23,19 @@ enum {
     DkMemBlockFlags_Image = 8,
 };
 void dkMemBlockDestroy(DkMemBlock block);
+#define DK_MEMBLOCK_ALIGNMENT 4096U
+typedef struct {
+    DkDevice device;
+    uint32_t size, flags;
+    void *storage;
+} DkMemBlockMaker;
+static inline void dkMemBlockMakerDefaults(DkMemBlockMaker *maker, DkDevice device, uint32_t size)
+{
+    maker->device = device;
+    maker->size = size;
+    maker->flags = 0;
+    maker->storage = NULL;
+}
+DkMemBlock dkMemBlockCreate(const DkMemBlockMaker *maker);
+void *dkMemBlockGetCpuAddr(DkMemBlock block);
 #endif

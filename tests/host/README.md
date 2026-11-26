@@ -46,15 +46,21 @@ numerical edge behavior and the Vita calling convention need console checks.
 Texture-state checks exercise linear descriptor initialization, zero-dimension
 rejection, point/linear filter changes, supported address modes and safe aliases,
 data-pointer updates, null pointers, and preservation of unrelated descriptor
-bits. Mipmapped filters and border-ignore modes remain unsupported; swizzled
-and cube descriptor checks do not establish rendering those texture layouts.
+bits. Mipmapped filters and border-ignore modes remain unsupported.
 
 Texture-layout checks cover format/channel translation for uncompressed
 normalized and floating-point textures, eight-pixel source row padding,
 explicit stride decoding, and rejection of unsupported layouts without changing
-the output. Compressed, packed, gamma-corrected, swizzled and cube textures, and
-linear source pitches below the GPU's 32-byte stride unit, still need support.
-Host checks cannot establish GPU sampling results.
+the output. Compressed, packed, gamma-corrected and cube textures still need
+support. Host checks cannot establish GPU sampling results.
+
+Texture-staging checks verify rectangular Morton layouts against independent
+recursive fixtures, non-power-of-two swizzled images, 32x32 tiled images,
+1/2/4/8-byte texels, short row repacking, padding, allocation failures, and
+explicit lifetime retirement. The renderer retains staging blocks through the
+scene and waits for the GPU before releasing them at the next scene or context
+destruction. This conservative synchronization can stall rendering; performance
+and hardware cache visibility remain unverified.
 
 These single-threaded checks do not validate Switch ABI details, locking,
 concurrent close operations, or hardware behavior. A Switch build and console

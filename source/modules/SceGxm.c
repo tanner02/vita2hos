@@ -19,6 +19,7 @@
 #include "gxm/gxm_to_dk.h"
 #include "gxm/util.h"
 #include "gxm/texture_layout.h"
+#include "gxm/texture_staging.h"
 #include "modules/SceSysmem.h"
 
 #define DUMP_SHADER_SPIRV     0
@@ -36,6 +37,7 @@ typedef struct SceGxmContext {
     DkMemBlock gxm_vert_unif_block_memblock;
     DkMemBlock gxm_frag_unif_block_memblock;
     DkMemBlock fragment_tex_descriptor_set_memblock;
+    GxmTextureStaging *texture_staging;
     /* Dynamic state */
     struct {
         struct {
@@ -371,6 +373,7 @@ EXPORT(SceGxm, 0xE84CE5B4, int, sceGxmCreateContext, const SceGxmContextParams *
 EXPORT(SceGxm, 0xEDDC5FB2, int, sceGxmDestroyContext, SceGxmContext *context)
 {
     dkQueueWaitIdle(g_render_queue);
+    gxm_texture_staging_release(&context->texture_staging);
     dkMemBlockDestroy(context->gxm_vert_unif_block_memblock);
     dkMemBlockDestroy(context->gxm_frag_unif_block_memblock);
     dkMemBlockDestroy(context->fragment_tex_descriptor_set_memblock);
@@ -849,6 +852,13 @@ EXPORT(SceGxm, 0x8734FF4E, int, sceGxmBeginScene, SceGxmContext *context, unsign
 
     if (context->state.in_scene)
         return SCE_GXM_ERROR_WITHIN_SCENE;
+
+    if (context->texture_staging) {
+        /* The previous scene was submitted by EndScene. Retire its temporary
+         * texture images only after the GPU is finished with them. */
+        dkQueueWaitIdle(g_render_queue);
+        gxm_texture_staging_release(&context->texture_staging);
+    }
 
     LOG("sceGxmBeginScene to renderTarget %p, fragmentSyncObject: %p, "
         "w: %" PRId32 ", h: %" PRId32 ", stride: %" PRId32 ", CPU addr: %p",
@@ -1482,6 +1492,7 @@ static int upload_fragment_texture_descriptors(SceGxmContext *context)
     DkGpuAddr desc_addr;
     GxmTextureLayout texture_layout;
     int ret;
+    bool staged = false;
     struct {
         DkImageDescriptor images[SCE_GXM_MAX_TEXTURE_UNITS];
         DkSamplerDescriptor samplers[SCE_GXM_MAX_TEXTURE_UNITS];
@@ -1522,19 +1533,33 @@ static int upload_fragment_texture_descriptors(SceGxmContext *context)
         image_layout_maker.pitchStride = texture_layout.pitch;
         dkImageLayoutInitialize(&image_layout, &image_layout_maker);
 
-        const uint32_t offset = dk_memblock_cpu_addr_offset(tex_block->dk_memblock, tex_data);
-        if (offset > tex_block->size ||
-            offset % dkImageLayoutGetAlignment(&image_layout) != 0 ||
-            dkImageLayoutGetSize(&image_layout) > tex_block->size - offset)
+        uint32_t offset = dk_memblock_cpu_addr_offset(tex_block->dk_memblock, tex_data);
+        if (offset > tex_block->size || texture_layout.source_size > tex_block->size - offset)
             return SCE_GXM_ERROR_INVALID_VALUE;
-        dkImageInitialize(&image, &image_layout, tex_block->dk_memblock,
-                          offset);
+        DkMemBlock image_block = tex_block->dk_memblock;
+        const uint32_t type = gxm_texture_get_type(texture);
+        if ((type != SCE_GXM_TEXTURE_LINEAR && type != SCE_GXM_TEXTURE_LINEAR_STRIDED) ||
+            texture_layout.pitch != texture_layout.source_pitch ||
+            offset % dkImageLayoutGetAlignment(&image_layout) != 0) {
+            ret = gxm_texture_stage(g_dk_device, &context->texture_staging, &texture_layout,
+                                     tex_data, tex_block->size - offset, &image_block);
+            if (ret != 0)
+                return ret;
+            offset = 0;
+            staged = true;
+        } else if (dkImageLayoutGetSize(&image_layout) > tex_block->size - offset) {
+            return SCE_GXM_ERROR_INVALID_VALUE;
+        }
+        dkImageInitialize(&image, &image_layout, image_block, offset);
         dkImageViewDefaults(&image_view, &image);
         memcpy(image_view.swizzle, texture_layout.swizzle, sizeof(image_view.swizzle));
         dkImageDescriptorInitialize(&descriptors.images[i], &image_view, false, false);
         dkCmdBufBindTexture(context->cmdbuf, DkStage_Fragment, i, dkMakeTextureHandle(i, i));
     }
 
+    if (staged)
+        dkCmdBufBarrier(context->cmdbuf, DkBarrier_Full,
+                          DkInvalidateFlags_Image | DkInvalidateFlags_L2Cache);
     desc_addr = dkMemBlockGetGpuAddr(context->fragment_tex_descriptor_set_memblock);
     dkCmdBufPushData(context->cmdbuf, desc_addr, &descriptors, sizeof(descriptors));
     dkCmdBufBindImageDescriptorSet(context->cmdbuf, desc_addr, SCE_GXM_MAX_TEXTURE_UNITS);

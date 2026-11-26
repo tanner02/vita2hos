@@ -9,13 +9,16 @@ static uint32_t texture_type(const SceGxmTextureInner *texture)
     return (uint32_t)texture->type << 29;
 }
 
-EXPORT(SceGxm, 0x4811AECB, int, sceGxmTextureInitLinear, SceGxmTexture *texture, const void *data,
-       SceGxmTextureFormat format, unsigned int width, unsigned int height,
-       unsigned int mip_count)
+static int init_texture(SceGxmTexture *texture, const void *data, SceGxmTextureFormat format,
+                         unsigned int width, unsigned int height, unsigned int mip_count,
+                         SceGxmTextureType type)
 {
     if (!texture)
         return SCE_GXM_ERROR_INVALID_POINTER;
     if (width == 0 || height == 0 || width > 4096 || height > 4096 || mip_count > 13)
+        return SCE_GXM_ERROR_INVALID_VALUE;
+    if (type == SCE_GXM_TEXTURE_SWIZZLED &&
+        ((width & (width - 1)) != 0 || (height & (height - 1)) != 0))
         return SCE_GXM_ERROR_INVALID_VALUE;
 
     SceGxmTextureInner *inner = (SceGxmTextureInner *)texture;
@@ -25,16 +28,47 @@ EXPORT(SceGxm, 0x4811AECB, int, sceGxmTextureInitLinear, SceGxmTexture *texture,
     inner->lod_bias = 31;
     inner->uaddr_mode = SCE_GXM_TEXTURE_ADDR_CLAMP;
     inner->vaddr_mode = SCE_GXM_TEXTURE_ADDR_CLAMP;
-    inner->height = height - 1;
-    inner->width = width - 1;
+    if (type == SCE_GXM_TEXTURE_SWIZZLED) {
+        inner->uaddr_mode = inner->vaddr_mode = SCE_GXM_TEXTURE_ADDR_MIRROR;
+        while ((1U << inner->width_base2) < width)
+            inner->width_base2++;
+        while ((1U << inner->height_base2) < height)
+            inner->height_base2++;
+    } else {
+        inner->height = height - 1;
+        inner->width = width - 1;
+    }
     inner->base_format = ((uint32_t)format >> 24) & 0x1f;
-    inner->type = SCE_GXM_TEXTURE_LINEAR >> 29;
+    inner->type = (uint32_t)type >> 29;
     inner->data_addr = (uintptr_t)data >> 2;
     inner->swizzle_format = ((uint32_t)format >> 12) & 7;
     inner->normalize_mode = 1;
     inner->min_filter = SCE_GXM_TEXTURE_FILTER_POINT;
     inner->mag_filter = SCE_GXM_TEXTURE_FILTER_POINT;
     return 0;
+}
+
+EXPORT(SceGxm, 0x4811AECB, int, sceGxmTextureInitLinear, SceGxmTexture *texture, const void *data,
+       SceGxmTextureFormat format, unsigned int width, unsigned int height, unsigned int mip_count)
+{
+    return init_texture(texture, data, format, width, height, mip_count, SCE_GXM_TEXTURE_LINEAR);
+}
+EXPORT(SceGxm, 0xD572D547, int, sceGxmTextureInitSwizzled, SceGxmTexture *texture, const void *data,
+       SceGxmTextureFormat format, unsigned int width, unsigned int height, unsigned int mip_count)
+{
+    return init_texture(texture, data, format, width, height, mip_count, SCE_GXM_TEXTURE_SWIZZLED);
+}
+EXPORT(SceGxm, 0x5DBFBA2C, int, sceGxmTextureInitSwizzledArbitrary, SceGxmTexture *texture,
+       const void *data, SceGxmTextureFormat format, unsigned int width, unsigned int height,
+       unsigned int mip_count)
+{
+    return init_texture(texture, data, format, width, height, mip_count,
+                         SCE_GXM_TEXTURE_SWIZZLED_ARBITRARY);
+}
+EXPORT(SceGxm, 0xE6F0DB27, int, sceGxmTextureInitTiled, SceGxmTexture *texture, const void *data,
+       SceGxmTextureFormat format, unsigned int width, unsigned int height, unsigned int mip_count)
+{
+    return init_texture(texture, data, format, width, height, mip_count, SCE_GXM_TEXTURE_TILED);
 }
 
 EXPORT(SceGxm, 0xFA695FD7, int, sceGxmTextureSetMagFilter, SceGxmTexture *texture,
