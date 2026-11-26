@@ -1,7 +1,8 @@
 #ifndef TEST_SWITCH_H
 #define TEST_SWITCH_H
 
-/* Single-threaded host substitutes; these do not test libnx synchronization. */
+/* Host substitutes. Optional pthread locks check caller ownership, not the
+ * implementation of libnx synchronization primitives. */
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -11,7 +12,22 @@
 #include <assert.h>
 
 #define BIT(n) (1U << (n))
+#ifdef TEST_THREADED_RWLOCK
+#include <pthread.h>
+typedef pthread_rwlock_t RwLock;
+static inline void rwlockInit(RwLock *lock) { assert(pthread_rwlock_init(lock, NULL) == 0); }
+static inline void rwlockReadLock(RwLock *lock) { assert(pthread_rwlock_rdlock(lock) == 0); }
+static inline void rwlockReadUnlock(RwLock *lock) { assert(pthread_rwlock_unlock(lock) == 0); }
+static inline void rwlockWriteLock(RwLock *lock) { assert(pthread_rwlock_wrlock(lock) == 0); }
+static inline void rwlockWriteUnlock(RwLock *lock) { assert(pthread_rwlock_unlock(lock) == 0); }
+#else
 typedef int RwLock;
+static inline void rwlockInit(RwLock *lock) { *lock = 0; }
+static inline void rwlockReadLock(RwLock *lock) { (void)lock; }
+static inline void rwlockReadUnlock(RwLock *lock) { (void)lock; }
+static inline void rwlockWriteLock(RwLock *lock) { (void)lock; }
+static inline void rwlockWriteUnlock(RwLock *lock) { (void)lock; }
+#endif
 typedef int UEvent;
 #ifdef TEST_THREAD_RUNTIME
 typedef struct { void (*entry)(void *); void *argument; } Thread;
@@ -51,11 +67,6 @@ static inline uint64_t armGetSystemTick(void)
 static inline uint64_t armTicksToNs(uint64_t ticks) { return ticks; }
 #else
 typedef int Mutex;
-static inline void rwlockInit(RwLock *lock) { *lock = 0; }
-static inline void rwlockReadLock(RwLock *lock) { (void)lock; }
-static inline void rwlockReadUnlock(RwLock *lock) { (void)lock; }
-static inline void rwlockWriteLock(RwLock *lock) { (void)lock; }
-static inline void rwlockWriteUnlock(RwLock *lock) { (void)lock; }
 static inline void mutexInit(Mutex *mutex) { *mutex = 0; }
 static inline void mutexLock(Mutex *mutex) { *mutex = 1; }
 static inline void mutexUnlock(Mutex *mutex) { *mutex = 0; }

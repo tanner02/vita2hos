@@ -48,28 +48,26 @@ DICT_DEF2(vita_opened_dirs_dict, SceUID, M_DEFAULT_OPLIST, VitaOpenedDir *, M_PO
 static vita_opened_dirs_dict_t g_vita_opened_dirs;
 static RwLock g_vita_opened_dirs_lock;
 
-static VitaOpenedFile *get_opened_file_for_fd(SceUID fd)
+/* The caller holds the table lock until it has finished using the entry.
+ * Close takes the write lock, excluding every outstanding operation. */
+static VitaOpenedFile *get_opened_file_for_fd_locked(SceUID fd)
 {
     VitaOpenedFile *vfile;
     VitaOpenedFile **entry;
 
-    rwlockReadLock(&g_vita_opened_files_lock);
     entry = vita_opened_files_dict_get(g_vita_opened_files, fd);
     vfile = entry ? *entry : NULL;
-    rwlockReadUnlock(&g_vita_opened_files_lock);
 
     return vfile;
 }
 
-static VitaOpenedDir *get_opened_dir_for_fd(SceUID fd)
+static VitaOpenedDir *get_opened_dir_for_fd_locked(SceUID fd)
 {
     VitaOpenedDir *vdir;
     VitaOpenedDir **entry;
 
-    rwlockReadLock(&g_vita_opened_dirs_lock);
     entry = vita_opened_dirs_dict_get(g_vita_opened_dirs, fd);
     vdir = entry ? *entry : NULL;
-    rwlockReadUnlock(&g_vita_opened_dirs_lock);
 
     return vdir;
 }
@@ -254,28 +252,31 @@ EXPORT(SceLibKernel, 0x6C60AC61, SceUID, sceIoOpen, const char *file, int flags,
         return io_errno(ENOMEM);
     }
 
+    SceUID uid = vfile->uid;
     rwlockWriteLock(&g_vita_opened_files_lock);
-    vita_opened_files_dict_set_at(g_vita_opened_files, vfile->uid, vfile);
+    vita_opened_files_dict_set_at(g_vita_opened_files, uid, vfile);
     rwlockWriteUnlock(&g_vita_opened_files_lock);
 
-    return vfile->uid;
+    return uid;
 }
 
 EXPORT(SceIofilemgr, 0xC70B8886, int, sceIoClose, SceUID fd)
 {
-    VitaOpenedFile *vfile = get_opened_file_for_fd(fd);
+    rwlockWriteLock(&g_vita_opened_files_lock);
+    VitaOpenedFile *vfile = get_opened_file_for_fd_locked(fd);
     int ret;
 
-    if (!vfile)
+    if (!vfile) {
+        rwlockWriteUnlock(&g_vita_opened_files_lock);
         return SCE_ERROR_ERRNO_EBADF;
+    }
 
     ret = close(vfile->native_fd);
     int saved_errno = errno;
-    rwlockWriteLock(&g_vita_opened_files_lock);
     vita_opened_files_dict_erase(g_vita_opened_files, fd);
-    rwlockWriteUnlock(&g_vita_opened_files_lock);
     free(vfile->file);
     free(vfile);
+    rwlockWriteUnlock(&g_vita_opened_files_lock);
 
     if (ret)
         return io_errno(saved_errno);
@@ -285,26 +286,32 @@ EXPORT(SceIofilemgr, 0xC70B8886, int, sceIoClose, SceUID fd)
 
 EXPORT(SceIofilemgr, 0xFDB32293, SceSSize, sceIoRead, SceUID fd, void *buf, SceSize nbyte)
 {
-    VitaOpenedFile *vfile = get_opened_file_for_fd(fd);
-    if (!vfile)
-        return SCE_ERROR_ERRNO_EBADF;
-
-    if (nbyte && !buf)
-        return io_errno(EFAULT);
-    ssize_t result = read(vfile->native_fd, buf, nbyte);
-    return result < 0 ? io_errno(errno) : result;
+    rwlockReadLock(&g_vita_opened_files_lock);
+    VitaOpenedFile *vfile = get_opened_file_for_fd_locked(fd);
+    ssize_t result;
+    if (!vfile) result = io_errno(EBADF);
+    else if (nbyte && !buf) result = io_errno(EFAULT);
+    else {
+        result = read(vfile->native_fd, buf, nbyte);
+        if (result < 0) result = io_errno(errno);
+    }
+    rwlockReadUnlock(&g_vita_opened_files_lock);
+    return result;
 }
 
 EXPORT(SceIofilemgr, 0x34EFD876, SceSSize, sceIoWrite, SceUID fd, const void *buf, SceSize nbyte)
 {
-    VitaOpenedFile *vfile = get_opened_file_for_fd(fd);
-    if (!vfile)
-        return SCE_ERROR_ERRNO_EBADF;
-
-    if (nbyte && !buf)
-        return io_errno(EFAULT);
-    ssize_t result = write(vfile->native_fd, buf, nbyte);
-    return result < 0 ? io_errno(errno) : result;
+    rwlockReadLock(&g_vita_opened_files_lock);
+    VitaOpenedFile *vfile = get_opened_file_for_fd_locked(fd);
+    ssize_t result;
+    if (!vfile) result = io_errno(EBADF);
+    else if (nbyte && !buf) result = io_errno(EFAULT);
+    else {
+        result = write(vfile->native_fd, buf, nbyte);
+        if (result < 0) result = io_errno(errno);
+    }
+    rwlockReadUnlock(&g_vita_opened_files_lock);
+    return result;
 }
 
 _Static_assert(sizeof(off_t) >= sizeof(SceOff), "Vita seeks require 64-bit native offsets");
@@ -312,22 +319,27 @@ _Static_assert((off_t)-1 < 0, "Vita seeks require signed native offsets");
 
 static SceOff vita_io_seek(SceUID fd, SceOff offset, int whence)
 {
-    VitaOpenedFile *vfile = get_opened_file_for_fd(fd);
-    off_t position;
+    rwlockReadLock(&g_vita_opened_files_lock);
+    VitaOpenedFile *vfile = get_opened_file_for_fd_locked(fd);
+    SceOff position;
 
-    if (!vfile)
-        return io_errno(EBADF);
+    if (!vfile) {
+        position = io_errno(EBADF);
+        goto done;
+    }
     switch (whence) {
     case SCE_SEEK_SET: whence = SEEK_SET; break;
     case SCE_SEEK_CUR: whence = SEEK_CUR; break;
     case SCE_SEEK_END: whence = SEEK_END; break;
-    default: return io_errno(EINVAL);
+    default: position = io_errno(EINVAL); goto done;
     }
 
     position = lseek(vfile->native_fd, offset, whence);
     if (position < 0)
-        return io_errno(errno);
+        position = io_errno(errno);
 
+done:
+    rwlockReadUnlock(&g_vita_opened_files_lock);
     return position;
 }
 
@@ -343,11 +355,12 @@ EXPORT(SceIofilemgr, 0x49252B9B, long, sceIoLseek32, SceUID fd, long offset, int
 
 EXPORT(SceIofilemgr, 0x16512F59, int, sceIoSyncByFd, SceUID fd, int flag)
 {
-    VitaOpenedFile *vfile = get_opened_file_for_fd(fd);
-    if (!vfile)
-        return SCE_ERROR_ERRNO_EBADF;
-
-    return fsync(vfile->native_fd) == 0 ? 0 : io_errno(errno);
+    rwlockReadLock(&g_vita_opened_files_lock);
+    VitaOpenedFile *vfile = get_opened_file_for_fd_locked(fd);
+    int result = !vfile ? io_errno(EBADF) :
+                 fsync(vfile->native_fd) == 0 ? 0 : io_errno(errno);
+    rwlockReadUnlock(&g_vita_opened_files_lock);
+    return result;
 }
 
 EXPORT(SceLibKernel, 0xA9283DD0, SceUID, sceIoDopen, const char *dirname)
@@ -381,27 +394,30 @@ EXPORT(SceLibKernel, 0xA9283DD0, SceUID, sceIoDopen, const char *dirname)
         return io_errno(ENOMEM);
     }
 
+    SceUID uid = vdir->uid;
     rwlockWriteLock(&g_vita_opened_dirs_lock);
-    vita_opened_dirs_dict_set_at(g_vita_opened_dirs, vdir->uid, vdir);
+    vita_opened_dirs_dict_set_at(g_vita_opened_dirs, uid, vdir);
     rwlockWriteUnlock(&g_vita_opened_dirs_lock);
 
-    return vdir->uid;
+    return uid;
 }
 
 EXPORT(SceIofilemgr, 0x422A221A, int, sceIoDclose, SceUID fd)
 {
-    VitaOpenedDir *vdir = get_opened_dir_for_fd(fd);
+    rwlockWriteLock(&g_vita_opened_dirs_lock);
+    VitaOpenedDir *vdir = get_opened_dir_for_fd_locked(fd);
     int ret;
 
-    if (!vdir)
+    if (!vdir) {
+        rwlockWriteUnlock(&g_vita_opened_dirs_lock);
         return SCE_ERROR_ERRNO_EBADF;
+    }
 
     ret = closedir(vdir->dir);
     free(vdir->path);
-    rwlockWriteLock(&g_vita_opened_dirs_lock);
     vita_opened_dirs_dict_erase(g_vita_opened_dirs, fd);
-    rwlockWriteUnlock(&g_vita_opened_dirs_lock);
     free(vdir);
+    rwlockWriteUnlock(&g_vita_opened_dirs_lock);
 
     if (ret)
         return SCE_ERROR_ERRNO_EBADF;
@@ -486,20 +502,20 @@ EXPORT(SceLibKernel, 0xBCA5B623, int, sceIoGetstat, const char *file, SceIoStat 
 
 EXPORT(SceLibKernel, 0x57F8CD25, int, sceIoGetstatByFd, SceUID fd, SceIoStat *info)
 {
-    VitaOpenedFile *file = get_opened_file_for_fd(fd);
-    if (!file)
-        return SCE_ERROR_ERRNO_EBADF;
-    if (!info)
-        return io_errno(EFAULT);
+    rwlockReadLock(&g_vita_opened_files_lock);
+    VitaOpenedFile *file = get_opened_file_for_fd_locked(fd);
+    int result;
     struct stat status;
-    if (fstat(file->native_fd, &status) != 0)
-        return io_errno(errno);
-    return stat_to_sce(info, &status);
+    if (!file) result = io_errno(EBADF);
+    else if (!info) result = io_errno(EFAULT);
+    else if (fstat(file->native_fd, &status) != 0) result = io_errno(errno);
+    else result = stat_to_sce(info, &status);
+    rwlockReadUnlock(&g_vita_opened_files_lock);
+    return result;
 }
 
-EXPORT(SceLibKernel, 0x9C8B6624, int, sceIoDread, SceUID fd, SceIoDirent *dirent)
+static int vita_io_read_dir(VitaOpenedDir *vdir, SceIoDirent *dirent)
 {
-    VitaOpenedDir *vdir = get_opened_dir_for_fd(fd);
     struct dirent *de;
     struct stat statbuf;
     const char *path;
@@ -530,6 +546,15 @@ EXPORT(SceLibKernel, 0x9C8B6624, int, sceIoDread, SceUID fd, SceIoDirent *dirent
     dirent->d_private = NULL;
 
     return 1;
+}
+
+EXPORT(SceLibKernel, 0x9C8B6624, int, sceIoDread, SceUID fd, SceIoDirent *dirent)
+{
+    /* readdir's returned entry belongs to DIR; serialize through copying it. */
+    rwlockWriteLock(&g_vita_opened_dirs_lock);
+    int result = vita_io_read_dir(get_opened_dir_for_fd_locked(fd), dirent);
+    rwlockWriteUnlock(&g_vita_opened_dirs_lock);
+    return result;
 }
 
 EXPORT_FUNC(SceLibKernel, 0x632980D7, memset)
