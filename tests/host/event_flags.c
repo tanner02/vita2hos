@@ -4,6 +4,7 @@
 #include <sched.h>
 #include <stdio.h>
 #include <unistd.h>
+#include <stdatomic.h>
 
 #include "../../source/modules/SceEventFlag.c"
 
@@ -28,6 +29,21 @@ static void wait_pending(SceUID uid, unsigned int count)
         assert(armGetSystemTick() - start < 1000000000);
         sched_yield();
     }
+}
+
+static atomic_bool stop_deleting;
+static void *delete_concurrently(void *unused)
+{
+    (void)unused;
+    while (!atomic_load(&stop_deleting)) {
+        mutexLock(&event_lock);
+        SceUID uid = events ? events->uid : -1;
+        mutexUnlock(&event_lock);
+        if (uid > 0)
+            sceKernelDeleteEventFlag(uid);
+        sched_yield();
+    }
+    return NULL;
 }
 
 int main(void)
@@ -79,6 +95,20 @@ int main(void)
     assert(events == NULL);
     assert((uint32_t)sceKernelCreateEventFlag("priority", SCE_KERNEL_ATTR_THREAD_PRIO, 0, NULL) ==
            SCE_KERNEL_ERROR_ILLEGAL_ATTR);
+    /* Events can be deleted as soon as published, including before create
+     * returns to its caller. No post-unlock read may access freed metadata. */
+    assert(pthread_create(&a, NULL, delete_concurrently, NULL) == 0);
+    for (unsigned int i = 0; i < 10000; i++) {
+        uid = sceKernelCreateEventFlag("race", 0, 0, NULL);
+        assert(uid > 0);
+        int result = sceKernelSetEventFlag(uid, 1);
+        assert(result == 0 || (uint32_t)result == SCE_KERNEL_ERROR_UNKNOWN_EVF_ID);
+        result = sceKernelDeleteEventFlag(uid);
+        assert(result == 0 || (uint32_t)result == SCE_KERNEL_ERROR_UNKNOWN_EVF_ID);
+    }
+    atomic_store(&stop_deleting, true);
+    assert(pthread_join(a, NULL) == 0);
+    assert(events == NULL);
     puts("Event-flag threaded regression checks passed.");
     return 0;
 }

@@ -88,11 +88,12 @@ EXPORT(SceLibKernel, 0x8516D040, SceUID, sceKernelCreateEventFlag, const char *n
     event->attr = attr;
     event->initial = event->pattern = (uint32_t)bits;
     event->references = 1;
+    const SceUID uid = event->uid;
     mutexLock(&event_lock);
     event->next = events;
     events = event;
     mutexUnlock(&event_lock);
-    return event->uid;
+    return uid;
 }
 
 EXPORT(SceThreadmgr, 0xEC94DFF7, int, sceKernelSetEventFlag, SceUID uid, unsigned int bits)
@@ -105,8 +106,9 @@ EXPORT(SceThreadmgr, 0xEC94DFF7, int, sceKernelSetEventFlag, SceUID uid, unsigne
             if (!w->done && consume(event, w))
                 condvarWakeAll(&w->condition);
     }
+    const int result = event ? 0 : SCE_KERNEL_ERROR_UNKNOWN_EVF_ID;
     mutexUnlock(&event_lock);
-    return event ? 0 : SCE_KERNEL_ERROR_UNKNOWN_EVF_ID;
+    return result;
 }
 
 EXPORT(SceThreadmgr, 0x4CB87CA7, int, sceKernelClearEventFlag, SceUID uid, unsigned int bits)
@@ -115,8 +117,9 @@ EXPORT(SceThreadmgr, 0x4CB87CA7, int, sceKernelClearEventFlag, SceUID uid, unsig
     EventFlag *event = find_event(uid);
     if (event)
         event->pattern &= bits; /* Vita's argument is a keep mask. */
+    const int result = event ? 0 : SCE_KERNEL_ERROR_UNKNOWN_EVF_ID;
     mutexUnlock(&event_lock);
-    return event ? 0 : SCE_KERNEL_ERROR_UNKNOWN_EVF_ID;
+    return result;
 }
 
 EXPORT(SceLibKernel, 0x1FBB0FE1, int, sceKernelPollEventFlag, int uid, unsigned int bits,
@@ -211,8 +214,9 @@ EXPORT(SceLibKernel, 0x2A12D9B7, int, sceKernelCancelEventFlag, SceUID uid,
             condvarWakeAll(&w->condition);
         }
     }
+    const int result = event ? 0 : SCE_KERNEL_ERROR_UNKNOWN_EVF_ID;
     mutexUnlock(&event_lock);
-    return event ? 0 : SCE_KERNEL_ERROR_UNKNOWN_EVF_ID;
+    return result;
 }
 
 EXPORT(SceThreadmgr, 0x5840162C, int, sceKernelDeleteEventFlag, int uid)
@@ -258,6 +262,7 @@ EXPORT(SceLibKernel, 0x8BA4C0C1, int, sceKernelGetEventFlagInfo, SceUID uid,
         info->currentPattern = event->pattern;
         info->numWaitThreads = pending_count(event);
     }
+    const int result = event ? 0 : SCE_KERNEL_ERROR_UNKNOWN_EVF_ID;
     mutexUnlock(&event_lock);
-    return event ? 0 : SCE_KERNEL_ERROR_UNKNOWN_EVF_ID;
+    return result;
 }
