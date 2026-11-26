@@ -28,6 +28,11 @@ and binary16 rounding and special values. The host compiler's `_Float16`
 conversion provides an independent reference for 100,000 binary32 samples.
 Integer and packed C10 uniform conversion remain unsupported.
 
+SceLibc checks resolve the production library through its NIDs and exercise
+allocation/reallocation/free, overlapping moves, numeric parsing and a sorting
+callback. These host tests cannot prove the ARM32 ABI; the Switch build remains
+the compile/link check, and console runs are needed to verify execution.
+
 These single-threaded checks do not validate Switch ABI details, locking,
 concurrent close operations, or hardware behavior. A Switch build and console
 testing are still required for those.

@@ -3,7 +3,7 @@ set -eu
 cd "$(dirname "$0")/../.."
 build_dir=$(mktemp -d)
 trap 'rm -rf "$build_dir"' EXIT HUP INT TERM
-for test in file_io util_io module_exports gxm_uniform; do
+for test in file_io util_io module_exports gxm_uniform libc_exports; do
 "${CC:-cc}" -std=gnu11 -Wall -Wextra -Wno-unused-parameter \
     -fsanitize=address,undefined -fno-omit-frame-pointer -g \
     -Itests/host/stubs -Iinclude -Iexternal/mlib -Iexternal/vita-headers/include \
