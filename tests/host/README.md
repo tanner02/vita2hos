@@ -62,6 +62,13 @@ scene and waits for the GPU before releasing them at the next scene or context
 destruction. This conservative synchronization can stall rendering; performance
 and hardware cache visibility remain unverified.
 
-These single-threaded checks do not validate Switch ABI details, locking,
+Event-flag checks use real pthread mutexes, condition variables and threads to
+exercise FIFO bit consumption, AND/OR matching, clear modes, timeouts,
+cancellation, deletion with a blocked waiter and single-waiter rejection.
+Priority attributes, openable flags and callback dispatch are unsupported.
+The libnx condition-variable implementation and Switch scheduling remain
+hardware validation items.
+
+The remaining single-threaded checks do not validate Switch ABI details, locking,
 concurrent close operations, or hardware behavior. A Switch build and console
 testing are still required for those.
