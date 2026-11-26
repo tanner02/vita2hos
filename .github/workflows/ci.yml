@@ -31,6 +31,7 @@ jobs:
 
       - name: Fetch build dependencies
         run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
           git submodule update --init --depth 1 external/mlib external/vita-headers external/Vita3K
           git -C external/Vita3K submodule update --init --depth 1 external/glslang
 
