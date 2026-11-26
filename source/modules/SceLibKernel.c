@@ -7,6 +7,7 @@
 #include <stdatomic.h>
 #include <stdlib.h>
 #include <switch.h>
+#include <unistd.h>
 #undef st_ctime
 #undef st_atime
 #undef st_mtime
@@ -309,8 +310,8 @@ EXPORT(SceIofilemgr, 0x422A221A, int, sceIoDclose, SceUID fd)
 
 static inline void tm_to_sce_datetime(SceDateTime *dt, const struct tm *tm)
 {
-    dt->year = tm->tm_year;
-    dt->month = tm->tm_mon;
+    dt->year = tm->tm_year + 1900;
+    dt->month = tm->tm_mon + 1;
     dt->day = tm->tm_mday;
     dt->hour = tm->tm_hour;
     dt->minute = tm->tm_min;
@@ -318,49 +319,106 @@ static inline void tm_to_sce_datetime(SceDateTime *dt, const struct tm *tm)
     dt->microsecond = 0;
 }
 
+static int io_errno(int error)
+{
+    /* Translate explicitly: host errno numbering is not identical for all
+     * POSIX errors. The Vita low word uses its own errno namespace. */
+    switch (error) {
+    case ENOENT: return (int)0x80010002;
+    case EACCES: return (int)0x8001000d;
+    case EFAULT: return (int)0x8001000e;
+    case ENOTDIR: return (int)0x80010014;
+    case ENAMETOOLONG: return (int)0x8001005b;
+    case EBADF: return SCE_ERROR_ERRNO_EBADF;
+    case EINVAL: return SCE_ERROR_ERRNO_EINVAL;
+    default: return (int)0x80010005; /* EIO */
+    }
+}
+
+static int stat_to_sce(SceIoStat *destination, const struct stat *source)
+{
+    SceIoStat result = {0};
+    if (S_ISDIR(source->st_mode)) {
+        result.st_mode = SCE_S_IFDIR | SCE_S_IRWXU | SCE_S_IRWXG | SCE_S_IRWXS;
+        result.st_attr = SCE_SO_IFDIR;
+    } else {
+        result.st_mode = SCE_S_IFREG | SCE_S_IRUSR | SCE_S_IWUSR | SCE_S_IRGRP |
+                         SCE_S_IWGRP | SCE_S_IRSYS | SCE_S_IWSYS;
+        result.st_attr = SCE_SO_IFREG;
+    }
+    result.st_size = source->st_size;
+    struct tm time;
+    if (!gmtime_r(&source->st_ctim.tv_sec, &time))
+        return io_errno(EINVAL);
+    tm_to_sce_datetime(&result.st_ctime, &time);
+    if (!gmtime_r(&source->st_atim.tv_sec, &time))
+        return io_errno(EINVAL);
+    tm_to_sce_datetime(&result.st_atime, &time);
+    if (!gmtime_r(&source->st_mtim.tv_sec, &time))
+        return io_errno(EINVAL);
+    tm_to_sce_datetime(&result.st_mtime, &time);
+    *destination = result;
+    return 0;
+}
+
+EXPORT(SceLibKernel, 0xBCA5B623, int, sceIoGetstat, const char *file, SceIoStat *info)
+{
+    if (!file || !info)
+        return io_errno(EFAULT);
+    const char *device = strchr(file, ':');
+    if (device)
+        file = device + 1;
+    if (!*file)
+        return SCE_ERROR_ERRNO_ENODEV;
+    struct stat status;
+    if (stat(file, &status) != 0)
+        return io_errno(errno);
+    return stat_to_sce(info, &status);
+}
+
+EXPORT(SceLibKernel, 0x57F8CD25, int, sceIoGetstatByFd, SceUID fd, SceIoStat *info)
+{
+    VitaOpenedFile *file = get_opened_file_for_fd(fd);
+    if (!file)
+        return SCE_ERROR_ERRNO_EBADF;
+    if (!info)
+        return io_errno(EFAULT);
+    struct stat status;
+    if (fstat(fileno(file->fp), &status) != 0)
+        return io_errno(errno);
+    return stat_to_sce(info, &status);
+}
+
 EXPORT(SceLibKernel, 0x9C8B6624, int, sceIoDread, SceUID fd, SceIoDirent *dirent)
 {
     VitaOpenedDir *vdir = get_opened_dir_for_fd(fd);
     struct dirent *de;
     struct stat statbuf;
-    SceMode st_mode;
-    unsigned int st_attr;
     const char *path;
     char full_path[PATH_MAX];
 
     if (!vdir)
         return SCE_ERROR_ERRNO_EBADF;
+    if (!dirent)
+        return io_errno(EFAULT);
 
+    errno = 0;
     de = readdir(vdir->dir);
     if (!de)
-        return 0;
+        return errno ? io_errno(errno) : 0;
 
-    if (strcmp(vdir->path, "/") == 0) {
-        path = de->d_name;
-    } else {
-        snprintf(full_path, sizeof(full_path), "%s/%s", vdir->path, de->d_name);
-        path = full_path;
-    }
+    int length = snprintf(full_path, sizeof(full_path), "%s/%s", vdir->path, de->d_name);
+    if (length < 0 || (size_t)length >= sizeof(full_path))
+        return io_errno(ENAMETOOLONG);
+    path = full_path;
 
     if (stat(path, &statbuf) != 0)
-        return SCE_ERROR_ERRNO_EBADF;
+        return io_errno(errno);
 
-    if ((statbuf.st_mode & S_IFMT) == S_IFDIR) {
-        st_mode = SCE_S_IFDIR | SCE_S_IRWXU | SCE_S_IRWXG | SCE_S_IRWXS;
-        st_attr = SCE_SO_IFDIR;
-    } else {
-        st_mode = SCE_S_IFREG | SCE_S_IRUSR | SCE_S_IWUSR | SCE_S_IRGRP | SCE_S_IWGRP |
-                  SCE_S_IRSYS | SCE_S_IWSYS;
-        st_attr = SCE_SO_IFREG;
-    }
-
-    dirent->d_stat.st_mode = st_mode;
-    dirent->d_stat.st_attr = st_attr;
-    dirent->d_stat.st_size = statbuf.st_size;
-    tm_to_sce_datetime(&dirent->d_stat.st_ctime, gmtime(&statbuf.st_ctim.tv_sec));
-    tm_to_sce_datetime(&dirent->d_stat.st_atime, gmtime(&statbuf.st_atim.tv_sec));
-    tm_to_sce_datetime(&dirent->d_stat.st_mtime, gmtime(&statbuf.st_mtim.tv_sec));
-    strncpy(dirent->d_name, de->d_name, sizeof(dirent->d_name));
+    int result = stat_to_sce(&dirent->d_stat, &statbuf);
+    if (result)
+        return result;
+    snprintf(dirent->d_name, sizeof(dirent->d_name), "%s", de->d_name);
     dirent->d_private = NULL;
 
     return 1;
