@@ -1,5 +1,5 @@
 {
-	"image": "ghcr.io/vita2hos/devcontainer/vita2hos:latest",
+	"image": "ghcr.io/vita2hos/devcontainer/vita2hos@sha256:f124bf98c40aee0038ab72444382382e16bccb6c93160b22337285bb404ab21c",
 	"remoteUser": "vita2hos",
 	"remoteEnv": {
 		"SWITCHIP": "${localEnv:SWITCHIP}"

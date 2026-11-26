@@ -18,7 +18,8 @@ jobs:
     name: Build
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vita2hos/devcontainer/vita2hos:latest
+      # GCC 14 image includes PIC runtime multilibs missing from newer images.
+      image: ghcr.io/vita2hos/devcontainer/vita2hos@sha256:f124bf98c40aee0038ab72444382382e16bccb6c93160b22337285bb404ab21c
       options: --user root
     strategy:
       fail-fast: false
