@@ -28,8 +28,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          submodules: recursive
+
+      - name: Fetch build dependencies
+        run: |
+          git submodule update --init --depth 1 external/mlib external/vita-headers external/Vita3K
+          git -C external/Vita3K submodule update --init --depth 1 external/glslang
 
       - name: Configure
         run: |
