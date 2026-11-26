@@ -1,4 +1,4 @@
-# Host file I/O regression checks
+# Host I/O regression checks
 
 Run on Linux or WSL with a C compiler that supports AddressSanitizer and
 UndefinedBehaviorSanitizer:
@@ -12,7 +12,10 @@ The test compiles the production `SceLibKernel.c` module against the pinned
 Vita headers and mlib dictionary implementation. Small libnx/deko3d stubs
 allow it to run without the Nintendo Switch toolchain. It checks unknown,
 closed, and wrong-type descriptors, file reads after seeks, absolute and
-relative seek positions, and invalid seek arguments. Build artifacts are
+relative seek positions, and invalid seek arguments. Utility checks cover
+binary and text round trips, empty and missing files, non-seekable input,
+oversized sparse files, and write errors (including buffered errors on close).
+The utility tests use Linux `/proc` and `/dev/full`. Build artifacts are
 created in a temporary directory and removed on exit.
 
 These single-threaded checks do not validate Switch ABI details, locking,
