@@ -15,6 +15,7 @@
 #include <psp2/io/dirent.h>
 
 #include "log.h"
+#include "config.h"
 #include "module.h"
 #include "util.h"
 
@@ -139,6 +140,61 @@ EXPORT(SceLibKernel, 0x91FA6614, int, sceKernelUnlockLwMutex, SceKernelLwMutexWo
 
 static int io_errno(int error);
 
+/* app0 is the directory containing the loaded executable. Do not alias other
+ * Vita devices to the SD root: they need their own mount implementations. */
+static int vita_io_path(const char *path, char *resolved, size_t capacity)
+{
+    if (!path)
+        return io_errno(EFAULT);
+    const char *device = strchr(path, ':');
+    if (!device) {
+        size_t length = strlen(path);
+        if (length >= capacity)
+            return io_errno(ENAMETOOLONG);
+        memcpy(resolved, path, length + 1);
+        return 0;
+    }
+    if (device - path != 4 || memcmp(path, "app0", 4))
+        return SCE_ERROR_ERRNO_ENODEV;
+    path = device + 1;
+    size_t length = strlen(VITA2HOS_APP0_PATH);
+    if (!length || length >= capacity)
+        return io_errno(ENAMETOOLONG);
+    memcpy(resolved, VITA2HOS_APP0_PATH, length + 1);
+    while (length > 1 && resolved[length - 1] == '/')
+        resolved[--length] = '\0';
+    const size_t root_length = length;
+    while (*path) {
+        while (*path == '/') ++path;
+        const char *component = path;
+        while (*path && *path != '/') {
+            if (*path == ':')
+                return io_errno(EINVAL);
+            ++path;
+        }
+        size_t count = path - component;
+        if (!count || (count == 1 && component[0] == '.'))
+            continue;
+        if (count == 2 && component[0] == '.' && component[1] == '.') {
+            if (length == root_length)
+                return io_errno(EACCES);
+            while (length > root_length && resolved[length - 1] != '/')
+                --length;
+            if (length > root_length) --length;
+            resolved[length] = '\0';
+            continue;
+        }
+        size_t separator = resolved[length - 1] != '/';
+        if (count >= capacity - length - separator)
+            return io_errno(ENAMETOOLONG);
+        if (separator) resolved[length++] = '/';
+        memcpy(resolved + length, component, count);
+        length += count;
+        resolved[length] = '\0';
+    }
+    return 0;
+}
+
 static int vita_io_open_flags(int flags, int *native_flags)
 {
     const int supported = SCE_O_RDWR | SCE_O_APPEND | SCE_O_CREAT |
@@ -161,7 +217,7 @@ static int vita_io_open_flags(int flags, int *native_flags)
 EXPORT(SceLibKernel, 0x6C60AC61, SceUID, sceIoOpen, const char *file, int flags, SceMode mode)
 {
     VitaOpenedFile *vfile;
-    const char *c;
+    char resolved[PATH_MAX];
     int native_flags, native_fd;
 
     if (!file)
@@ -170,9 +226,10 @@ EXPORT(SceLibKernel, 0x6C60AC61, SceUID, sceIoOpen, const char *file, int flags,
     if (result)
         return result;
 
-    c = strchr(file, ':');
-    if (c)
-        file = c + 1;
+    result = vita_io_path(file, resolved, sizeof(resolved));
+    if (result)
+        return result;
+    file = resolved;
 
     if (*file == '\0')
         return SCE_ERROR_ERRNO_ENODEV;
@@ -277,16 +334,17 @@ EXPORT(SceIofilemgr, 0x16512F59, int, sceIoSyncByFd, SceUID fd, int flag)
 EXPORT(SceLibKernel, 0xA9283DD0, SceUID, sceIoDopen, const char *dirname)
 {
     VitaOpenedDir *vdir;
-    const char *c;
+    char resolved[PATH_MAX];
     DIR *dir;
 
-    c = strchr(dirname, ':');
-    if (c)
-        dirname = c + 1;
+    int result = vita_io_path(dirname, resolved, sizeof(resolved));
+    if (result)
+        return result;
+    dirname = resolved;
 
     dir = opendir(dirname);
     if (!dir)
-        return SCE_ERROR_ERRNO_ENODEV;
+        return io_errno(errno);
 
     vdir = malloc(sizeof(*vdir));
     if (!vdir) {
@@ -298,6 +356,11 @@ EXPORT(SceLibKernel, 0xA9283DD0, SceUID, sceIoDopen, const char *dirname)
     vdir->uid = SceSysmem_get_next_uid();
     vdir->dir = dir;
     vdir->path = strdup(dirname);
+    if (!vdir->path) {
+        closedir(dir);
+        free(vdir);
+        return io_errno(ENOMEM);
+    }
 
     rwlockWriteLock(&g_vita_opened_dirs_lock);
     vita_opened_dirs_dict_set_at(g_vita_opened_dirs, vdir->uid, vdir);
@@ -389,9 +452,11 @@ EXPORT(SceLibKernel, 0xBCA5B623, int, sceIoGetstat, const char *file, SceIoStat 
 {
     if (!file || !info)
         return io_errno(EFAULT);
-    const char *device = strchr(file, ':');
-    if (device)
-        file = device + 1;
+    char resolved[PATH_MAX];
+    int result = vita_io_path(file, resolved, sizeof(resolved));
+    if (result)
+        return result;
+    file = resolved;
     if (!*file)
         return SCE_ERROR_ERRNO_ENODEV;
     struct stat status;

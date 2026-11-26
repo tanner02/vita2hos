@@ -32,6 +32,17 @@ It achieves this by redirecting the [module](https://wiki.henkaku.xyz/vita/Modul
    - Place your PlayStation Vita executable (`.velf`, `.self`, or `eboot.bin`) in the `sd:/vita2hos/` directory and rename it to `executable` (without any file extension).\
    The resulting full path should be `sd:/vita2hos/executable`.
 
+   - Place the application's extracted assets beside `executable`, retaining
+     their directory structure. For example, `app0:/data/textures.bin` resolves
+     to `sd:/vita2hos/data/textures.bin`. Both `app0:file` and `app0:/file`
+     refer to this application directory. File opens, metadata queries, and
+     directory enumeration share this mapping.
+   - Other Vita devices (such as `ux0:` and `savedata0:`) are not mounted yet;
+     they return a device error. Paths without a device prefix retain their
+     existing native-path behavior. App-relative `..` components cannot walk
+     above the application directory; this is lexical normalization, not
+     protection against native filesystem symlinks.
+
 4. **Launch vita2hos:**
    - Boot or reboot your Switch, and start any game while holding down the `R` button.
      - *Caution:* Using **vita2hos** via applet mode (accessed through the album button) may result in a fatal error and is not recommended.

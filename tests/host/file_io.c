@@ -1,5 +1,9 @@
 #include <assert.h>
 #include <unistd.h>
+#include <limits.h>
+
+static char test_app0_path[PATH_MAX];
+#define VITA2HOS_APP0_PATH test_app0_path
 
 /* Include the production module to exercise its static descriptor tables too. */
 #include "../../source/modules/SceLibKernel.c"
@@ -86,6 +90,60 @@ static void check_open_modes(void)
     unlink(path);
 }
 
+static void check_app0_paths(void)
+{
+    char directory[] = "/tmp/vita2hos-app0-XXXXXX";
+    assert(mkdtemp(directory));
+    strcpy(test_app0_path, directory);
+    char native_path[PATH_MAX];
+    snprintf(native_path, sizeof(native_path), "%s/asset.bin", directory);
+    int native_fd = open(native_path, O_WRONLY | O_CREAT | O_EXCL, 0600);
+    assert(native_fd >= 0 && write(native_fd, "texture", 7) == 7);
+    close(native_fd);
+    const char *aliases[] = {"app0:asset.bin", "app0:/asset.bin",
+                            "app0://./sub/../asset.bin"};
+    for (size_t i = 0; i < ARRAY_SIZE(aliases); ++i) {
+        SceUID fd = sceIoOpen(aliases[i], SCE_O_RDONLY, 0);
+        assert(fd > 0);
+        char contents[8] = {0};
+        assert(sceIoRead(fd, contents, 8) == 7 && !strcmp(contents, "texture"));
+        SceIoStat info;
+        assert(sceIoGetstat(aliases[i], &info) == 0 && info.st_size == 7);
+        assert(sceIoClose(fd) == 0);
+    }
+    SceIoStat info;
+    assert(sceIoGetstat("app0:", &info) == 0 && SCE_S_ISDIR(info.st_mode));
+    assert(sceIoGetstat("app0:/sub/..", &info) == 0 && SCE_S_ISDIR(info.st_mode));
+    assert((uint32_t)sceIoOpen("app0:/../outside", SCE_O_RDONLY, 0) == 0x8001000d);
+    assert((uint32_t)sceIoGetstat("app0:/../outside", &info) == 0x8001000d);
+    assert((uint32_t)sceIoDopen("app0:/../") == 0x8001000d);
+    assert((uint32_t)sceIoGetstat("ux0:/asset.bin", &info) == SCE_ERROR_ERRNO_ENODEV);
+    assert((uint32_t)sceIoOpen("other:/asset.bin", SCE_O_RDONLY, 0) == SCE_ERROR_ERRNO_ENODEV);
+    assert((uint32_t)sceIoDopen(NULL) == 0x8001000e);
+    assert((uint32_t)sceIoGetstat("app0:/missing", &info) == 0x80010002);
+    char oversized[PATH_MAX * 2];
+    memset(oversized, 'x', sizeof(oversized));
+    memcpy(oversized, "app0:/", 6);
+    oversized[sizeof(oversized) - 1] = '\0';
+    assert((uint32_t)sceIoOpen(oversized, SCE_O_RDONLY, 0) == 0x8001005b);
+    assert((uint32_t)sceIoDopen(oversized) == 0x8001005b);
+    assert((uint32_t)sceIoGetstat(oversized, &info) == 0x8001005b);
+    SceUID dfd = sceIoDopen("app0:/");
+    assert(dfd > 0);
+    SceIoDirent entry;
+    int found = 0, result;
+    while ((result = sceIoDread(dfd, &entry)) == 1) {
+        if (!strcmp(entry.d_name, "asset.bin")) {
+            assert(entry.d_stat.st_size == 7);
+            found = 1;
+        }
+    }
+    assert(result == 0 && found);
+    assert(sceIoDclose(dfd) == 0);
+    unlink(native_path);
+    rmdir(directory);
+}
+
 int main(void)
 {
     char path[] = "/tmp/vita2hos-io-XXXXXX";
@@ -97,6 +155,7 @@ int main(void)
     close(native_fd);
     assert(SceLibKernel_init() == 0);
     check_open_modes();
+    check_app0_paths();
 
     check_bad_file(-1);
     check_bad_dir(-1);
@@ -115,9 +174,6 @@ int main(void)
     assert((uint32_t)sceIoGetstat(NULL, &info) == 0x8001000e);
     assert((uint32_t)sceIoGetstat(path, NULL) == 0x8001000e);
     assert((uint32_t)sceIoGetstatByFd(fd, NULL) == 0x8001000e);
-    char device_path[512];
-    snprintf(device_path, sizeof(device_path), "app0:%s", path);
-    assert(sceIoGetstat(device_path, &info) == 0 && info.st_size == 6);
     struct stat known = {0};
     known.st_mode = S_IFDIR;
     known.st_mtim.tv_sec = 1704067200; /* 2024-01-01 UTC */
