@@ -38,6 +38,11 @@ invalid and freed UIDs, interior/end address lookup, malformed options, mapping
 failure cleanup, and 1,000 allocation/free cycles. GPU mapping is simulated;
 these checks do not establish real GPU visibility or cache behavior.
 
+SceLibm checks call float and double exports by NID, including trigonometry,
+roots, powers, output-pointer arguments, mixed float/integer arguments, signed
+zero, infinities and NaNs. They use the host math library; target newlib's
+numerical edge behavior and the Vita calling convention need console checks.
+
 These single-threaded checks do not validate Switch ABI details, locking,
 concurrent close operations, or hardware behavior. A Switch build and console
 testing are still required for those.

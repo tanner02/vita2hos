@@ -60,6 +60,7 @@ add_executable(vita2hos
     source/modules/SceKernelThreadMgr.c
     source/modules/SceLibKernel.c
     source/modules/SceLibc.c
+    source/modules/SceLibm.c
     source/modules/SceSysmem.c
     source/modules/SceTouch.c
 )
