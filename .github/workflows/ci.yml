@@ -31,7 +31,10 @@ jobs:
           submodules: recursive
 
       - name: Configure
-        run: cmake --preset ${{ matrix.build_type }}
+        run: |
+          /opt/devkitpro/devkitARM/bin/arm-none-eabi-g++ -print-multi-lib
+          /opt/devkitpro/devkitARM/bin/arm-none-eabi-g++ -march=armv8-a+crc+crypto -fPIE -print-file-name=libg.a
+          cmake --preset ${{ matrix.build_type }}
 
       - name: Build
         run: cmake --build --preset ${{ matrix.build_type }}
