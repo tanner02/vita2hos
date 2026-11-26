@@ -39,13 +39,19 @@ static int entry(SceSize size, void *argument)
 int main(void)
 {
     assert(SceKernelThreadMgr_init() == 0);
+    assert((uint32_t)sceKernelGetThreadCurrentPriority() == SCE_KERNEL_ERROR_UNKNOWN_THREAD_ID);
+    assert(resolve_vita_priority(SCE_KERNEL_DEFAULT_PRIORITY) == 160);
+    assert(resolve_vita_priority(SCE_KERNEL_DEFAULT_PRIORITY + 3) == 163);
+    assert(vita_priority_to_hos_priority(64) == vita_priority_to_hos_priority(65));
+    assert((uint32_t)resolve_vita_priority(63) == SCE_KERNEL_ERROR_ILLEGAL_PRIORITY);
     assert((uint32_t)sceKernelStartThread(-1, 0, NULL) == SCE_KERNEL_ERROR_UNKNOWN_THREAD_ID);
     assert((uint32_t)sceKernelDeleteThread(-1) == SCE_KERNEL_ERROR_UNKNOWN_THREAD_ID);
     assert(sceKernelGetThreadTLSAddr(-1, 0) == NULL);
     assert((uint32_t)create_thread(NULL, entry, 160, 4096) == SCE_KERNEL_ERROR_ILLEGAL_ADDR);
-    SceUID uid = create_thread("worker", entry, 160, 4096);
+    SceUID uid = create_thread("worker", entry, SCE_KERNEL_DEFAULT_PRIORITY, 4096);
     assert(uid > 0);
     VitaThreadInfo *info = get_thread_info_for_uid(uid);
+    assert(info->priority == 160);
     for (unsigned int i = 0; i < SCE_KERNEL_TLS_SIZE; i++)
         assert(((unsigned char *)info->vita_tls)[i] == 0);
     assert((uint32_t)start_thread(uid, 4, NULL) == SCE_KERNEL_ERROR_ILLEGAL_ADDR);
@@ -60,6 +66,7 @@ int main(void)
     if (setjmp(thread_return) == 0)
         info->thread.entry(info->thread.argument);
     assert(info->return_status == 1234);
+    assert(sceKernelGetThreadCurrentPriority() == 160);
     int status = -1;
     assert(sceKernelWaitThreadEnd(uid, &status, NULL) == 0 && status == 1234);
     wait_result = 0xEA01;

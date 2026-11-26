@@ -29,7 +29,7 @@ DICT_DEF2(vita_thread_info_dict, SceUID, M_DEFAULT_OPLIST, VitaThreadInfo *, M_P
 static vita_thread_info_dict_t g_vita_thread_infos;
 static RwLock g_vita_thread_infos_lock;
 
-static inline int vita_priority_to_hos_priority(int priority)
+static inline int resolve_vita_priority(int priority)
 {
     if ((priority & SCE_KERNEL_DEFAULT_PRIORITY) == SCE_KERNEL_DEFAULT_PRIORITY)
         priority = SCE_KERNEL_DEFAULT_PRIORITY_GAME_APP + (priority & ~SCE_KERNEL_DEFAULT_PRIORITY);
@@ -38,6 +38,13 @@ static inline int vita_priority_to_hos_priority(int priority)
         (priority > SCE_KERNEL_LOWEST_PRIORITY_USER))
         return SCE_KERNEL_ERROR_ILLEGAL_PRIORITY;
 
+    return priority;
+}
+
+static inline int vita_priority_to_hos_priority(int priority)
+{
+    priority = resolve_vita_priority(priority);
+    if (priority < 0) return priority;
     return HOS_HIGHEST_PRIORITY +
            ((priority - SCE_KERNEL_HIGHEST_PRIORITY_USER) *
             (HOS_LOWEST_PRIORITY - HOS_HIGHEST_PRIORITY)) /
@@ -95,6 +102,7 @@ static SceUID create_thread(const char *name, SceKernelThreadEntry entry, int in
     ti->uid = SceSysmem_get_next_uid();
     strncpy(ti->name, name, sizeof(ti->name) - 1);
     ti->entry = entry;
+    ti->priority = resolve_vita_priority(initPriority);
     ti->vita_tls = calloc(1, SCE_KERNEL_TLS_SIZE);
     if (!ti->vita_tls) {
         free(ti);
@@ -271,6 +279,12 @@ EXPORT(SceThreadmgr, 0x4B675D05, int, sceKernelDelayThread, SceUInt delay)
 {
     svcSleepThread((s64)delay * 1000);
     return 0;
+}
+
+EXPORT(SceLibKernel, 0xC53A9848, int, sceKernelGetThreadCurrentPriority)
+{
+    VitaThreadInfo *thread = SceKernelThreadMgr_get_thread_info();
+    return thread ? thread->priority : (int)SCE_KERNEL_ERROR_UNKNOWN_THREAD_ID;
 }
 
 EXPORT(SceThreadmgr, 0xBACA6891, void *, sceKernelGetThreadTLSAddr, SceUID thid, int key)

@@ -6,11 +6,12 @@
 
 #include "module.h"
 #include "modules/SceSysmem.h"
+#include "modules/SceKernelThreadMgr.h"
 
 typedef struct SemaWaiter {
     struct SemaWaiter *next;
     CondVar condition;
-    int count, result;
+    int count, result, priority;
     bool done;
 } SemaWaiter;
 
@@ -18,6 +19,7 @@ typedef struct VitaSemaphore {
     struct VitaSemaphore *next;
     SceUID uid;
     char name[32];
+    SceUInt attr;
     int initial, count, maximum;
     unsigned int references;
     SemaWaiter *waiters;
@@ -47,7 +49,7 @@ static void sema_dispatch(VitaSemaphore *s)
 {
     for (SemaWaiter *w = s->waiters; w; w = w->next) {
         if (w->done) continue;
-        if (s->count < w->count) break; /* Strict FIFO, including large requests. */
+        if (s->count < w->count) break; /* Respect queue order for large requests too. */
         s->count -= w->count;
         w->result = 0;
         w->done = true;
@@ -59,8 +61,8 @@ EXPORT(SceLibKernel, 0x1BD67366, SceUID, sceKernelCreateSema, const char *name,
        SceUInt attr, int initial, int maximum, SceKernelSemaOptParam *option)
 {
     if (!name) return SCE_KERNEL_ERROR_ILLEGAL_ADDR;
-    /* Priority queues and named/openable semaphores need separate support. */
-    if (attr != SCE_KERNEL_ATTR_THREAD_FIFO) return SCE_KERNEL_ERROR_ILLEGAL_ATTR;
+    /* Named/openable semaphores need separate support. */
+    if (attr & ~((SceUInt)SCE_KERNEL_ATTR_THREAD_PRIO)) return SCE_KERNEL_ERROR_ILLEGAL_ATTR;
     if (maximum <= 0 || initial < 0 || initial > maximum)
         return SCE_KERNEL_ERROR_ILLEGAL_COUNT;
     if (option && option->size != sizeof(*option))
@@ -71,6 +73,7 @@ EXPORT(SceLibKernel, 0x1BD67366, SceUID, sceKernelCreateSema, const char *name,
     strncpy(s->name, name, sizeof(s->name) - 1);
     s->initial = s->count = initial;
     s->maximum = maximum;
+    s->attr = attr;
     s->references = 1;
     mutexLock(&sema_lock);
     s->next = semaphores;
@@ -136,9 +139,20 @@ EXPORT(SceLibKernel, 0x0C7B834B, int, sceKernelWaitSema, SceUID uid, int count,
         mutexUnlock(&sema_lock);
         return 0;
     }
+    if (s->attr & SCE_KERNEL_ATTR_THREAD_PRIO) {
+        VitaThreadInfo *thread = SceKernelThreadMgr_get_thread_info();
+        if (!thread) {
+            mutexUnlock(&sema_lock);
+            return SCE_KERNEL_ERROR_UNKNOWN_THREAD_ID;
+        }
+        waiter.priority = thread->priority;
+    }
     ++s->references;
     SemaWaiter **tail = &s->waiters;
-    while (*tail) tail = &(*tail)->next;
+    while (*tail && ((*tail)->done || !(s->attr & SCE_KERNEL_ATTR_THREAD_PRIO) ||
+                     (*tail)->priority <= waiter.priority))
+        tail = &(*tail)->next;
+    waiter.next = *tail;
     *tail = &waiter;
     sema_dispatch(s);
     while (!waiter.done) {
@@ -225,6 +239,7 @@ EXPORT(SceLibKernel, 0x595D3FA6, int, sceKernelGetSemaInfo, SceUID uid,
         info->size = sizeof(*info);
         info->semaId = uid;
         memcpy(info->name, s->name, sizeof(info->name));
+        info->attr = s->attr;
         info->initCount = s->initial;
         info->currentCount = s->count;
         info->maxCount = s->maximum;

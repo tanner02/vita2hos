@@ -13,6 +13,7 @@ typedef struct {
     SceSize arglen;
     void *argp;
     int return_status;
+    int priority; /* Resolved Vita priority, before mapping to Horizon. */
     void **vita_tls;
     atomic_bool started;
 } VitaThreadInfo;

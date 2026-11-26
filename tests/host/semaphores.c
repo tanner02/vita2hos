@@ -15,10 +15,19 @@ SceUID SceSysmem_get_next_uid(void)
     return atomic_fetch_add(&next, 1);
 }
 
-typedef struct { SceUID uid; int count, result; SceUInt timeout; bool forever; } Wait;
+static _Thread_local VitaThreadInfo current_thread;
+static _Thread_local bool has_thread;
+VitaThreadInfo *SceKernelThreadMgr_get_thread_info(void)
+{
+    return has_thread ? &current_thread : NULL;
+}
+
+typedef struct { SceUID uid; int count, result, priority; SceUInt timeout; bool forever; } Wait;
 static void *wait_thread(void *argument)
 {
     Wait *w = argument;
+    current_thread.priority = w->priority ? w->priority : 160;
+    has_thread = true;
     w->result = sceKernelWaitSema(w->uid, w->count, w->forever ? NULL : &w->timeout);
     return NULL;
 }
@@ -50,6 +59,47 @@ static void *delete_concurrently(void *unused)
     return NULL;
 }
 
+static void check_priority_waits(void)
+{
+    SceUID uid = sceKernelCreateSema("priority", SCE_KERNEL_ATTR_THREAD_PRIO, 0, 3, NULL);
+    assert(uid > 0 && get_info(uid).attr == SCE_KERNEL_ATTR_THREAD_PRIO);
+    SceUInt timeout = 0;
+    assert((uint32_t)sceKernelWaitSema(uid, 1, &timeout) == SCE_KERNEL_ERROR_UNKNOWN_THREAD_ID);
+    /* Vita priorities 64 and 65 map to the same Horizon priority, but their
+     * semaphore ordering must remain distinct. */
+    Wait low = {.uid = uid, .count = 1, .priority = 65, .timeout = 2000000};
+    Wait high = {.uid = uid, .count = 2, .priority = 64, .timeout = 2000000};
+    Wait tie = {.uid = uid, .count = 1, .priority = 64, .timeout = 2000000};
+    pthread_t a, b, c;
+    assert(pthread_create(&a, NULL, wait_thread, &low) == 0);
+    wait_pending(uid, 1);
+    assert(pthread_create(&b, NULL, wait_thread, &high) == 0);
+    wait_pending(uid, 2);
+    assert(pthread_create(&c, NULL, wait_thread, &tie) == 0);
+    wait_pending(uid, 3);
+    assert(sceKernelSignalSema(uid, 1) == 0);
+    assert(get_info(uid).currentCount == 1 && get_info(uid).numWaitThreads == 3);
+    assert(sceKernelSignalSema(uid, 1) == 0);
+    assert(pthread_join(b, NULL) == 0 && high.result == 0);
+    wait_pending(uid, 2);
+    assert(sceKernelSignalSema(uid, 1) == 0);
+    assert(pthread_join(c, NULL) == 0 && tie.result == 0);
+    wait_pending(uid, 1);
+    assert(sceKernelSignalSema(uid, 1) == 0);
+    assert(pthread_join(a, NULL) == 0 && low.result == 0);
+
+    low = (Wait){.uid = uid, .count = 1, .priority = 160, .timeout = 2000000};
+    high = (Wait){.uid = uid, .count = 2, .priority = 80, .timeout = 500000};
+    assert(pthread_create(&a, NULL, wait_thread, &low) == 0);
+    wait_pending(uid, 1);
+    assert(pthread_create(&b, NULL, wait_thread, &high) == 0);
+    wait_pending(uid, 2);
+    assert(sceKernelSignalSema(uid, 1) == 0);
+    assert(pthread_join(b, NULL) == 0 && (uint32_t)high.result == SCE_KERNEL_ERROR_WAIT_TIMEOUT);
+    assert(pthread_join(a, NULL) == 0 && low.result == 0);
+    assert(sceKernelDeleteSema(uid) == 0);
+}
+
 int main(void)
 {
     alarm(15);
@@ -58,7 +108,7 @@ int main(void)
     assert((uint32_t)sceKernelCreateSema("bad", 0, 0, 0, NULL) == SCE_KERNEL_ERROR_ILLEGAL_COUNT);
     assert((uint32_t)sceKernelCreateSema("bad", 0, -1, 1, NULL) == SCE_KERNEL_ERROR_ILLEGAL_COUNT);
     assert((uint32_t)sceKernelCreateSema("bad", 0, 2, 1, NULL) == SCE_KERNEL_ERROR_ILLEGAL_COUNT);
-    assert((uint32_t)sceKernelCreateSema("bad", SCE_KERNEL_ATTR_THREAD_PRIO, 0, 1, NULL) ==
+    assert((uint32_t)sceKernelCreateSema("bad", SCE_KERNEL_ATTR_OPENABLE, 0, 1, NULL) ==
            SCE_KERNEL_ERROR_ILLEGAL_ATTR);
     SceKernelSemaOptParam option = {.size = 0};
     assert((uint32_t)sceKernelCreateSema("bad", 0, 0, 1, &option) ==
@@ -150,6 +200,7 @@ int main(void)
     assert(get_info(uid).currentCount == INT_MAX - 1);
     assert(sceKernelSignalSema(uid, 1) == 0 && sceKernelPollSema(uid, INT_MAX) == 0);
     assert(sceKernelDeleteSema(uid) == 0);
+    check_priority_waits();
     assert(pthread_create(&a, NULL, delete_concurrently, NULL) == 0);
     for (int i = 0; i < 500; ++i) {
         uid = sceKernelCreateSema("racing", 0, 1, 1, NULL);
