@@ -72,3 +72,9 @@ hardware validation items.
 The remaining single-threaded checks do not validate Switch ABI details, locking,
 concurrent close operations, or hardware behavior. A Switch build and console
 testing are still required for those.
+
+Executable layout checks cover actual arena-base alignment, successive segment
+placement, ELF alignments 0/1, power-of-two validation, capacity limits, and
+pointer/integer overflow. They exercise the production placement helper rather
+than the complete ELF/SELF parser; file-bound and relocation-record validation
+remain separate work.

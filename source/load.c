@@ -6,6 +6,7 @@
 
 #include "arm-encode.h"
 #include "load.h"
+#include "load_layout.h"
 #include "log.h"
 #include "module.h"
 #include "sce-elf.h"
@@ -103,7 +104,7 @@ int elf_check_vita_header(const Elf32_Ehdr *hdr)
     return 0;
 }
 
-static int elf_get_sce_module_info(Elf32_Addr e_entry, const segment_info_t *segments,
+static int elf_get_sce_module_info(Elf32_Addr e_entry, const segment_info_t *segments, int num_segments,
                                    sce_module_info_raw **mod_info)
 {
     uint32_t offset;
@@ -112,7 +113,9 @@ static int elf_get_sce_module_info(Elf32_Addr e_entry, const segment_info_t *seg
     index = (e_entry & 0xC0000000) >> 30;
     offset = e_entry & 0x3FFFFFFF;
 
-    if (segments[index].src_data == NULL) {
+    if (index >= (uint32_t)num_segments || segments[index].p_type != PT_LOAD ||
+        segments[index].src_data == NULL || offset > segments[index].p_filesz ||
+        sizeof(**mod_info) > segments[index].p_filesz - offset) {
         LOG("Invalid segment index %" PRId32, index);
         return -1;
     }
@@ -344,6 +347,8 @@ static int load_elf(Jit *jit, const void *data, void **entry)
     prog_hdrs = (void *)((uintptr_t)data + elf_hdr->e_phoff);
 
     segment_info_t *segments = calloc(elf_hdr->e_phnum, sizeof(segment_info_t));
+    if (!segments)
+        return -1;
 
     for (Elf32_Half i = 0; i < elf_hdr->e_phnum; i++) {
         segments[i].src_data = (char *)data + prog_hdrs[i].p_offset;
@@ -368,7 +373,6 @@ static int load_segments(Jit *jit, void **entry, Elf32_Addr e_entry, segment_inf
     uint32_t code_offset = 0, data_offset = 0;
     uintptr_t data_addr, code_rw_addr, code_rx_addr;
     uintptr_t addr_rw, addr_rx;
-    uint32_t length;
     sce_module_info_raw *mod_info;
     const char *imp_name;
     int mod_info_idx;
@@ -377,11 +381,16 @@ static int load_segments(Jit *jit, void **entry, Elf32_Addr e_entry, segment_inf
     /* Calculate total code and data sizes */
     for (int i = 0; i < num_segments; i++) {
         if (segments[i].p_type == PT_LOAD) {
-            length = segments[i].p_memsz + segments[i].p_align;
-            if ((segments[i].p_flags & PF_X) == PF_X)
-                code_size += length;
-            else
-                data_size += length;
+            uint32_t alignment = segments[i].p_align;
+            if ((alignment && (alignment & (alignment - 1))) ||
+                segments[i].p_filesz > segments[i].p_memsz)
+                return -1;
+            uint32_t padding = alignment > 1 ? alignment - 1 : 0;
+            uint32_t *total = (segments[i].p_flags & PF_X) ? &code_size : &data_size;
+            if (segments[i].p_memsz > UINT32_MAX - padding ||
+                *total > UINT32_MAX - segments[i].p_memsz - padding)
+                return -1;
+            *total += segments[i].p_memsz + padding;
         }
     }
 
@@ -394,7 +403,7 @@ static int load_segments(Jit *jit, void **entry, Elf32_Addr e_entry, segment_inf
         return -1;
     }
 
-    data_addr = (uintptr_t)malloc(data_size);
+    data_addr = (uintptr_t)malloc(data_size ? data_size : 1);
     if (!data_addr) {
         LOG("Could not allocate buffer for the data segment");
         goto err_jit_close;
@@ -417,18 +426,22 @@ static int load_segments(Jit *jit, void **entry, Elf32_Addr e_entry, segment_inf
         if (segments[i].p_type == PT_LOAD) {
             LOG("Found loadable segment (%u)", i);
             LOG("  p_filesz: 0x%" PRIx32, segments[i].p_filesz);
-            LOG("  p_memsz:  0x%" PRIx32, segments[i].p_align);
+            LOG("  p_memsz:  0x%" PRIx32, segments[i].p_memsz);
             LOG("  p_align:  0x%" PRIx32, segments[i].p_align);
 
             if ((segments[i].p_flags & PF_X) == PF_X) {
-                length = ALIGN(code_rx_addr, segments[i].p_align) - code_rx_addr;
-                addr_rx = code_rx_addr + code_offset;
-                addr_rw = code_rw_addr + code_offset;
-                code_offset += segments[i].p_memsz;
+                uint32_t offset;
+                if (load_layout_place(code_rx_addr, code_offset, segments[i].p_memsz,
+                                        segments[i].p_align, code_size, &offset, &code_offset) != 0)
+                    goto err_free_data;
+                addr_rx = code_rx_addr + offset;
+                addr_rw = code_rw_addr + offset;
             } else {
-                length = ALIGN(data_addr, segments[i].p_align) - data_addr;
-                addr_rw = addr_rx = data_addr + data_offset;
-                data_offset += segments[i].p_memsz;
+                uint32_t offset;
+                if (load_layout_place(data_addr, data_offset, segments[i].p_memsz,
+                                        segments[i].p_align, data_size, &offset, &data_offset) != 0)
+                    goto err_free_data;
+                addr_rw = addr_rx = data_addr + offset;
             }
 
             segments[i].rx_addr = addr_rx;
@@ -444,18 +457,23 @@ static int load_segments(Jit *jit, void **entry, Elf32_Addr e_entry, segment_inf
             memcpy((void *)segments[i].rw_addr, segments[i].src_data, segments[i].p_filesz);
             memset((char *)segments[i].rw_addr + segments[i].p_filesz, 0,
                    segments[i].p_memsz - segments[i].p_filesz);
-        } else if (segments[i].p_type == PT_SCE_RELA) {
-            LOG("Found relocations segment (%u)", i);
-            relocate(segments[i].src_data, segments[i].p_filesz, segments);
         } else {
             LOG("Segment %u is not loadable. Skipping.", i);
             continue;
         }
     }
 
+    /* Relocations can target later program headers, so every loadable segment
+     * must have its final address before processing relocation records. */
+    for (int i = 0; i < num_segments; i++) {
+        if (segments[i].p_type == PT_SCE_RELA &&
+            relocate(segments[i].src_data, segments[i].p_filesz, segments) < 0)
+            goto err_free_data;
+    }
+
     /* Get module info */
     LOG("Getting module info.");
-    if ((mod_info_idx = elf_get_sce_module_info(e_entry, segments, &mod_info)) < 0) {
+    if ((mod_info_idx = elf_get_sce_module_info(e_entry, segments, num_segments, &mod_info)) < 0) {
         LOG("Cannot find module info section.");
         goto err_free_data;
     }
@@ -482,7 +500,8 @@ static int load_segments(Jit *jit, void **entry, Elf32_Addr e_entry, segment_inf
 
     /* Find the entry point (address belonging to the RX JIT area) */
     *entry = (char *)segments[mod_info_idx].rx_addr + mod_info->module_start;
-    if (*entry == NULL) {
+    if (!(segments[mod_info_idx].p_flags & PF_X) ||
+        (mod_info->module_start & ~1U) >= segments[mod_info_idx].p_memsz) {
         LOG("Invalid module entry function.");
         goto err_free_data;
     }
