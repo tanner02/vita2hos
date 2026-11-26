@@ -85,3 +85,9 @@ The production loader passes source lengths through VPK extraction and checks
 tables/payload ranges before reading them. These helper tests do not establish
 complete malformed-file safety; imports and relocation records need additional
 validation and end-to-end fixtures.
+
+Thread-runtime checks use a simulated libnx thread to exercise missing IDs,
+zeroed TLS, startup-failure cleanup and retry, duplicate-start rejection,
+normal return status and timeout error translation. They do not establish real
+thread scheduling or deletion concurrency. Reusing a completed thread requires
+additional lifecycle support; the current wrapper rejects a second start.

@@ -47,9 +47,11 @@ static inline int vita_priority_to_hos_priority(int priority)
 static VitaThreadInfo *get_thread_info_for_uid(SceUID thid)
 {
     VitaThreadInfo *ti;
+    VitaThreadInfo **entry;
 
     rwlockReadLock(&g_vita_thread_infos_lock);
-    ti = *vita_thread_info_dict_get(g_vita_thread_infos, thid);
+    entry = vita_thread_info_dict_get(g_vita_thread_infos, thid);
+    ti = entry ? *entry : NULL;
     rwlockReadUnlock(&g_vita_thread_infos_lock);
 
     return ti;
@@ -63,6 +65,7 @@ static void NORETURN thread_entry_wrapper(void *arg)
     threadTlsSet(g_vita_thread_info_tls_slot_id, ti);
 
     ret = ti->entry(ti->arglen, ti->argp);
+    ti->return_status = ret;
 
     LOG("Thread 0x%x returned with: 0x%x", ti->uid, ret);
 
@@ -78,6 +81,8 @@ static SceUID create_thread(const char *name, SceKernelThreadEntry entry, int in
 
     if (priority < 0)
         return priority;
+    if (!name || !entry)
+        return SCE_KERNEL_ERROR_ILLEGAL_ADDR;
 
     ti = malloc(sizeof(*ti));
     if (!ti) {
@@ -86,10 +91,15 @@ static SceUID create_thread(const char *name, SceKernelThreadEntry entry, int in
     }
 
     memset(ti, 0, sizeof(*ti));
+    atomic_init(&ti->started, false);
     ti->uid = SceSysmem_get_next_uid();
     strncpy(ti->name, name, sizeof(ti->name) - 1);
     ti->entry = entry;
-    ti->vita_tls = malloc(SCE_KERNEL_TLS_SIZE);
+    ti->vita_tls = calloc(1, SCE_KERNEL_TLS_SIZE);
+    if (!ti->vita_tls) {
+        free(ti);
+        return SCE_KERNEL_ERROR_NO_MEMORY;
+    }
 
     res = threadCreate(&ti->thread, thread_entry_wrapper, ti, NULL, stackSize, priority, -2);
     if (R_FAILED(res)) {
@@ -116,10 +126,18 @@ static int start_thread(SceUID thid, SceSize arglen, void *argp)
     if (!ti)
         return SCE_KERNEL_ERROR_UNKNOWN_THREAD_ID;
 
+    if (arglen && !argp)
+        return SCE_KERNEL_ERROR_ILLEGAL_ADDR;
+    bool expected = false;
+    if (!atomic_compare_exchange_strong(&ti->started, &expected, true))
+        return SCE_KERNEL_ERROR_NOT_DORMANT;
+
     if (arglen && argp) {
         ti->argp = malloc(arglen);
-        if (!ti->argp)
+        if (!ti->argp) {
+            atomic_store(&ti->started, false);
             return SCE_KERNEL_ERROR_NO_MEMORY;
+        }
 
         memcpy(ti->argp, argp, arglen);
         ti->arglen = arglen;
@@ -128,6 +146,10 @@ static int start_thread(SceUID thid, SceSize arglen, void *argp)
     res = threadStart(&ti->thread);
     if (R_FAILED(res)) {
         LOG("Error starting thread 0x%x: 0x%" PRIx32, thid, res);
+        free(ti->argp);
+        ti->argp = NULL;
+        ti->arglen = 0;
+        atomic_store(&ti->started, false);
         return SCE_KERNEL_ERROR_THREAD_ERROR;
     }
 
@@ -203,7 +225,7 @@ EXPORT(SceLibKernel, 0xDDB395A9, int, sceKernelWaitThreadEnd, SceUID thid, int *
     res = waitSingle(waiterForThread(&ti->thread), ns);
     if (R_FAILED(res)) {
         LOG("Error waiting for thread 0x%x exit: 0x%" PRIx32, thid, res);
-        return SCE_KERNEL_ERROR_THREAD_ERROR;
+        return res == 0xEA01 ? SCE_KERNEL_ERROR_WAIT_TIMEOUT : SCE_KERNEL_ERROR_THREAD_ERROR;
     }
 
     if (stat)

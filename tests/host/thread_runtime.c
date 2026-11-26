@@ -1,0 +1,74 @@
+#define TEST_THREAD_RUNTIME
+#include <setjmp.h>
+#include <assert.h>
+#include <stdio.h>
+
+#include "../../source/modules/SceKernelThreadMgr.c"
+
+static jmp_buf thread_return;
+static void *tls_value;
+static Result start_result, wait_result;
+static UEvent exit_event;
+void log_printf(const char *format, ...) { (void)format; }
+SceUID SceSysmem_get_next_uid(void) { static SceUID next = 1; return next++; }
+UEvent *SceLibKernel_get_process_exit_uevent(void) { return &exit_event; }
+Result threadCreate(Thread *thread, void (*entry)(void *), void *arg, void *stack,
+                    size_t size, int priority, int cpu)
+{
+    (void)stack; (void)size; (void)priority; (void)cpu;
+    thread->entry = entry;
+    thread->argument = arg;
+    return 0;
+}
+Result threadStart(Thread *thread) { (void)thread; return start_result; }
+Result threadClose(Thread *thread) { (void)thread; return 0; }
+int threadTlsAlloc(void (*destructor)(void *)) { (void)destructor; return 1; }
+void threadTlsFree(int slot) { (void)slot; }
+void threadTlsSet(int slot, void *value) { (void)slot; tls_value = value; }
+void *threadTlsGet(int slot) { (void)slot; return tls_value; }
+Result waitSingle(Waiter waiter, uint64_t ns) { (void)waiter; (void)ns; return wait_result; }
+void svcSleepThread(s64 ns) { (void)ns; }
+void threadExit(void) { longjmp(thread_return, 1); }
+
+static int entry(SceSize size, void *argument)
+{
+    assert(size == 4 && memcmp(argument, "test", 4) == 0);
+    return 1234;
+}
+
+int main(void)
+{
+    assert(SceKernelThreadMgr_init() == 0);
+    assert((uint32_t)sceKernelStartThread(-1, 0, NULL) == SCE_KERNEL_ERROR_UNKNOWN_THREAD_ID);
+    assert((uint32_t)sceKernelDeleteThread(-1) == SCE_KERNEL_ERROR_UNKNOWN_THREAD_ID);
+    assert(sceKernelGetThreadTLSAddr(-1, 0) == NULL);
+    assert((uint32_t)create_thread(NULL, entry, 160, 4096) == SCE_KERNEL_ERROR_ILLEGAL_ADDR);
+    SceUID uid = create_thread("worker", entry, 160, 4096);
+    assert(uid > 0);
+    VitaThreadInfo *info = get_thread_info_for_uid(uid);
+    for (unsigned int i = 0; i < SCE_KERNEL_TLS_SIZE; i++)
+        assert(((unsigned char *)info->vita_tls)[i] == 0);
+    assert((uint32_t)start_thread(uid, 4, NULL) == SCE_KERNEL_ERROR_ILLEGAL_ADDR);
+    start_result = 1;
+    assert((uint32_t)start_thread(uid, 4, "test") == SCE_KERNEL_ERROR_THREAD_ERROR);
+    assert(info->argp == NULL && info->arglen == 0);
+    start_result = 0;
+    assert(start_thread(uid, 4, "test") == 0);
+    void *saved_arguments = info->argp;
+    assert((uint32_t)start_thread(uid, 4, "oops") == SCE_KERNEL_ERROR_NOT_DORMANT);
+    assert(info->argp == saved_arguments && memcmp(info->argp, "test", 4) == 0);
+    if (setjmp(thread_return) == 0)
+        info->thread.entry(info->thread.argument);
+    assert(info->return_status == 1234);
+    int status = -1;
+    assert(sceKernelWaitThreadEnd(uid, &status, NULL) == 0 && status == 1234);
+    wait_result = 0xEA01;
+    SceUInt timeout = 1;
+    assert((uint32_t)sceKernelWaitThreadEnd(uid, NULL, &timeout) == SCE_KERNEL_ERROR_WAIT_TIMEOUT);
+    wait_result = 0;
+    assert(sceKernelDeleteThread(uid) == 0);
+    assert((uint32_t)sceKernelWaitThreadEnd(uid, NULL, NULL) == SCE_KERNEL_ERROR_UNKNOWN_THREAD_ID);
+    assert(SceKernelThreadMgr_finish() == 0);
+    puts("Thread runtime regression checks passed.");
+    return 0;
+}

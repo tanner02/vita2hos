@@ -13,7 +13,11 @@
 #define BIT(n) (1U << (n))
 typedef int RwLock;
 typedef int UEvent;
+#ifdef TEST_THREAD_RUNTIME
+typedef struct { void (*entry)(void *); void *argument; } Thread;
+#else
 typedef int Thread;
+#endif
 #ifdef TEST_THREADED_MUTEX
 #include <pthread.h>
 typedef pthread_mutex_t Mutex;
@@ -59,6 +63,26 @@ static inline bool mutexTryLock(Mutex *mutex) { *mutex = 1; return true; }
 #endif
 static inline void ueventCreate(UEvent *event, bool state) { *event = state; }
 static inline void ueventSignal(UEvent *event) { *event = 1; }
+#ifdef TEST_THREAD_RUNTIME
+typedef int32_t s32;
+typedef int64_t s64;
+typedef uint32_t Result;
+#define R_FAILED(value) ((value) != 0)
+Result threadCreate(Thread *, void (*)(void *), void *, void *, size_t, int, int);
+Result threadStart(Thread *);
+Result threadClose(Thread *);
+int threadTlsAlloc(void (*)(void *));
+void threadTlsFree(int);
+void threadTlsSet(int, void *);
+void *threadTlsGet(int);
+typedef struct { Thread *thread; UEvent *event; } Waiter;
+static inline Waiter waiterForThread(Thread *thread) { return (Waiter){.thread = thread}; }
+static inline Waiter waiterForUEvent(UEvent *event) { return (Waiter){.event = event}; }
+Result waitSingle(Waiter, uint64_t);
+void svcSleepThread(s64);
+void __attribute__((noreturn)) threadExit(void);
+#else
 static inline void threadExit(void) { abort(); }
+#endif
 
 #endif

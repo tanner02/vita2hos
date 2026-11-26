@@ -2,6 +2,7 @@
 #define SCE_KERNEL_THREAD_MGR_H
 
 #include <psp2/kernel/threadmgr.h>
+#include <stdatomic.h>
 
 typedef struct {
     uint32_t index;
@@ -13,6 +14,7 @@ typedef struct {
     void *argp;
     int return_status;
     void **vita_tls;
+    atomic_bool started;
 } VitaThreadInfo;
 
 int SceKernelThreadMgr_init(void);
