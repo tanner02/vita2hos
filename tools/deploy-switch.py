@@ -8,7 +8,6 @@ import hashlib
 import io
 import json
 from pathlib import Path
-import re
 import zipfile
 
 
@@ -67,46 +66,6 @@ def replace_verified(ftp, path, data, backup_dir, stamp):
     print("Uploaded and verified:", path)
 
 
-def override_config(existing):
-    """Preserve other sections/comments, updating only vita2hos override keys."""
-    values = {
-        "override_any_app": "true",
-        "override_any_app_key": "R",
-        "override_any_app_address_space": "32_bit",
-        "path": "vita2hos/vita2hos.nsp",
-    }
-    lines = existing.decode("utf-8-sig").splitlines() if existing else []
-    result, in_hbl, found, written = [], False, False, set()
-
-    def append_missing():
-        for key, value in values.items():
-            if key not in written:
-                result.append(key + "=" + value)
-                written.add(key)
-
-    for line in lines:
-        section = re.match(r"\s*\[([^]]+)\]", line)
-        if section:
-            if in_hbl:
-                append_missing()
-            in_hbl = section.group(1).lower() == "hbl_config"
-            if in_hbl and found:
-                raise ValueError("Duplicate hbl_config sections; edit configuration manually")
-            found |= in_hbl
-        setting = re.match(r"\s*([A-Za-z0-9_]+)\s*=", line)
-        key = setting.group(1).lower() if setting else None
-        if in_hbl and key in values:
-            if key not in written:
-                result.append(key + "=" + values[key])
-                written.add(key)
-        else:
-            result.append(line)
-    if not found:
-        result.extend(["", "[hbl_config]"])
-    append_missing()
-    return ("\n".join(result).lstrip("\n") + "\n").encode("utf-8")
-
-
 def read_bundle(path, sample):
     with zipfile.ZipFile(path) as archive:
         manifest = json.loads(archive.read("manifest.json"))
@@ -131,13 +90,9 @@ def main():
                         default="gxm_cube_sample")
     parser.add_argument("--sd-root", default="/", help="FTP path corresponding to SD root")
     parser.add_argument("--backup-dir", type=Path, default=Path("switch-backups"))
-    parser.add_argument("--configure-override", action="store_true",
-                        help="Also change R application override to vita2hos; backs up existing config")
     parser.add_argument("--sample-only", action="store_true",
                         help="Change only executable; preserve the installed runtime and override")
     args = parser.parse_args()
-    if args.sample_only and args.configure_override:
-        parser.error("--sample-only cannot be combined with --configure-override")
     manifest, (nsp, executable) = read_bundle(args.bundle, args.sample)
     password = getpass.getpass("FTP password: ") if args.ask_password else "anonymous@"
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
@@ -146,10 +101,6 @@ def main():
         ftp.connect(args.host, args.port, timeout=15)
         ftp.login(args.user, password)
         print("Connected:", ftp.getwelcome())
-        if args.configure_override:
-            # Verify the Atmosphere folder before making any deployment changes.
-            ftp.cwd(root + "/atmosphere/config")
-            ftp.cwd("/")
         ensure_directory(ftp, root + "/vita2hos")
         if args.sample_only and read_remote(ftp, root + "/vita2hos/vita2hos.nsp") != nsp:
             raise ValueError("Installed runtime differs from this bundle; sample-only transfer aborted")
@@ -157,13 +108,9 @@ def main():
             ("vita2hos.nsp", nsp), ("executable", executable)]
         for name, data in transfers:
             replace_verified(ftp, root + "/vita2hos/" + name, data, args.backup_dir, stamp)
-        if args.configure_override:
-            path = root + "/atmosphere/config/override_config.ini"
-            previous = read_remote(ftp, path)
-            replace_verified(ftp, path, override_config(previous), args.backup_dir, stamp)
         print("Runtime commit:", manifest["runtime_commit"])
         print("Sample:", args.sample)
-        print("Files ready. Exit FTP, reboot if the override changed, then hold R while launching a game.")
+        print("Files ready. Atmosphere configuration was not changed.")
         print("FTP transfer does not launch the application or capture a rendered result.")
 
 

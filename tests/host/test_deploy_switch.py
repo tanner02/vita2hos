@@ -5,6 +5,7 @@ from ftplib import error_perm, error_temp
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 source = Path(__file__).resolve().parents[2] / "tools/deploy-switch.py"
 spec = importlib.util.spec_from_file_location("deploy_switch", source)
@@ -38,17 +39,17 @@ class FakeFTP:
 
 
 class DeploymentTests(unittest.TestCase):
-    def test_preserve_configuration_and_idempotence(self):
-        original = b"; comment\n[hbl_config]\npath=old\n[default_config]\ncheat_enable_key=!L\n"
-        result = deploy.override_config(original)
-        self.assertIn(b"; comment", result)
-        self.assertIn(b"[default_config]\ncheat_enable_key=!L", result)
-        self.assertIn(b"override_any_app_address_space=32_bit", result)
-        self.assertEqual(deploy.override_config(result), result)
-
-    def test_duplicate_sections_rejected(self):
-        with self.assertRaises(ValueError):
-            deploy.override_config(b"[hbl_config]\n[hbl_config]\n")
+    def test_removed_override_option_rejected_before_io(self):
+        with patch("sys.argv", ["deploy-switch.py", "missing.zip", "--host",
+                                "192.0.2.1", "--configure-override"]), \
+             patch.object(deploy, "FTP") as ftp, \
+             patch.object(deploy, "read_bundle") as bundle, \
+             patch("sys.stderr", new_callable=io.StringIO):
+            with self.assertRaises(SystemExit) as result:
+                deploy.main()
+            self.assertEqual(result.exception.code, 2)
+            ftp.assert_not_called()
+            bundle.assert_not_called()
 
     def test_verified_replacement_keeps_both_backups(self):
         ftp = FakeFTP()

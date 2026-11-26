@@ -62,16 +62,26 @@ With the Switch FTP server open, a PC with Python 3 can transfer and verify the
 bundle automatically:
 
 ```sh
-python3 tools/deploy-switch.py smoke-test.zip --host SWITCH_IP --port 5000 --configure-override
+python3 tools/deploy-switch.py smoke-test.zip --host SWITCH_IP --port 5000
 ```
 
-The optional `--configure-override` updates the R application override to use
-the 32-bit vita2hos NSP. Other configuration sections are preserved. Existing
-files are backed up locally under `switch-backups/` and retained on the SD with
-a timestamped `.backup-...` suffix. Uploads are downloaded again for checksum
-verification before replacement. Run without the configuration option for
-subsequent sample/build transfers; use `--sample gxm_textured_cube_sample` to
-select the textured cube. Transfers require the FTP server to stay running.
+Deployment transfers only the runtime and sample. It never changes Atmosphere
+configuration. The former `--configure-override` option has been removed because
+the global homebrew path also redirects Album, preventing access to hbmenu and
+FTP. A game-specific address-space setting does not provide a separate loader
+path. Keep normal hbmenu access enabled outside an explicit temporary test.
+
+If an earlier deployment created the vita2hos override, shut down the Switch,
+mount its SD card on a PC, and restore your backed-up
+`atmosphere/config/override_config.ini`. If there was no original configuration,
+rename the generated file to a name other than `override_config.ini` and fully
+reboot Atmosphere. Preserve `hbmenu.nro` and `atmosphere/hbl.nsp`.
+
+Existing runtime/sample files are backed up locally under `switch-backups/`
+and retained on the SD with a timestamped `.backup-...` suffix. Uploads are
+downloaded again for checksum verification before replacement. Add
+`--sample gxm_textured_cube_sample` to select the textured cube. Transfers
+require the FTP server to stay running.
 
 For a sample comparison against the same runtime, add `--sample-only`:
 
@@ -81,7 +91,7 @@ python3 tools/deploy-switch.py smoke-test.zip --host SWITCH_IP --port 5000 \
 ```
 
 This mode verifies that the installed NSP matches the bundle, then replaces
-only `executable`. It cannot be combined with `--configure-override`.
+only `executable`. Atmosphere configuration is always preserved.
 
 FTP deployment does not launch an NRO, install a title, press buttons, or reboot
 the console. Exit the FTP app and use the application override manually.
