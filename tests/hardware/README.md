@@ -55,3 +55,23 @@ python3 tools/package-hardware-smoke.py Build_Debug.zip --commit FULL_COMMIT_SHA
 
 The packaging tool downloads only the two pinned sample archives, verifies
 their hashes, and copies the NSP and sample files without executing them.
+
+## FTP deployment
+
+With the Switch FTP server open, a PC with Python 3 can transfer and verify the
+bundle automatically:
+
+```sh
+python3 tools/deploy-switch.py smoke-test.zip --host SWITCH_IP --port 5000 --configure-override
+```
+
+The optional `--configure-override` updates the R application override to use
+the 32-bit vita2hos NSP. Other configuration sections are preserved. Existing
+files are backed up locally under `switch-backups/` and retained on the SD with
+a timestamped `.backup-...` suffix. Uploads are downloaded again for checksum
+verification before replacement. Run without the configuration option for
+subsequent sample/build transfers; use `--sample gxm_textured_cube_sample` to
+select the textured cube. Transfers require the FTP server to stay running.
+
+FTP deployment does not launch an NRO, install a title, press buttons, or reboot
+the console. Exit the FTP app and use the application override manually.

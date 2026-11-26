@@ -91,6 +91,11 @@ tables/payload ranges before reading them. These helper tests do not establish
 complete malformed-file safety; imports and relocation records need additional
 validation and end-to-end fixtures.
 
+ARM relocation checks exercise the production relocation routine with short
+and long records, unaligned input streams, absolute/relative writes, ARM branch
+patches, truncation, invalid segments/offsets, unknown/secondary relocations,
+and branch range failures. Unsupported secondary relocations fail explicitly.
+
 Thread-runtime checks use a simulated libnx thread to exercise missing IDs,
 zeroed TLS, startup-failure cleanup and retry, duplicate-start rejection,
 normal return status and timeout error translation. They do not establish real
