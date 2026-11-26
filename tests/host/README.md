@@ -78,3 +78,10 @@ placement, ELF alignments 0/1, power-of-two validation, capacity limits, and
 pointer/integer overflow. They exercise the production placement helper rather
 than the complete ELF/SELF parser; file-bound and relocation-record validation
 remain separate work.
+
+Executable-format checks cover every truncated length below a SELF header,
+exact ELF/SELF magic matching, and file ranges at EOF and integer limits.
+The production loader passes source lengths through VPK extraction and checks
+tables/payload ranges before reading them. These helper tests do not establish
+complete malformed-file safety; imports and relocation records need additional
+validation and end-to-end fixtures.

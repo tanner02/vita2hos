@@ -7,6 +7,7 @@
 #include "arm-encode.h"
 #include "load.h"
 #include "load_layout.h"
+#include "load_format.h"
 #include "log.h"
 #include "module.h"
 #include "sce-elf.h"
@@ -55,9 +56,9 @@ typedef struct {
 } segment_info_t;
 
 static int load_vpk(Jit *jit, const void *data, uint32_t size, void **entry);
-static int load_executable(Jit *jit, const uint8_t *data, void **entry);
-static int load_elf(Jit *jit, const void *data, void **entry);
-static int load_self(Jit *jit, const void *data, void **entry);
+static int load_executable(Jit *jit, const uint8_t *data, size_t size, void **entry);
+static int load_elf(Jit *jit, const void *data, size_t size, void **entry);
+static int load_self(Jit *jit, const void *data, size_t size, void **entry);
 static int load_segments(Jit *jit, void **entry, Elf32_Addr e_entry, segment_info_t *segments,
                          int num_segments);
 static int resolve_imports(uintptr_t rx_base, uintptr_t rw_base, sce_module_imports_u_t *import);
@@ -131,13 +132,15 @@ int load_file(Jit *jit, const char *filename, void **entry)
     uint32_t size;
     int ret = 0;
 
+    *entry = NULL;
+
     LOG("Opening '%s' for reading.", filename);
     if (util_load_file(filename, &data, &size) != 0) {
         LOG("Cannot load file.");
         return -1;
     }
 
-    if (load_executable(jit, data, entry) < 0) {
+    if (load_executable(jit, data, size, entry) < 0) {
         /* Fallback to vpk (zip file) */
         if (load_vpk(jit, data, size, entry) < 0) {
             LOG("Unsupported file.");
@@ -172,7 +175,7 @@ static int load_vpk(Jit *jit, const void *data, uint32_t size, void **entry)
         return -1;
     }
 
-    ret = load_executable(jit, eboot_bin, entry);
+    ret = load_executable(jit, eboot_bin, uncompressed_size, entry);
 
     mz_free(eboot_bin);
     mz_zip_reader_end(&zip_archive);
@@ -180,36 +183,34 @@ static int load_vpk(Jit *jit, const void *data, uint32_t size, void **entry)
     return ret;
 }
 
-static int load_executable(Jit *jit, const uint8_t *data, void **entry)
+static int load_executable(Jit *jit, const uint8_t *data, size_t size, void **entry)
 {
-    if (data[0] == ELFMAG0) {
-        if (data[1] == ELFMAG1 && data[2] == ELFMAG2 && data[3] == ELFMAG3) {
-            LOG("Found an ELF, loading.");
-            if (load_elf(jit, data, entry) < 0) {
-                LOG("Cannot load ELF.");
-                return -1;
-            }
-        }
-    } else if (data[0] == SCEMAG0) {
-        if (data[1] == SCEMAG1 && data[2] == SCEMAG2 && data[3] == SCEMAG3) {
-            LOG("Found a SELF, loading.");
-            if (load_self(jit, data, entry) < 0) {
-                LOG("Cannot load SELF.");
-                return -1;
-            }
-        }
-    } else {
-        /* Unsupported executable */
+    *entry = NULL;
+    switch (load_detect_format(data, size)) {
+    case LOAD_FORMAT_ELF:
+        return load_elf(jit, data, size, entry);
+    case LOAD_FORMAT_SELF:
+        return load_self(jit, data, size, entry);
+    default:
         return -1;
     }
-
-    return 0;
 }
 
-static int load_self(Jit *jit, const void *data, void **entry)
+static int load_self(Jit *jit, const void *data, size_t size, void **entry)
 {
     const SCE_header *self_header = data;
+    if (size < sizeof(*self_header) ||
+        !load_file_range(size, self_header->elf_offset, sizeof(Elf32_Ehdr)) ||
+        self_header->elf_offset % _Alignof(Elf32_Ehdr) != 0 ||
+        self_header->phdr_offset % _Alignof(Elf32_Phdr) != 0)
+        return -1;
     const Elf32_Ehdr *elf_hdr = (void *)((char *)data + self_header->elf_offset);
+    if (elf_hdr->e_phentsize != sizeof(Elf32_Phdr) || elf_hdr->e_phnum == 0 ||
+        !load_file_range(size, self_header->phdr_offset,
+                         (uint64_t)elf_hdr->e_phnum * sizeof(Elf32_Phdr)) ||
+        !load_file_range(size, self_header->section_info_offset,
+                         (uint64_t)elf_hdr->e_phnum * sizeof(segment_info)))
+        return -1;
     const Elf32_Phdr *prog_hdrs = (void *)((char *)data + self_header->phdr_offset);
     const segment_info *seg_infos = (void *)((char *)data + self_header->section_info_offset);
     segment_info_t *segments;
@@ -251,7 +252,22 @@ static int load_self(Jit *jit, const void *data, void **entry)
 
     for (Elf32_Half i = 0; i < elf_hdr->e_phnum; i++) {
         seg_header = &prog_hdrs[i];
-        seg_bytes = (uint8_t *)data + self_header->header_len + seg_header->p_offset;
+        if ((seg_header->p_type == PT_LOAD || seg_header->p_type == PT_LOOS) &&
+            (seg_infos[i].encryption != 2 ||
+             (seg_infos[i].compression != 1 && seg_infos[i].compression != 2) ||
+             (seg_header->p_type == PT_LOAD && seg_header->p_filesz > seg_header->p_memsz) ||
+             (seg_infos[i].compression == 2
+                  ? !load_file_range(size, seg_infos[i].offset, seg_infos[i].length)
+                  : !load_file_range(size, self_header->header_len, seg_header->p_offset) ||
+                    !load_file_range(size, self_header->header_len + seg_header->p_offset,
+                                      seg_header->p_filesz)))) {
+            ret = -1;
+            goto done;
+        }
+        seg_bytes = NULL;
+        if ((seg_header->p_type == PT_LOAD || seg_header->p_type == PT_LOOS) &&
+            seg_infos[i].compression == 1)
+            seg_bytes = (uint8_t *)data + self_header->header_len + seg_header->p_offset;
 
         LOG("Segment %i: encryption: %lld, compression: %lld", i, seg_infos[i].encryption,
             seg_infos[i].compression);
@@ -274,7 +290,8 @@ static int load_self(Jit *jit, const void *data, void **entry)
 
                     ret = mz_uncompress(uncompressed, &dest_bytes,
                                         (uint8_t *)data + seg_infos[i].offset, seg_infos[i].length);
-                    if (ret != MZ_OK) {
+                    if (ret != MZ_OK || dest_bytes != seg_header->p_filesz) {
+                        free(uncompressed);
                         ret = -1;
                         goto done;
                     }
@@ -296,7 +313,8 @@ static int load_self(Jit *jit, const void *data, void **entry)
 
                 ret = mz_uncompress(uncompressed, &dest_bytes,
                                     (uint8_t *)data + seg_infos[i].offset, seg_infos[i].length);
-                if (ret != MZ_OK) {
+                if (ret != MZ_OK || dest_bytes != seg_header->p_filesz) {
+                    free(uncompressed);
                     ret = -1;
                     goto done;
                 }
@@ -324,11 +342,17 @@ done:
     return ret;
 }
 
-static int load_elf(Jit *jit, const void *data, void **entry)
+static int load_elf(Jit *jit, const void *data, size_t size, void **entry)
 {
     const Elf32_Ehdr *elf_hdr = data;
     Elf32_Phdr *prog_hdrs;
     int ret;
+
+    if (size < sizeof(*elf_hdr) || elf_hdr->e_phentsize != sizeof(Elf32_Phdr) ||
+        elf_hdr->e_phoff % _Alignof(Elf32_Phdr) != 0 ||
+        !load_file_range(size, elf_hdr->e_phoff,
+                         (uint64_t)elf_hdr->e_phnum * sizeof(Elf32_Phdr)))
+        return -1;
 
     /* Make sure it's a PSVita ELF */
     if (elf_check_vita_header(elf_hdr) < 0) {
@@ -351,6 +375,10 @@ static int load_elf(Jit *jit, const void *data, void **entry)
         return -1;
 
     for (Elf32_Half i = 0; i < elf_hdr->e_phnum; i++) {
+        if (!load_file_range(size, prog_hdrs[i].p_offset, prog_hdrs[i].p_filesz)) {
+            free(segments);
+            return -1;
+        }
         segments[i].src_data = (char *)data + prog_hdrs[i].p_offset;
         segments[i].p_type = prog_hdrs[i].p_type;
         segments[i].p_filesz = prog_hdrs[i].p_filesz;

@@ -51,6 +51,7 @@ add_executable(vita2hos
     source/deko_utils.c
     source/load.c
     source/load_layout.c
+    source/load_format.c
     source/log.c
     source/main.c
     source/module.c
