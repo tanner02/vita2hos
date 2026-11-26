@@ -97,6 +97,8 @@ target_link_directories(vita2hos PRIVATE
 )
 
 target_link_options(vita2hos PRIVATE
+    # Select the toolchain's PIC multilibs for libc, libm and libstdc++ too.
+    -fPIE
     -specs=${NX_ROOT}/switch32.specs
     -Wl,-Map,${CMAKE_PROJECT_NAME}.map
 )
