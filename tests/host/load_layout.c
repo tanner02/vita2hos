@@ -5,6 +5,25 @@
 
 int main(void)
 {
+    unsigned char code[64], data[32];
+    LoadAddressRange ranges[] = {
+        {0x1000, (uintptr_t)code, sizeof(code)},
+        {0x8000, (uintptr_t)data, sizeof(data)},
+    };
+    assert(load_address_translate(ranges, 2, 0x1004, 12) == code + 4);
+    assert(load_address_translate(ranges, 2, 0x8004, 12) == data + 4);
+    assert(load_address_translate(ranges, 2, 0x103c, 4) == code + 60);
+    assert(load_address_translate(ranges, 2, 0x103c, 5) == NULL);
+    assert(load_address_translate(ranges, 2, 0x1040, 1) == NULL);
+    assert(load_address_translate(ranges, 2, 0x2000, 4) == NULL);
+    assert(load_address_translate(ranges, 2, 0, 0) == NULL);
+    assert(load_address_translate(ranges, 2, UINTPTR_MAX, 8) == NULL);
+    LoadAddressRange invalid = {0x1000, UINTPTR_MAX - 1, 64};
+    assert(load_address_translate(&invalid, 1, 0x1004, 4) == NULL);
+    assert(load_address_translate(&invalid, 1, 0x1000, 4) == NULL);
+    /* Data has no distinct RX alias and must map to itself. */
+    LoadAddressRange direct = {(uintptr_t)data, (uintptr_t)data, sizeof(data)};
+    assert(load_address_translate(&direct, 1, (uintptr_t)data + 8, 4) == data + 8);
     uint32_t offset, end;
     assert(load_layout_place(0x1003, 0, 17, 16, 128, &offset, &end) == 0);
     assert(offset == 13 && end == 30);

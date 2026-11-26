@@ -79,6 +79,11 @@ pointer/integer overflow. They exercise the production placement helper rather
 than the complete ELF/SELF parser; file-bound and relocation-record validation
 remain separate work.
 
+Address-translation checks cover separate executable/write aliases, data
+segments with a shared address, gaps, segment ends, and arithmetic overflow.
+The import resolver now validates record sizes and maps NID/entry/stub ranges
+through their owning segments; complete title import coverage remains unproven.
+
 Executable-format checks cover every truncated length below a SELF header,
 exact ELF/SELF magic matching, and file ranges at EOF and integer limits.
 The production loader passes source lengths through VPK extraction and checks

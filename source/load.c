@@ -40,9 +40,6 @@
     (imp->size == sizeof(sce_module_imports_short_raw) ? imp->imports_short.var_entry_table        \
                                                        : imp->imports.var_entry_table)
 
-#define CODE_RX_TO_RW_ADDR(rx_base, rw_base, rx_addr)                                              \
-    ((((uintptr_t)rx_addr - (uintptr_t)rx_base)) + (uintptr_t)rw_base)
-
 typedef struct {
     void *src_data;
     uintptr_t rw_addr;
@@ -61,8 +58,22 @@ static int load_elf(Jit *jit, const void *data, size_t size, void **entry);
 static int load_self(Jit *jit, const void *data, size_t size, void **entry);
 static int load_segments(Jit *jit, void **entry, Elf32_Addr e_entry, segment_info_t *segments,
                          int num_segments);
-static int resolve_imports(uintptr_t rx_base, uintptr_t rw_base, sce_module_imports_u_t *import);
+static int resolve_imports(const segment_info_t *segments, int count, sce_module_imports_u_t *import);
 static int relocate(const void *reloc, uint32_t size, segment_info_t *segs);
+
+static void *map_loaded_address(const segment_info_t *segments, int count, uintptr_t address,
+                                 size_t size)
+{
+    for (int i = 0; i < count; i++) {
+        if (segments[i].p_type != PT_LOAD)
+            continue;
+        LoadAddressRange range = {segments[i].rx_addr, segments[i].rw_addr, segments[i].p_memsz};
+        void *mapped = load_address_translate(&range, 1, address, size);
+        if (mapped)
+            return mapped;
+    }
+    return NULL;
+}
 
 int elf_check_vita_header(const Elf32_Ehdr *hdr)
 {
@@ -402,7 +413,6 @@ static int load_segments(Jit *jit, void **entry, Elf32_Addr e_entry, segment_inf
     uintptr_t data_addr, code_rw_addr, code_rx_addr;
     uintptr_t addr_rw, addr_rx;
     sce_module_info_raw *mod_info;
-    const char *imp_name;
     int mod_info_idx;
     Result res;
 
@@ -513,15 +523,26 @@ static int load_segments(Jit *jit, void **entry, Elf32_Addr e_entry, segment_inf
     LOG("  tls memsz: 0x%" PRIx32, mod_info->tls_memsz);
 
     /* Resolve NIDs */
+    if (mod_info->import_top > mod_info->import_end ||
+        mod_info->import_end > segments[mod_info_idx].p_memsz || mod_info->import_top % 4 != 0) {
+        LOG("Invalid module import range.");
+        goto err_free_data;
+    }
     sce_module_imports_u_t *import =
         (void *)(segments[mod_info_idx].rw_addr + mod_info->import_top);
     void *end = (void *)(segments[mod_info_idx].rw_addr + mod_info->import_end);
 
     for (; (void *)import < end; import = IMP_GET_NEXT(import)) {
-        imp_name = (void *)CODE_RX_TO_RW_ADDR(code_rx_addr, code_rw_addr, IMP_GET_NAME(import));
-        LOG("Resolving imports for %s (NID: 0x%08" PRIx32 ")", imp_name, IMP_GET_NID(import));
-        if (resolve_imports(code_rx_addr, code_rw_addr, import) < 0) {
-            LOG("Failed to resolve imports for %s", imp_name);
+        size_t remaining = (uintptr_t)end - (uintptr_t)import;
+        if (remaining < sizeof(import->size) ||
+            (import->size != sizeof(sce_module_imports_short_raw) &&
+             import->size != sizeof(sce_module_imports_raw)) || import->size > remaining) {
+            LOG("Invalid import record size.");
+            goto err_free_data;
+        }
+        LOG("Resolving imports for library NID 0x%08" PRIx32, IMP_GET_NID(import));
+        if (resolve_imports(segments, num_segments, import) < 0) {
+            LOG("Failed to resolve imports for library NID 0x%08" PRIx32, IMP_GET_NID(import));
             goto err_free_data;
         }
     }
@@ -550,19 +571,33 @@ err_jit_close:
     return -1;
 }
 
-static int resolve_imports(uintptr_t rx_base, uintptr_t rw_base, sce_module_imports_u_t *import)
+static int resolve_imports(const segment_info_t *segments, int count, sce_module_imports_u_t *import)
 {
     const void *addr;
     uint32_t nid;
     uint32_t *stub;
     uint32_t lib_nid = IMP_GET_NID(import);
 
-    /* The module imports struct contains pointers to entries to the RX JIT area because
-     * it has already been relocated, so we have to convert them to RW addresses */
+    const uint32_t num_funcs = IMP_GET_FUNC_COUNT(import);
+    if (num_funcs && (((uintptr_t)IMP_GET_FUNC_TABLE(import) & 3) ||
+                     ((uintptr_t)IMP_GET_FUNC_ENTRIES(import) & 3)))
+        return -1;
+    const uint32_t *nids = map_loaded_address(segments, count,
+        (uintptr_t)IMP_GET_FUNC_TABLE(import), num_funcs * sizeof(uint32_t));
+    const uint32_t *entries = map_loaded_address(segments, count,
+        (uintptr_t)IMP_GET_FUNC_ENTRIES(import), num_funcs * sizeof(uint32_t));
+    if (num_funcs && (!nids || !entries))
+        return -1;
 
     for (uint32_t i = 0; i < IMP_GET_FUNC_COUNT(import); i++) {
-        nid = ((uint32_t *)CODE_RX_TO_RW_ADDR(rx_base, rw_base, IMP_GET_FUNC_TABLE(import)))[i];
-        stub = (void *)CODE_RX_TO_RW_ADDR(rx_base, rw_base, IMP_GET_FUNC_ENTRIES(import)[i]);
+        memcpy(&nid, &nids[i], sizeof(nid));
+        uint32_t stub_address;
+        memcpy(&stub_address, &entries[i], sizeof(stub_address));
+        if (stub_address % 4 != 0)
+            return -1;
+        stub = map_loaded_address(segments, count, stub_address, 3 * sizeof(uint32_t));
+        if (!stub)
+            return -1;
         addr = module_get_func_export(lib_nid, nid);
 
         if (addr) {
@@ -577,8 +612,15 @@ static int resolve_imports(uintptr_t rx_base, uintptr_t rw_base, sce_module_impo
         }
     }
 
-    for (uint32_t i = 0; i < IMP_GET_VARS_COUNT(import); i++) {
-        nid = ((uint32_t *)CODE_RX_TO_RW_ADDR(rx_base, rw_base, IMP_GET_VARS_TABLE(import)))[i];
+    const uint32_t num_vars = IMP_GET_VARS_COUNT(import);
+    if (num_vars && ((uintptr_t)IMP_GET_VARS_TABLE(import) & 3))
+        return -1;
+    const uint32_t *var_nids = map_loaded_address(segments, count,
+        (uintptr_t)IMP_GET_VARS_TABLE(import), num_vars * sizeof(uint32_t));
+    if (num_vars && !var_nids)
+        return -1;
+    for (uint32_t i = 0; i < num_vars; i++) {
+        memcpy(&nid, &var_nids[i], sizeof(nid));
         LOG("  Trying to resolve variable NID 0x%08" PRIx32, nid);
         /* TODO */
         LOG("    Variable NID resolving currently not implemented!");
