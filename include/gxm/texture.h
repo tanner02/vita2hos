@@ -5,7 +5,8 @@
 #include <stdint.h>
 #include <psp2/gxm.h>
 
-typedef struct {
+/* This internal bit-field view aliases the public SceGxmTexture descriptor. */
+typedef struct __attribute__((may_alias)) {
     // Control Word 0
     uint32_t unk0 : 3;
     uint32_t vaddr_mode : 3;
