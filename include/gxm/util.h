@@ -153,8 +153,9 @@ static inline size_t gxm_texture_get_height(const SceGxmTextureInner *texture)
 
 static inline SceGxmTextureFormat gxm_texture_get_format(const SceGxmTextureInner *texture)
 {
-    return (SceGxmTextureFormat)(texture->base_format << 24 | texture->format0 << 31 |
-                                 texture->swizzle_format << 12);
+    return (SceGxmTextureFormat)((uint32_t)texture->base_format << 24 |
+                                 (uint32_t)texture->format0 << 31 |
+                                 (uint32_t)texture->swizzle_format << 12);
 }
 
 static inline SceGxmTextureBaseFormat gxm_texture_get_base_format(SceGxmTextureFormat src)

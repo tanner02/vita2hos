@@ -49,6 +49,13 @@ data-pointer updates, null pointers, and preservation of unrelated descriptor
 bits. Mipmapped filters and border-ignore modes remain unsupported; swizzled
 and cube descriptor checks do not establish rendering those texture layouts.
 
+Texture-layout checks cover format/channel translation for uncompressed
+normalized and floating-point textures, eight-pixel source row padding,
+explicit stride decoding, and rejection of unsupported layouts without changing
+the output. Compressed, packed, gamma-corrected, swizzled and cube textures, and
+linear source pitches below the GPU's 32-byte stride unit, still need support.
+Host checks cannot establish GPU sampling results.
+
 These single-threaded checks do not validate Switch ABI details, locking,
 concurrent close operations, or hardware behavior. A Switch build and console
 testing are still required for those.

@@ -18,6 +18,7 @@
 
 #include "gxm/gxm_to_dk.h"
 #include "gxm/util.h"
+#include "gxm/texture_layout.h"
 #include "modules/SceSysmem.h"
 
 #define DUMP_SHADER_SPIRV     0
@@ -1468,7 +1469,7 @@ EXPORT(SceGxm, 0x7B9023C3, SceGxmParameterType, sceGxmProgramParameterGetType,
     return parameter->type;
 }
 
-static void upload_fragment_texture_descriptors(SceGxmContext *context)
+static int upload_fragment_texture_descriptors(SceGxmContext *context)
 {
     const SceGxmTextureInner *texture;
     VitaMemBlockInfo *tex_block;
@@ -1479,10 +1480,12 @@ static void upload_fragment_texture_descriptors(SceGxmContext *context)
     DkImage image;
     DkImageView image_view;
     DkGpuAddr desc_addr;
+    GxmTextureLayout texture_layout;
+    int ret;
     struct {
         DkImageDescriptor images[SCE_GXM_MAX_TEXTURE_UNITS];
         DkSamplerDescriptor samplers[SCE_GXM_MAX_TEXTURE_UNITS];
-    } descriptors;
+    } descriptors = {0};
 
     for (int i = 0; i < SCE_GXM_MAX_TEXTURE_UNITS; i++) {
         texture = &context->state.fragment_textures[i];
@@ -1492,29 +1495,42 @@ static void upload_fragment_texture_descriptors(SceGxmContext *context)
         tex_data = gxm_texture_get_data(texture);
         tex_block = SceSysmem_get_vita_memblock_info_for_addr(tex_data);
         if (!tex_block)
-            continue;
+            return SCE_GXM_ERROR_INVALID_POINTER;
+
+        ret = gxm_texture_get_linear_layout(texture, &texture_layout);
+        if (ret != 0) {
+            LOG("Unsupported texture at unit %d: format 0x%08x, type 0x%08x", i,
+                (unsigned int)gxm_texture_get_format(texture), gxm_texture_get_type(texture));
+            return ret;
+        }
 
         dkSamplerDefaults(&sampler);
         sampler.wrapMode[0] = gxm_texture_addr_mode_to_dk_wrap_mode(texture->uaddr_mode);
         sampler.wrapMode[1] = gxm_texture_addr_mode_to_dk_wrap_mode(texture->vaddr_mode);
-        sampler.minFilter = gxm_texture_filter_to_dk_filter(texture->min_filter);
+        sampler.minFilter = gxm_texture_filter_to_dk_filter(
+            gxm_texture_get_type(texture) == SCE_GXM_TEXTURE_LINEAR_STRIDED
+                ? texture->mag_filter : texture->min_filter);
         sampler.magFilter = gxm_texture_filter_to_dk_filter(texture->mag_filter);
         dkSamplerDescriptorInitialize(&descriptors.samplers[i], &sampler);
 
         dkImageLayoutMakerDefaults(&image_layout_maker, g_dk_device);
         image_layout_maker.flags = DkImageFlags_PitchLinear;
         image_layout_maker.type = DkImageType_2D;
-        image_layout_maker.format = DkImageFormat_RGBA8_Unorm;
-        image_layout_maker.dimensions[0] = gxm_texture_get_width(texture);
-        image_layout_maker.dimensions[1] = gxm_texture_get_height(texture);
-        image_layout_maker.pitchStride =
-            gxm_texture_get_width(texture) *
-            gxm_texture_format_bytes_per_pixel(gxm_texture_get_format(texture));
+        image_layout_maker.format = texture_layout.format;
+        image_layout_maker.dimensions[0] = texture_layout.width;
+        image_layout_maker.dimensions[1] = texture_layout.height;
+        image_layout_maker.pitchStride = texture_layout.pitch;
         dkImageLayoutInitialize(&image_layout, &image_layout_maker);
 
+        const uint32_t offset = dk_memblock_cpu_addr_offset(tex_block->dk_memblock, tex_data);
+        if (offset > tex_block->size ||
+            offset % dkImageLayoutGetAlignment(&image_layout) != 0 ||
+            dkImageLayoutGetSize(&image_layout) > tex_block->size - offset)
+            return SCE_GXM_ERROR_INVALID_VALUE;
         dkImageInitialize(&image, &image_layout, tex_block->dk_memblock,
-                          dk_memblock_cpu_addr_offset(tex_block->dk_memblock, tex_data));
+                          offset);
         dkImageViewDefaults(&image_view, &image);
+        memcpy(image_view.swizzle, texture_layout.swizzle, sizeof(image_view.swizzle));
         dkImageDescriptorInitialize(&descriptors.images[i], &image_view, false, false);
         dkCmdBufBindTexture(context->cmdbuf, DkStage_Fragment, i, dkMakeTextureHandle(i, i));
     }
@@ -1525,9 +1541,10 @@ static void upload_fragment_texture_descriptors(SceGxmContext *context)
     dkCmdBufBindSamplerDescriptorSet(
         context->cmdbuf, desc_addr + SCE_GXM_MAX_TEXTURE_UNITS * sizeof(DkImageDescriptor),
         SCE_GXM_MAX_TEXTURE_UNITS);
+    return 0;
 }
 
-static void context_flush_dirty_state(SceGxmContext *context)
+static int context_flush_dirty_state(SceGxmContext *context)
 {
     const DkShader *shaders[2];
     const SceGxmVertexProgram *vertex_program = context->state.vertex_program;
@@ -1594,8 +1611,11 @@ static void context_flush_dirty_state(SceGxmContext *context)
     if (context->state.dirty.bit.color_write)
         dkCmdBufBindColorWriteState(context->cmdbuf, &context->state.color_write);
 
-    if (context->state.dirty.bit.fragment_textures)
-        upload_fragment_texture_descriptors(context);
+    if (context->state.dirty.bit.fragment_textures) {
+        int ret = upload_fragment_texture_descriptors(context);
+        if (ret != 0)
+            return ret;
+    }
 
     if (context->state.dirty.bit.vertex_default_uniform) {
         dkCmdBufBindStorageBuffer(
@@ -1614,6 +1634,7 @@ static void context_flush_dirty_state(SceGxmContext *context)
 
     /* We have flushed all the dirty state */
     context->state.dirty.raw = 0;
+    return 0;
 }
 
 EXPORT(SceGxm, 0xBC059AFC, int, sceGxmDraw, SceGxmContext *context, SceGxmPrimitiveType primType,
@@ -1621,6 +1642,7 @@ EXPORT(SceGxm, 0xBC059AFC, int, sceGxmDraw, SceGxmContext *context, SceGxmPrimit
 {
     VitaMemBlockInfo *index_block;
     uint32_t index_offset;
+    int ret;
 
     LOG("sceGxmDraw: primType: 0x%x, indexCount: %d", primType, indexCount);
 
@@ -1628,7 +1650,9 @@ EXPORT(SceGxm, 0xBC059AFC, int, sceGxmDraw, SceGxmContext *context, SceGxmPrimit
     if (!index_block)
         return SCE_GXM_ERROR_INVALID_VALUE;
 
-    context_flush_dirty_state(context);
+    ret = context_flush_dirty_state(context);
+    if (ret != 0)
+        return ret;
 
     index_offset = (uintptr_t)indexData - (uintptr_t)index_block->base;
     dkCmdBufBindIdxBuffer(context->cmdbuf, gxm_to_dk_idx_format(indexType),

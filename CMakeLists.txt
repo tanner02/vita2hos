@@ -46,6 +46,7 @@ add_subdirectory(external)
 add_executable(vita2hos
     source/gxm_uniform.c
     source/gxm_texture.c
+    source/gxm_texture_layout.c
     source/deko_utils.c
     source/load.c
     source/log.c
