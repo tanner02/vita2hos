@@ -307,19 +307,38 @@ EXPORT(SceIofilemgr, 0x34EFD876, SceSSize, sceIoWrite, SceUID fd, const void *bu
     return result < 0 ? io_errno(errno) : result;
 }
 
-EXPORT(SceIofilemgr, 0x49252B9B, long, sceIoLseek32, SceUID fd, long offset, int whence)
+_Static_assert(sizeof(off_t) >= sizeof(SceOff), "Vita seeks require 64-bit native offsets");
+_Static_assert((off_t)-1 < 0, "Vita seeks require signed native offsets");
+
+static SceOff vita_io_seek(SceUID fd, SceOff offset, int whence)
 {
     VitaOpenedFile *vfile = get_opened_file_for_fd(fd);
     off_t position;
 
     if (!vfile)
-        return SCE_ERROR_ERRNO_EBADF;
+        return io_errno(EBADF);
+    switch (whence) {
+    case SCE_SEEK_SET: whence = SEEK_SET; break;
+    case SCE_SEEK_CUR: whence = SEEK_CUR; break;
+    case SCE_SEEK_END: whence = SEEK_END; break;
+    default: return io_errno(EINVAL);
+    }
 
     position = lseek(vfile->native_fd, offset, whence);
     if (position < 0)
         return io_errno(errno);
 
     return position;
+}
+
+EXPORT(SceLibKernel, 0x99BA173E, SceOff, sceIoLseek, SceUID fd, SceOff offset, int whence)
+{
+    return vita_io_seek(fd, offset, whence);
+}
+
+EXPORT(SceIofilemgr, 0x49252B9B, long, sceIoLseek32, SceUID fd, long offset, int whence)
+{
+    return (long)vita_io_seek(fd, offset, whence);
 }
 
 EXPORT(SceIofilemgr, 0x16512F59, int, sceIoSyncByFd, SceUID fd, int flag)

@@ -29,6 +29,7 @@ static void check_bad_file(SceUID fd)
     assert((uint32_t)sceIoRead(fd, &byte, 1) == SCE_ERROR_ERRNO_EBADF);
     assert((uint32_t)sceIoWrite(fd, "x", 1) == SCE_ERROR_ERRNO_EBADF);
     assert((uint32_t)sceIoLseek32(fd, 0, SEEK_SET) == SCE_ERROR_ERRNO_EBADF);
+    assert(sceIoLseek(fd, 0, SCE_SEEK_SET) == (int32_t)SCE_ERROR_ERRNO_EBADF);
     assert((uint32_t)sceIoSyncByFd(fd, 0) == SCE_ERROR_ERRNO_EBADF);
 }
 
@@ -144,6 +145,33 @@ static void check_app0_paths(void)
     rmdir(directory);
 }
 
+static void check_large_seeks(void)
+{
+    char path[] = "/tmp/vita2hos-seek-XXXXXX";
+    int native_fd = mkstemp(path);
+    assert(native_fd >= 0);
+    close(native_fd);
+    SceUID fd = sceIoOpen(path, SCE_O_RDWR, 0);
+    assert(fd > 0);
+    const SceOff offset = (SceOff)5 * 1024 * 1024 * 1024 + 17;
+    assert(sceIoLseek(fd, offset, SCE_SEEK_SET) == offset);
+    assert(sceIoWrite(fd, "wide", 4) == 4);
+    assert(sceIoLseek(fd, 0, SCE_SEEK_CUR) == offset + 4);
+    assert(sceIoLseek(fd, -4, SCE_SEEK_END) == offset);
+    char bytes[4];
+    assert(sceIoRead(fd, bytes, sizeof(bytes)) == 4 && !memcmp(bytes, "wide", 4));
+    assert(sceIoLseek(fd, -5, SCE_SEEK_CUR) == offset - 1);
+    assert(sceIoRead(fd, bytes, 1) == 1 && bytes[0] == 0);
+    assert(sceIoLseek(fd, 0, SCE_SEEK_END) == offset + 4);
+    SceIoStat info;
+    assert(sceIoGetstatByFd(fd, &info) == 0 && info.st_size == offset + 4);
+    assert(sceIoLseek(fd, -1, SCE_SEEK_SET) == (int32_t)SCE_ERROR_ERRNO_EINVAL);
+    assert(sceIoLseek(fd, 0, 3) == (int32_t)SCE_ERROR_ERRNO_EINVAL);
+    assert(sceIoLseek(fd, 0, SCE_SEEK_CUR) == offset + 4);
+    assert(sceIoClose(fd) == 0);
+    unlink(path);
+}
+
 int main(void)
 {
     char path[] = "/tmp/vita2hos-io-XXXXXX";
@@ -156,6 +184,7 @@ int main(void)
     assert(SceLibKernel_init() == 0);
     check_open_modes();
     check_app0_paths();
+    check_large_seeks();
 
     check_bad_file(-1);
     check_bad_dir(-1);
