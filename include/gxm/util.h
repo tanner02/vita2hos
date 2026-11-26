@@ -3,6 +3,7 @@
 
 #include <psp2/gxm.h>
 #include <switch.h>
+#include "gxm/program_parameter.h"
 
 #define SCE_GXM_MAX_SCENES_PER_RENDERTARGET 8
 
@@ -148,23 +149,6 @@ typedef struct SceGxmProgram {
     uint32_t container_offset;
     uint32_t sampler_query_info_offset; // Offset to array of uint16_t
 } SceGxmProgram;
-
-typedef struct SceGxmProgramParameter {
-    int32_t name_offset; // Number of bytes from the start of this structure to the name string.
-    struct {
-        uint16_t category : 4; // SceGxmParameterCategory
-        uint16_t type : 4;     // SceGxmParameterType - applicable for constants, not applicable for
-                               // samplers (select type like float, half, fixed ...)
-        uint16_t component_count : 4; // applicable for constants, not applicable for samplers
-                                      // (select size like float2, float3, float3 ...)
-        uint16_t container_index : 4; // applicable for constants, not applicable for samplers
-                                      // (buffer, default, texture)
-    };
-    uint8_t semantic; // applicable only for for vertex attributes, for everything else it's 0
-    uint8_t semantic_index;
-    uint32_t array_size;
-    int32_t resource_index;
-} SceGxmProgramParameter;
 
 static inline uint32_t gxm_parameter_type_size(SceGxmParameterType type)
 {

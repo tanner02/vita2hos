@@ -1227,51 +1227,6 @@ EXPORT(SceGxm, 0x7B1FABB6, int, sceGxmReserveFragmentDefaultUniformBuffer, SceGx
     return 0;
 }
 
-EXPORT(SceGxm, 0x65DD0C84, int, sceGxmSetUniformDataF, void *uniformBuffer,
-       const SceGxmProgramParameter *parameter, unsigned int componentOffset,
-       unsigned int componentCount, const float *sourceData)
-{
-    const bool is_float = (parameter->type == SCE_GXM_PARAMETER_TYPE_F16) ||
-                          (parameter->type == SCE_GXM_PARAMETER_TYPE_F32);
-
-    if (!uniformBuffer || !sourceData)
-        return SCE_GXM_ERROR_INVALID_POINTER;
-
-    uint32_t alignment;
-    if (is_float && (parameter->array_size > 1) && (parameter->component_count > 1))
-        alignment = 8;
-    else
-        alignment = 4;
-
-    uint32_t scalar_size = gxm_parameter_type_size(parameter->type);
-    uint32_t vector_size = scalar_size * parameter->component_count;
-    uint32_t vector_index = componentOffset / parameter->component_count;
-    uint32_t scalar_index = componentOffset % parameter->component_count;
-    uint32_t vector_mod_align = vector_size % alignment;
-    uint32_t vector_padding_bytes = vector_mod_align ? alignment - vector_mod_align : 0;
-
-    uint32_t offset = parameter->resource_index * sizeof(uint32_t) +
-                      vector_index * (vector_size + vector_padding_bytes) +
-                      scalar_index * scalar_size;
-
-    /* Only floats are supported for now */
-    assert(parameter->type == SCE_GXM_PARAMETER_TYPE_F32);
-
-    uint32_t scalars_to_copy = MIN2(parameter->component_count - scalar_index, componentCount);
-
-    while (componentCount > 0) {
-        memcpy((char *)uniformBuffer + offset, sourceData, scalars_to_copy * scalar_size);
-
-        offset += scalars_to_copy * scalar_size + vector_padding_bytes;
-        sourceData += scalars_to_copy;
-
-        componentCount -= scalars_to_copy;
-        scalars_to_copy = MIN2(parameter->component_count, componentCount);
-    }
-
-    return 0;
-}
-
 static int init_texture_base(SceGxmTextureInner *texture, const void *data,
                              SceGxmTextureFormat tex_format, uint32_t width, uint32_t height,
                              uint32_t mipCount, SceGxmTextureType texture_type)
