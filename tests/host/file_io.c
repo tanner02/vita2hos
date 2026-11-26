@@ -35,6 +35,57 @@ static void check_bad_dir(SceUID fd)
     assert((uint32_t)sceIoDclose(fd) == SCE_ERROR_ERRNO_EBADF);
 }
 
+static void check_open_modes(void)
+{
+    char path[] = "/tmp/vita2hos-modes-XXXXXX";
+    int native_fd = mkstemp(path);
+    assert(native_fd >= 0);
+    close(native_fd);
+    unlink(path);
+    assert((uint32_t)sceIoOpen(NULL, SCE_O_RDONLY, 0) == 0x8001000e);
+    assert((uint32_t)sceIoOpen(path, 0, 0600) == SCE_ERROR_ERRNO_EINVAL);
+    assert((uint32_t)sceIoOpen(path, SCE_O_RDWR | SCE_O_NOWAIT, 0600) ==
+           SCE_ERROR_ERRNO_EINVAL);
+    assert((uint32_t)sceIoOpen(path, SCE_O_RDONLY, 0) == 0x80010002);
+    SceUID fd = sceIoOpen(path, SCE_O_RDWR | SCE_O_CREAT | SCE_O_EXCL, 0600);
+    assert(fd > 0);
+    assert(sceIoWrite(fd, "abc", 3) == 3);
+    SceIoStat info;
+    /* Written bytes must be visible without a separate sync/close. */
+    assert(sceIoGetstat(path, &info) == 0 && info.st_size == 3);
+    assert((uint32_t)sceIoOpen(path, SCE_O_WRONLY | SCE_O_CREAT | SCE_O_EXCL,
+                              0600) == 0x80010011);
+    assert(sceIoClose(fd) == 0);
+    fd = sceIoOpen(path, SCE_O_WRONLY, 0);
+    assert(fd > 0);
+    char bytes[8] = {0};
+    assert((uint32_t)sceIoRead(fd, bytes, 1) == SCE_ERROR_ERRNO_EBADF);
+    assert(sceIoWrite(fd, "X", 1) == 1);
+    assert(sceIoClose(fd) == 0);
+    fd = sceIoOpen(path, SCE_O_RDWR | SCE_O_CREAT, 0600);
+    assert(fd > 0);
+    assert(sceIoRead(fd, bytes, 3) == 3 && !memcmp(bytes, "Xbc", 3));
+    assert(sceIoWrite(fd, "d", 1) == 1);
+    assert(sceIoRead(fd, bytes, sizeof(bytes)) == 0);
+    assert((uint32_t)sceIoWrite(fd, NULL, 1) == 0x8001000e);
+    assert((uint32_t)sceIoRead(fd, NULL, 1) == 0x8001000e);
+    assert(sceIoClose(fd) == 0);
+    fd = sceIoOpen(path, SCE_O_WRONLY | SCE_O_APPEND, 0);
+    assert(fd > 0 && sceIoLseek32(fd, 0, SEEK_SET) == 0);
+    assert(sceIoWrite(fd, "e", 1) == 1);
+    assert(sceIoClose(fd) == 0);
+    fd = sceIoOpen(path, SCE_O_RDONLY, 0);
+    assert(fd > 0);
+    assert(sceIoRead(fd, bytes, 8) == 5 && !memcmp(bytes, "Xbcde", 5));
+    assert((uint32_t)sceIoWrite(fd, "x", 1) == SCE_ERROR_ERRNO_EBADF);
+    assert(sceIoClose(fd) == 0);
+    fd = sceIoOpen(path, SCE_O_WRONLY | SCE_O_TRUNC, 0);
+    assert(fd > 0);
+    assert(sceIoGetstat(path, &info) == 0 && info.st_size == 0);
+    assert(sceIoClose(fd) == 0);
+    unlink(path);
+}
+
 int main(void)
 {
     char path[] = "/tmp/vita2hos-io-XXXXXX";
@@ -45,6 +96,7 @@ int main(void)
     assert(native_fd >= 0);
     close(native_fd);
     assert(SceLibKernel_init() == 0);
+    check_open_modes();
 
     check_bad_file(-1);
     check_bad_dir(-1);

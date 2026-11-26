@@ -1,5 +1,6 @@
 #include <dirent.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <m-dict.h>
 #include <psp2/kernel/error.h>
 #include <psp2common/types.h>
@@ -24,7 +25,7 @@
 typedef struct {
     uint32_t index;
     SceUID uid;
-    FILE *fp;
+    int native_fd;
     char *file;
 } VitaOpenedFile;
 
@@ -136,29 +137,38 @@ EXPORT(SceLibKernel, 0x91FA6614, int, sceKernelUnlockLwMutex, SceKernelLwMutexWo
     return 0;
 }
 
-static const char *vita_io_open_flags_to_fopen_flags(int flags)
+static int io_errno(int error);
+
+static int vita_io_open_flags(int flags, int *native_flags)
 {
-    if (flags == SCE_O_RDONLY)
-        return "r";
-    else if (flags == (SCE_O_WRONLY | SCE_O_CREAT | SCE_O_TRUNC))
-        return "w";
-    else if (flags == (SCE_O_WRONLY | SCE_O_CREAT | SCE_O_APPEND))
-        return "a";
-    else if (flags == SCE_O_RDWR)
-        return "r+";
-    else if (flags == (SCE_O_RDWR | SCE_O_CREAT | SCE_O_TRUNC))
-        return "w+";
-    else if (flags == (SCE_O_RDWR | SCE_O_CREAT | SCE_O_APPEND))
-        return "a+";
-    else
-        return NULL;
+    const int supported = SCE_O_RDWR | SCE_O_APPEND | SCE_O_CREAT |
+                          SCE_O_TRUNC | SCE_O_EXCL;
+    if (flags & ~supported)
+        return SCE_ERROR_ERRNO_EINVAL;
+    switch (flags & SCE_O_RDWR) {
+    case SCE_O_RDONLY: *native_flags = O_RDONLY; break;
+    case SCE_O_WRONLY: *native_flags = O_WRONLY; break;
+    case SCE_O_RDWR: *native_flags = O_RDWR; break;
+    default: return SCE_ERROR_ERRNO_EINVAL;
+    }
+    if (flags & SCE_O_APPEND) *native_flags |= O_APPEND;
+    if (flags & SCE_O_CREAT) *native_flags |= O_CREAT;
+    if (flags & SCE_O_TRUNC) *native_flags |= O_TRUNC;
+    if (flags & SCE_O_EXCL) *native_flags |= O_EXCL;
+    return 0;
 }
 
 EXPORT(SceLibKernel, 0x6C60AC61, SceUID, sceIoOpen, const char *file, int flags, SceMode mode)
 {
     VitaOpenedFile *vfile;
     const char *c;
-    FILE *fp;
+    int native_flags, native_fd;
+
+    if (!file)
+        return io_errno(EFAULT);
+    int result = vita_io_open_flags(flags, &native_flags);
+    if (result)
+        return result;
 
     c = strchr(file, ':');
     if (c)
@@ -167,20 +177,25 @@ EXPORT(SceLibKernel, 0x6C60AC61, SceUID, sceIoOpen, const char *file, int flags,
     if (*file == '\0')
         return SCE_ERROR_ERRNO_ENODEV;
 
-    fp = fopen(file, vita_io_open_flags_to_fopen_flags(flags));
-    if (!fp)
-        return SCE_ERROR_ERRNO_ENODEV;
+    native_fd = open(file, native_flags, mode & 0777);
+    if (native_fd < 0)
+        return io_errno(errno);
 
     vfile = malloc(sizeof(*vfile));
     if (!vfile) {
-        fclose(fp);
-        return SCE_ERROR_ERRNO_EMFILE;
+        close(native_fd);
+        return io_errno(ENOMEM);
     }
 
     memset(vfile, 0, sizeof(*vfile));
     vfile->uid = SceSysmem_get_next_uid();
-    vfile->fp = fp;
+    vfile->native_fd = native_fd;
     vfile->file = strdup(file);
+    if (!vfile->file) {
+        close(native_fd);
+        free(vfile);
+        return io_errno(ENOMEM);
+    }
 
     rwlockWriteLock(&g_vita_opened_files_lock);
     vita_opened_files_dict_set_at(g_vita_opened_files, vfile->uid, vfile);
@@ -197,7 +212,8 @@ EXPORT(SceIofilemgr, 0xC70B8886, int, sceIoClose, SceUID fd)
     if (!vfile)
         return SCE_ERROR_ERRNO_EBADF;
 
-    ret = fclose(vfile->fp);
+    ret = close(vfile->native_fd);
+    int saved_errno = errno;
     rwlockWriteLock(&g_vita_opened_files_lock);
     vita_opened_files_dict_erase(g_vita_opened_files, fd);
     rwlockWriteUnlock(&g_vita_opened_files_lock);
@@ -205,7 +221,7 @@ EXPORT(SceIofilemgr, 0xC70B8886, int, sceIoClose, SceUID fd)
     free(vfile);
 
     if (ret)
-        return SCE_ERROR_ERRNO_EBADF;
+        return io_errno(saved_errno);
 
     return 0;
 }
@@ -216,7 +232,10 @@ EXPORT(SceIofilemgr, 0xFDB32293, SceSSize, sceIoRead, SceUID fd, void *buf, SceS
     if (!vfile)
         return SCE_ERROR_ERRNO_EBADF;
 
-    return fread(buf, 1, nbyte, vfile->fp);
+    if (nbyte && !buf)
+        return io_errno(EFAULT);
+    ssize_t result = read(vfile->native_fd, buf, nbyte);
+    return result < 0 ? io_errno(errno) : result;
 }
 
 EXPORT(SceIofilemgr, 0x34EFD876, SceSSize, sceIoWrite, SceUID fd, const void *buf, SceSize nbyte)
@@ -225,23 +244,23 @@ EXPORT(SceIofilemgr, 0x34EFD876, SceSSize, sceIoWrite, SceUID fd, const void *bu
     if (!vfile)
         return SCE_ERROR_ERRNO_EBADF;
 
-    return fwrite(buf, 1, nbyte, vfile->fp);
+    if (nbyte && !buf)
+        return io_errno(EFAULT);
+    ssize_t result = write(vfile->native_fd, buf, nbyte);
+    return result < 0 ? io_errno(errno) : result;
 }
 
 EXPORT(SceIofilemgr, 0x49252B9B, long, sceIoLseek32, SceUID fd, long offset, int whence)
 {
     VitaOpenedFile *vfile = get_opened_file_for_fd(fd);
-    long position;
+    off_t position;
 
     if (!vfile)
         return SCE_ERROR_ERRNO_EBADF;
 
-    if (fseek(vfile->fp, offset, whence) != 0)
-        return SCE_ERROR_ERRNO_EINVAL;
-
-    position = ftell(vfile->fp);
+    position = lseek(vfile->native_fd, offset, whence);
     if (position < 0)
-        return SCE_ERROR_ERRNO_EINVAL;
+        return io_errno(errno);
 
     return position;
 }
@@ -252,7 +271,7 @@ EXPORT(SceIofilemgr, 0x16512F59, int, sceIoSyncByFd, SceUID fd, int flag)
     if (!vfile)
         return SCE_ERROR_ERRNO_EBADF;
 
-    return fflush(vfile->fp);
+    return fsync(vfile->native_fd) == 0 ? 0 : io_errno(errno);
 }
 
 EXPORT(SceLibKernel, 0xA9283DD0, SceUID, sceIoDopen, const char *dirname)
@@ -327,7 +346,12 @@ static int io_errno(int error)
     case ENOENT: return (int)0x80010002;
     case EACCES: return (int)0x8001000d;
     case EFAULT: return (int)0x8001000e;
+    case ENOMEM: return (int)0x8001000c;
+    case EEXIST: return (int)0x80010011;
+    case EMFILE: return SCE_ERROR_ERRNO_EMFILE;
+    case ENOSPC: return (int)0x8001001c;
     case ENOTDIR: return (int)0x80010014;
+    case EISDIR: return (int)0x80010015;
     case ENAMETOOLONG: return (int)0x8001005b;
     case EBADF: return SCE_ERROR_ERRNO_EBADF;
     case EINVAL: return SCE_ERROR_ERRNO_EINVAL;
@@ -384,7 +408,7 @@ EXPORT(SceLibKernel, 0x57F8CD25, int, sceIoGetstatByFd, SceUID fd, SceIoStat *in
     if (!info)
         return io_errno(EFAULT);
     struct stat status;
-    if (fstat(fileno(file->fp), &status) != 0)
+    if (fstat(file->native_fd, &status) != 0)
         return io_errno(errno);
     return stat_to_sce(info, &status);
 }
