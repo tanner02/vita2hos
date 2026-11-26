@@ -1227,49 +1227,6 @@ EXPORT(SceGxm, 0x7B1FABB6, int, sceGxmReserveFragmentDefaultUniformBuffer, SceGx
     return 0;
 }
 
-static int init_texture_base(SceGxmTextureInner *texture, const void *data,
-                             SceGxmTextureFormat tex_format, uint32_t width, uint32_t height,
-                             uint32_t mipCount, SceGxmTextureType texture_type)
-{
-    if (width > 4096 || height > 4096 || mipCount > 13)
-        return SCE_GXM_ERROR_INVALID_VALUE;
-
-    texture->mip_count = MIN2(15, mipCount - 1);
-    texture->format0 = (tex_format & 0x80000000) >> 31;
-    texture->lod_bias = 31;
-
-    if ((texture_type == SCE_GXM_TEXTURE_SWIZZLED) || (texture_type == SCE_GXM_TEXTURE_CUBE)) {
-        texture->uaddr_mode = texture->vaddr_mode = SCE_GXM_TEXTURE_ADDR_MIRROR;
-        texture->height_base2 = highest_set_bit(height);
-        texture->width_base2 = highest_set_bit(width);
-    } else {
-        texture->uaddr_mode = texture->vaddr_mode = SCE_GXM_TEXTURE_ADDR_CLAMP;
-        texture->height = height - 1;
-        texture->width = width - 1;
-    }
-
-    texture->base_format = (tex_format & 0x1F000000) >> 24;
-    texture->type = texture_type >> 29;
-    texture->data_addr = (uint32_t)data >> 2;
-    texture->swizzle_format = (tex_format & 0x7000) >> 12;
-    texture->normalize_mode = 1;
-    texture->min_filter = SCE_GXM_TEXTURE_FILTER_POINT;
-    texture->mag_filter = SCE_GXM_TEXTURE_FILTER_POINT;
-
-    return 0;
-}
-
-EXPORT(SceGxm, 0x4811AECB, int, sceGxmTextureInitLinear, SceGxmTexture *texture, const void *data,
-       SceGxmTextureFormat texFormat, unsigned int width, unsigned int height,
-       unsigned int mipCount)
-{
-    if (!texture)
-        return SCE_GXM_ERROR_INVALID_POINTER;
-
-    return init_texture_base((SceGxmTextureInner *)texture, data, texFormat, width, height,
-                             mipCount, SCE_GXM_TEXTURE_LINEAR);
-}
-
 EXPORT(SceGxm, 0x5341BD46, void *, sceGxmTextureGetData, const SceGxmTexture *texture)
 {
     return gxm_texture_get_data((SceGxmTextureInner *)texture);

@@ -43,6 +43,12 @@ roots, powers, output-pointer arguments, mixed float/integer arguments, signed
 zero, infinities and NaNs. They use the host math library; target newlib's
 numerical edge behavior and the Vita calling convention need console checks.
 
+Texture-state checks exercise linear descriptor initialization, zero-dimension
+rejection, point/linear filter changes, supported address modes and safe aliases,
+data-pointer updates, null pointers, and preservation of unrelated descriptor
+bits. Mipmapped filters and border-ignore modes remain unsupported; swizzled
+and cube descriptor checks do not establish rendering those texture layouts.
+
 These single-threaded checks do not validate Switch ABI details, locking,
 concurrent close operations, or hardware behavior. A Switch build and console
 testing are still required for those.
