@@ -6,12 +6,13 @@
 
 #include "module.h"
 #include "modules/SceSysmem.h"
+#include "modules/SceKernelThreadMgr.h"
 
 typedef struct EventWaiter {
     struct EventWaiter *next;
     CondVar condition;
     uint32_t bits, mode, observed;
-    int result;
+    int result, priority;
     bool done;
 } EventWaiter;
 
@@ -76,7 +77,7 @@ EXPORT(SceLibKernel, 0x8516D040, SceUID, sceKernelCreateEventFlag, const char *n
 {
     if (!name)
         return SCE_KERNEL_ERROR_ILLEGAL_ADDR;
-    if ((uint32_t)attr & ~((uint32_t)SCE_EVENT_WAITMULTIPLE))
+    if ((uint32_t)attr & ~((uint32_t)(SCE_EVENT_WAITMULTIPLE | SCE_KERNEL_ATTR_THREAD_PRIO)))
         return SCE_KERNEL_ERROR_ILLEGAL_ATTR;
     if (opt && opt->size != sizeof(*opt))
         return SCE_KERNEL_ERROR_INVALID_ARGUMENT_SIZE;
@@ -161,12 +162,22 @@ EXPORT(SceLibKernel, 0x83C0E2AF, int, sceKernelWaitEventFlag, int uid, unsigned 
         mutexUnlock(&event_lock);
         return SCE_KERNEL_ERROR_EVF_MULTI;
     }
+    consume(event, &waiter);
+    if (!waiter.done && (event->attr & SCE_KERNEL_ATTR_THREAD_PRIO)) {
+        VitaThreadInfo *thread = SceKernelThreadMgr_get_thread_info();
+        if (!thread) {
+            mutexUnlock(&event_lock);
+            return SCE_KERNEL_ERROR_UNKNOWN_THREAD_ID;
+        }
+        waiter.priority = thread->priority;
+    }
     event->references++;
     EventWaiter **tail = &event->waiters;
-    while (*tail)
+    while (*tail && ((*tail)->done || !(event->attr & SCE_KERNEL_ATTR_THREAD_PRIO) ||
+                     (*tail)->priority <= waiter.priority))
         tail = &(*tail)->next;
+    waiter.next = *tail;
     *tail = &waiter;
-    consume(event, &waiter);
     while (!waiter.done) {
         uint64_t elapsed = armTicksToNs(armGetSystemTick() - start);
         if (timeout && elapsed >= duration) {
