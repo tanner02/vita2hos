@@ -69,6 +69,12 @@ It achieves this by redirecting the [module](https://wiki.henkaku.xyz/vita/Modul
 
 **vita2hos** is in its early development stages and currently supports running simple CPU-rendered PlayStation Vita homebrew applications. Additionally, initial 3D graphics support is available—including texturing, depth, and stencil—enabling the execution of vitasdk's GXM samples.
 
+Counting semaphores currently support FIFO waits, polling, signaling, timed
+waits, cancellation, deletion, and status queries. Priority queues, named/openable
+semaphores, and callback-aware waits are not implemented. These APIs are covered
+by host thread tests; commercial-game compatibility still requires hardware
+validation.
+
 ## Building from Source
 
 1. **Clone the Repository with Submodules:**
