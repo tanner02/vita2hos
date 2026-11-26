@@ -16,3 +16,5 @@ jobs:
         run: git submodule update --init external/mlib external/vita-headers
       - name: Run I/O tests with sanitizers
         run: sh tests/host/run.sh
+      - name: Check deployment backup and rollback behavior
+        run: python3 -B tests/host/test_deploy_switch.py

@@ -133,7 +133,11 @@ def main():
     parser.add_argument("--backup-dir", type=Path, default=Path("switch-backups"))
     parser.add_argument("--configure-override", action="store_true",
                         help="Also change R application override to vita2hos; backs up existing config")
+    parser.add_argument("--sample-only", action="store_true",
+                        help="Change only executable; preserve the installed runtime and override")
     args = parser.parse_args()
+    if args.sample_only and args.configure_override:
+        parser.error("--sample-only cannot be combined with --configure-override")
     manifest, (nsp, executable) = read_bundle(args.bundle, args.sample)
     password = getpass.getpass("FTP password: ") if args.ask_password else "anonymous@"
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
@@ -147,7 +151,11 @@ def main():
             ftp.cwd(root + "/atmosphere/config")
             ftp.cwd("/")
         ensure_directory(ftp, root + "/vita2hos")
-        for name, data in [("vita2hos.nsp", nsp), ("executable", executable)]:
+        if args.sample_only and read_remote(ftp, root + "/vita2hos/vita2hos.nsp") != nsp:
+            raise ValueError("Installed runtime differs from this bundle; sample-only transfer aborted")
+        transfers = [("executable", executable)] if args.sample_only else [
+            ("vita2hos.nsp", nsp), ("executable", executable)]
+        for name, data in transfers:
             replace_verified(ftp, root + "/vita2hos/" + name, data, args.backup_dir, stamp)
         if args.configure_override:
             path = root + "/atmosphere/config/override_config.ini"

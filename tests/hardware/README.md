@@ -73,5 +73,15 @@ verification before replacement. Run without the configuration option for
 subsequent sample/build transfers; use `--sample gxm_textured_cube_sample` to
 select the textured cube. Transfers require the FTP server to stay running.
 
+For a sample comparison against the same runtime, add `--sample-only`:
+
+```sh
+python3 tools/deploy-switch.py smoke-test.zip --host SWITCH_IP --port 5000 \
+  --sample gxm_textured_cube_sample --sample-only
+```
+
+This mode verifies that the installed NSP matches the bundle, then replaces
+only `executable`. It cannot be combined with `--configure-override`.
+
 FTP deployment does not launch an NRO, install a title, press buttons, or reboot
 the console. Exit the FTP app and use the application override manually.
