@@ -94,7 +94,13 @@ int main(void)
     wait_pending(uid, 2);
     assert(sceKernelSignalSema(uid, 1) == 0);
     assert(get_info(uid).currentCount == 1 && get_info(uid).numWaitThreads == 2);
-    assert((uint32_t)sceKernelPollSema(uid, 1) == SCE_KERNEL_ERROR_SEMA_ZERO);
+    assert(sceKernelPollSema(uid, 1) == 0);
+    assert(sceKernelSignalSema(uid, 1) == 0);
+    timeout = 0;
+    assert(sceKernelWaitSema(uid, 1, &timeout) == 0);
+    assert(get_info(uid).numWaitThreads == 2 && get_info(uid).currentCount == 0);
+    assert(sceKernelSignalSema(uid, 1) == 0);
+    assert(get_info(uid).numWaitThreads == 2);
     assert(sceKernelSignalSema(uid, 1) == 0);
     assert(pthread_join(a, NULL) == 0 && first.result == 0);
     wait_pending(uid, 1);

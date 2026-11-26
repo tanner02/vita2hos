@@ -104,7 +104,7 @@ EXPORT(SceThreadmgr, 0x866EF048, int, sceKernelPollSema, SceUID uid, int count)
     int result;
     if (!s) result = SCE_KERNEL_ERROR_UNKNOWN_SEMA_ID;
     else if (count > s->maximum) result = SCE_KERNEL_ERROR_ILLEGAL_COUNT;
-    else if (sema_pending(s) || s->count < count) result = SCE_KERNEL_ERROR_SEMA_ZERO;
+    else if (s->count < count) result = SCE_KERNEL_ERROR_SEMA_ZERO;
     else { s->count -= count; result = 0; }
     mutexUnlock(&sema_lock);
     return result;
@@ -124,6 +124,17 @@ EXPORT(SceLibKernel, 0x0C7B834B, int, sceKernelWaitSema, SceUID uid, int count,
         int result = s ? SCE_KERNEL_ERROR_ILLEGAL_COUNT : SCE_KERNEL_ERROR_UNKNOWN_SEMA_ID;
         mutexUnlock(&sema_lock);
         return result;
+    }
+    /* FIFO applies to blocked waiters. Match an immediately satisfiable
+     * acquisition before joining that queue, as with sceKernelPollSema. */
+    if (s->count >= count) {
+        s->count -= count;
+        if (timeout) {
+            uint64_t elapsed = armTicksToNs(armGetSystemTick() - start);
+            *timeout = elapsed >= duration ? 0 : (SceUInt)((duration - elapsed) / 1000);
+        }
+        mutexUnlock(&sema_lock);
+        return 0;
     }
     ++s->references;
     SemaWaiter **tail = &s->waiters;
