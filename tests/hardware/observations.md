@@ -1,3 +1,27 @@
+## 2026-11-27: startup thread attribution (offline, not deployed)
+
+Atmosphere crash Thread IDs are native kernel identifiers; the existing Created
+thread log prints guest UIDs allocated by SceSysmem. Comparing those counters
+cannot establish that many guest threads were created after the log tail. Thread
+creation now logs both IDs, bounded thread name, entry address, kernel/user TLS
+addresses and template sizes before starting the native thread. Native-ID query
+failure is recorded explicitly and does not change the guest creation result.
+
+Read-only follow-up on the saved42bf233 crash confirms the faulting callee has
+not changed r8 before the data abort; its nonzero value is a resource-object
+candidate from the caller's resource selection, not evidence for a float value.
+A related bind setter publishes the current resource TLS pointer only for ready
+states4/5; its other branch requests resource work and returns failure. This
+supports investigating readiness/publication separately from TLS address
+instability. It does not identify the executed branch or resource state.
+
+Thread-runtime and module-start ASan/UBSan checks pass, and Debug/Release compile
+the native SDK query successfully. No hardware mapping output has been observed
+yet. Source-bound ELF/disassembly/crash evidence stays private; no guest ARM code
+was executed on the host. The real-libc probe correction remains held, and no
+console/SD access, payload changes or deployment occurred. Startup crash and
+commercial-title 3D rendering remain unresolved.
+
 ## 2026-11-27: C10 packed-input location allocation (offline, not deployed)
 
 Register C10 declarations now reserve native locations from their packed-byte

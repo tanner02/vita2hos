@@ -150,6 +150,17 @@ static SceUID create_thread_with_affinity(const char *name, SceKernelThreadEntry
     }
 
     LOG("Created thread \"%s\", thid: 0x%x", name, ti->uid);
+#ifdef __SWITCH__
+    /* Atmosphere reports the native kernel ID, not the guest UID above.
+     * Record the relation before starting the thread so an immediate crash
+     * can be attributed without guessing from creation order. */
+    u64 native_id = 0;
+    Result id_result = svcGetThreadId(&native_id, ti->thread.handle);
+    LOG("Guest thread mapping: uid=0x%x native=0x%" PRIx64 " name=\"%s\" entry=%p "
+        "kernel_tls=%p user_tls=%p tls_filesz=0x%x tls_memsz=0x%x id_result=0x%x",
+        ti->uid, native_id, ti->name, (void *)ti->entry, ti->vita_tls, ti->vita_user_tls,
+        g_main_tls.filesz, g_main_tls.memsz, id_result);
+#endif
 
     vita_thread_info_dict_set_at(g_vita_thread_infos, ti->uid, ti);
     rwlockWriteUnlock(&g_vita_thread_infos_lock);
