@@ -71,6 +71,15 @@ EXPORT(SceTouch, 0x10A2CA25, int, sceTouchGetPanelInfo, SceUInt32 port,
     }
 }
 
+
+/* ZCode batch addition: sampling state is accepted; Peek already provides
+ * synthesized samples. */
+EXPORT(SceTouch, 0x1B9C5D14, int, sceTouchSetSamplingState, SceUInt32 port, SceTouchSamplingState state)
+{
+    LOG("sceTouchSetSamplingState port=%u state=%u", (unsigned)port, (unsigned)state);
+    return 0;
+}
+
 DECLARE_LIBRARY(SceTouch, 0x3e4f4a81);
 
 int SceTouch_init(void)

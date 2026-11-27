@@ -75,3 +75,78 @@ EXPORT(SceRtcUser,0x70FDE8F1,int,sceRtcGetCurrentClock,SceDateTime *date,int tim
     return rtc_from_unix(date,(uint64_t)seconds,native.tv_usec);
 }
 DECLARE_LIBRARY(SceRtcUser,0x6704D3C6);
+
+/* ZCode batch additions: remaining RtcUser and SceRtc library functions.
+ * Tick epoch is 0001-01-01 00:00:00 UTC with a 1,000,000 Hz resolution. */
+
+#define RTC_TICK_EPOCH_SECONDS UINT64_C(62135596800)
+#define RTC_TICK_RESOLUTION UINT64_C(1000000)
+
+EXPORT(SceRtcUser,0x811313B3,unsigned int,sceRtcGetTickResolution,void)
+{
+    return (unsigned)RTC_TICK_RESOLUTION;
+}
+
+EXPORT(SceRtcUser,0x23F79274,int,sceRtcGetCurrentTick,SceRtcTick *tick)
+{
+    if(!tick)return SCE_RTC_ERROR_INVALID_POINTER;
+    struct timeval native;
+    if(gettimeofday(&native,NULL)<0)return SCE_RTC_ERROR_NOT_INITIALIZED;
+    tick->tick=(uint64_t)native.tv_sec*RTC_TICK_RESOLUTION+(uint64_t)native.tv_usec
+        +RTC_TICK_EPOCH_SECONDS*RTC_TICK_RESOLUTION;
+    return 0;
+}
+
+EXPORT(SceRtcUser,0xCDDD25FE,int,sceRtcGetCurrentNetworkTick,SceRtcTick *tick)
+{
+    /* No network time source; the console clock is authoritative here. */
+    return sceRtcGetCurrentTick(tick);
+}
+
+EXPORT(SceRtcUser,0x0572EDDC,int,sceRtcGetCurrentClockLocalTime,SceDateTime *date)
+{
+    /* No host timezone model; the console clock reads as UTC. */
+    return sceRtcGetCurrentClock(date,0);
+}
+
+EXPORT(SceRtcUser,0x3A332F81,int,sceRtcSetTime_t,SceDateTime *date,time_t seconds)
+{
+    if(seconds<0)return SCE_RTC_ERROR_INVALID_VALUE;
+    return rtc_from_unix(date,(uint64_t)seconds,0);
+}
+
+EXPORT(SceRtcUser,0x2F3531EB,int,sceRtcGetDayOfWeek,int year,int month,int day)
+{
+    /* Days-from-civil (Howard Hinnant), then 1970-01-01 was a Thursday. */
+    int y=(int)year-(month<=2),era=(y>=0?y:y-399)/400,yoe=era*400+(y-era*400);
+    unsigned m=(int)month+(month>2?-3:9),doy=(153*m+2)/5+day-1,doe=yoe*365+yoe/4-yoe/100+doy;
+    uint64_t days=(uint64_t)((int64_t)doe-719468);
+    return (unsigned)((days+4)%7);
+}
+
+EXPORT(SceRtcUser,0xF2B238E2,int,sceRtcGetTick,const SceDateTime *time,SceRtcTick *tick)
+{
+    if(!tick)return SCE_RTC_ERROR_INVALID_POINTER;
+    int valid=rtc_valid_date(time);
+    if(valid)return valid;
+    int y=(int)time->year-(time->month<=2),era=(y>=0?y:y-399)/400,yoe=era*400+(y-era*400);
+    unsigned m=(unsigned)((int)time->month+(time->month>2?-3:9));
+    unsigned doy=(153*m+2)/5+time->day-1,doe=yoe*365+yoe/4-yoe/100+doy;
+    uint64_t days=(uint64_t)((int64_t)doe-719468);
+    tick->tick=(days*86400ULL+time->hour*3600ULL+time->minute*60ULL+time->second)
+        *RTC_TICK_RESOLUTION+time->microsecond
+        +RTC_TICK_EPOCH_SECONDS*RTC_TICK_RESOLUTION;
+    return 0;
+}
+
+EXPORT(SceRtc,0x258BE8EC,SceULong64,sceRtcGetAccumulativeTime,void)
+{
+    static struct timeval start;
+    static bool started;
+    struct timeval now;
+    gettimeofday(&now,NULL);
+    if(!started){start=now;started=true;}
+    return (SceULong64)(now.tv_sec-start.tv_sec);
+}
+
+DECLARE_LIBRARY(SceRtc,0x3503487E);

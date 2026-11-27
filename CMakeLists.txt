@@ -5,6 +5,7 @@ set(VITA2HOS_MINOR 4)
 set(VITA2HOS_PATCH 0)
 execute_process(COMMAND
     git describe --dirty --always --exclude '*'
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
     OUTPUT_VARIABLE VITA2HOS_HASH
     OUTPUT_STRIP_TRAILING_WHITESPACE
 )
@@ -98,6 +99,24 @@ add_executable(vita2hos
     source/modules/SceSysmodule.c
     source/modules/SceAppUtil.c
     source/modules/SceNpManager.c
+    source/modules/SceNgs.c
+    source/modules/SceAvcodec.c
+    source/modules/SceNpUtility.c
+    source/modules/SceNpBasic.c
+    source/modules/SceNpMessage.c
+    source/modules/SceCamera.c
+    source/modules/SceIme.c
+    source/modules/SceAudioInOut.c
+    source/modules/SceFiber.c
+    source/modules/SceSystemMisc.c
+    source/modules/SceCommonDialog.c
+    source/modules/SceLibHttp.c
+    source/modules/SceLibSsl.c
+    source/modules/SceNpActivity.c
+    source/modules/SceNpCommon.c
+    source/modules/SceNpCommerce2.c
+    source/modules/SceNpSignaling.c
+    source/modules/SceNearUtil.c
     source/modules/SceNet.c
     source/modules/SceModulemgr.c
     source/modules/SceRtc.c

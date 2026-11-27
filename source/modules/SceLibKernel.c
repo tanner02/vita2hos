@@ -742,6 +742,39 @@ EXPORT(SceLibKernel, 0x15E2A45D, int, sceKernelCallModuleExit)
     return 0;
 }
 
+
+/* ZCode batch additions: misc io and aeabi divide-by-zero handlers. */
+
+EXPORT(SceLibKernel,0x04B30CB2,int,sceIoDevctl,const char *device,int cmd,void *inBuffer,SceSize inLen,void *outBuffer,SceSize outLen)
+{
+    LOG("sceIoDevctl device=%s cmd=0x%x -> unsupported",device?device:"(null)",cmd);
+    return (int)0x80010030; /* SCE_KERNEL_ERROR_UNSUP */
+}
+
+EXPORT(SceLibKernel,0x54ABACFA,int,sceIoIoctl,SceUID fd,int cmd,void *indata,SceSize inlen,void *outdata,SceSize outlen)
+{
+    LOG("sceIoIoctl fd=%d cmd=0x%x -> unsupported",fd,cmd);
+    return (int)0x80010030;
+}
+
+EXPORT(SceLibKernel,0x98ACED6D,int,sceIoSync,const char *device,unsigned int unk)
+{
+    LOG("sceIoSync device=%s",device?device:"(null)");
+    return 0;
+}
+
+/* Divide-by-zero handlers: log the fault and return; the quotient is
+ * undefined but the guest keeps running (matches prior stub behavior). */
+EXPORT(SceLibKernel,0x4373B548,void,__sce_aeabi_idiv0,int numerator)
+{
+    LOG("__sce_aeabi_idiv0 numerator=%d",numerator);
+}
+
+EXPORT(SceLibKernel,0xFB235848,void,__sce_aeabi_ldiv0,long long numerator)
+{
+    LOG("__sce_aeabi_ldiv0 numerator=%lld",numerator);
+}
+
 DECLARE_LIBRARY(SceLibKernel, 0xcae9ace6);
 DECLARE_LIBRARY(SceIofilemgr, 0xf2ff276e);
 
