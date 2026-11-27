@@ -1711,8 +1711,8 @@ static int upload_texture_mip_chain(SceGxmContext *context, const GxmTextureMipC
     maker.dimensions[0] = chain->levels[0].width;
     maker.dimensions[1] = chain->levels[0].height;
     maker.mipLevels = chain->count;
-    /* Pitch-linear images cannot represent a mip chain. Use native tiled
-     * storage and copy each packed linear level into its own image view. */
+    /* Mip chains and compressed images use native tiled storage. Copy each
+     * packed linear level into its own image view. */
     dkImageLayoutInitialize(&layout, &maker);
     DkMemBlock destination;
     int ret = gxm_texture_allocate_image(g_dk_device, &context->texture_staging,
@@ -1792,7 +1792,7 @@ static int upload_fragment_texture_descriptors(SceGxmContext *context)
         uint32_t offset = dk_memblock_cpu_addr_offset(tex_block->dk_memblock, tex_data);
         if (offset > tex_block->size || mip_chain.source_size > tex_block->size - offset)
             return SCE_GXM_ERROR_INVALID_VALUE;
-        if (mip_chain.count > 1) {
+        if (mip_chain.count > 1 || texture_layout.block_bytes) {
             ret = upload_texture_mip_chain(context, &mip_chain, tex_data, tex_block->size - offset, &image);
             if (ret) return ret;
             staged = true;

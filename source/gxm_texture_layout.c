@@ -84,6 +84,12 @@ int gxm_texture_get_linear_layout(const SceGxmTextureInner *texture, GxmTextureL
     FORMAT(U16U16U16U16, RGBA16_Unorm, 8, 4);
     FORMAT(S16S16S16S16, RGBA16_Snorm, 8, 4);
     FORMAT(F16F16F16F16, RGBA16_Float, 8, 4);
+    case SCE_GXM_TEXTURE_BASE_FORMAT_UBC1:
+        result.format = DkImageFormat_RGBA_BC1; bytes = 8; components = 4; result.block_bytes = 8; break;
+    case SCE_GXM_TEXTURE_BASE_FORMAT_UBC2:
+        result.format = DkImageFormat_RGBA_BC2; bytes = 16; components = 4; result.block_bytes = 16; break;
+    case SCE_GXM_TEXTURE_BASE_FORMAT_UBC3:
+        result.format = DkImageFormat_RGBA_BC3; bytes = 16; components = 4; result.block_bytes = 16; break;
 #undef FORMAT
     default:
         return SCE_GXM_ERROR_UNSUPPORTED;
@@ -100,7 +106,9 @@ int gxm_texture_get_linear_layout(const SceGxmTextureInner *texture, GxmTextureL
     }
 
     result.source_type = type;
-    result.bytes_per_pixel = bytes;
+    result.bytes_per_pixel = result.block_bytes ? 0 : bytes;
+    if (result.block_bytes && (type == SCE_GXM_TEXTURE_LINEAR_STRIDED || type == SCE_GXM_TEXTURE_TILED))
+        return SCE_GXM_ERROR_UNSUPPORTED;
     if (type == SCE_GXM_TEXTURE_SWIZZLED) {
         if (texture->width_base2 > 12 || texture->height_base2 > 12)
             return SCE_GXM_ERROR_INVALID_VALUE;
@@ -128,6 +136,12 @@ int gxm_texture_get_linear_layout(const SceGxmTextureInner *texture, GxmTextureL
     } else {
         result.source_pitch = ((result.width + 7) & ~7U) * bytes;
     }
+    if (result.block_bytes) {
+        if (type == SCE_GXM_TEXTURE_LINEAR) result.source_width = (result.width + 7) & ~7U;
+        result.source_width = (result.source_width + 3) / 4;
+        result.source_height = (result.source_height + 3) / 4;
+        result.source_pitch = result.source_width * bytes;
+    }
     result.source_size = result.source_pitch * result.source_height;
     /* A staging copy makes small source rows representable by Maxwell's
      * 32-byte stride units without changing how source pixels are addressed. */
@@ -136,6 +150,10 @@ int gxm_texture_get_linear_layout(const SceGxmTextureInner *texture, GxmTextureL
         result.source_pitch % 32 == 0)
         result.pitch = result.source_pitch;
     result.size = result.pitch * result.height;
+    if (result.block_bytes) {
+        result.pitch = (((result.width + 3) / 4) * bytes + 31) & ~31U;
+        result.size = result.pitch * ((result.height + 3) / 4);
+    }
     *layout = result;
     return 0;
 }
@@ -183,7 +201,12 @@ int gxm_texture_get_mip_chain(const SceGxmTextureInner *texture, GxmTextureMipCh
         uint32_t row = storage_width, rows = storage_height;
         if (type == SCE_GXM_TEXTURE_LINEAR) row = (row + 7) & ~7U;
         if (type == SCE_GXM_TEXTURE_TILED) { row = (row + 31) & ~31U; rows = (rows + 31) & ~31U; }
-        offset += (uint64_t)row * rows * result.levels[i].bytes_per_pixel;
+        if (result.levels[i].block_bytes) {
+            row = (row + 3) / 4; rows = (rows + 3) / 4;
+            offset += (uint64_t)row * rows * result.levels[i].block_bytes;
+        } else {
+            offset += (uint64_t)row * rows * result.levels[i].bytes_per_pixel;
+        }
         storage_width >>= 1; storage_height >>= 1;
     }
     result.count = count;
@@ -209,15 +232,17 @@ int gxm_texture_pack_linear(const GxmTextureLayout *layout, const void *source, 
 
     const unsigned char *src = source;
     unsigned char *dst = destination;
-    const uint32_t bytes = layout->bytes_per_pixel;
+    const uint32_t bytes = layout->block_bytes ? layout->block_bytes : layout->bytes_per_pixel;
+    const uint32_t width = layout->block_bytes ? (layout->width + 3) / 4 : layout->width;
+    const uint32_t height = layout->block_bytes ? (layout->height + 3) / 4 : layout->height;
     memset(dst, 0, layout->size);
     if (layout->source_type == SCE_GXM_TEXTURE_LINEAR ||
         layout->source_type == SCE_GXM_TEXTURE_LINEAR_STRIDED) {
-        for (uint32_t y = 0; y < layout->height; y++)
-            memcpy(dst + y * layout->pitch, src + y * layout->source_pitch, layout->width * bytes);
+        for (uint32_t y = 0; y < height; y++)
+            memcpy(dst + y * layout->pitch, src + y * layout->source_pitch, width * bytes);
     } else if (layout->source_type == SCE_GXM_TEXTURE_TILED) {
         const uint32_t tiles_per_row = layout->source_width / 32;
-        for (uint32_t y = 0; y < layout->height; y++) {
+        for (uint32_t y = 0; y < height; y++) {
             for (uint32_t x = 0; x < layout->width; x += 32) {
                 uint32_t count = layout->width - x < 32 ? layout->width - x : 32;
                 uint32_t offset = ((y / 32) * tiles_per_row + x / 32) * 1024 + (y % 32) * 32;
@@ -231,10 +256,10 @@ int gxm_texture_pack_linear(const GxmTextureLayout *layout, const void *source, 
         uint32_t bits = 0;
         while ((1U << bits) < minimum)
             bits++;
-        for (uint32_t y = 0; y < layout->height; y++) {
+        for (uint32_t y = 0; y < height; y++) {
             uint32_t y_part = spread_bits(y & (minimum - 1));
             y_part |= (y >> bits) << (2 * bits);
-            for (uint32_t x = 0; x < layout->width; x++) {
+            for (uint32_t x = 0; x < width; x++) {
                 uint32_t index = y_part | (spread_bits(x & (minimum - 1)) << 1) |
                                  ((x >> bits) << (2 * bits));
                 memcpy(dst + y * layout->pitch + x * bytes, src + index * bytes, bytes);

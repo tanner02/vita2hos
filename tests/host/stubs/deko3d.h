@@ -29,6 +29,7 @@ typedef enum {
     DkImageFormat_RG16_Unorm, DkImageFormat_RG16_Snorm, DkImageFormat_RG16_Float,
     DkImageFormat_RG32_Float, DkImageFormat_RGBA8_Unorm, DkImageFormat_RGBA8_Snorm,
     DkImageFormat_RGBA16_Unorm, DkImageFormat_RGBA16_Snorm, DkImageFormat_RGBA16_Float,
+    DkImageFormat_RGBA_BC1, DkImageFormat_RGBA_BC2, DkImageFormat_RGBA_BC3,
 } DkImageFormat;
 typedef enum {
     DkImageSwizzle_Zero, DkImageSwizzle_One, DkImageSwizzle_Red,

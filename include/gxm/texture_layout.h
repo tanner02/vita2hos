@@ -10,6 +10,7 @@ typedef struct {
     uint32_t width, height, pitch, size;
     uint32_t source_type, source_width, source_height, source_pitch, source_size;
     uint32_t bytes_per_pixel;
+    uint32_t block_bytes; /* Nonzero for 4x4 BC blocks; source dimensions are block counts. */
 } GxmTextureLayout;
 
 #define GXM_TEXTURE_MAX_MIP_LEVELS 13
@@ -19,7 +20,7 @@ typedef struct {
     GxmTextureLayout levels[GXM_TEXTURE_MAX_MIP_LEVELS];
 } GxmTextureMipChain;
 
-/* Source metadata for supported uncompressed 2D layouts. This does not upload
+/* Source metadata for supported 2D layouts. This does not upload
  * the chain or enable mip filtering in the renderer. */
 int gxm_texture_get_mip_chain(const SceGxmTextureInner *texture, GxmTextureMipChain *chain);
 
