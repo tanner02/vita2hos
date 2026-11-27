@@ -155,7 +155,11 @@ static void presenter_thread_func(void *arg)
 EXPORT(SceDisplayUser, 0x7A410B64, int, sceDisplaySetFrameBuf, const SceDisplayFrameBuf *pParam,
        SceDisplaySetBufSync sync)
 {
-    return display_state_set(pParam, sync);
+    int result=display_state_set(pParam, sync);
+    if (!result && pParam && pParam->base)
+        LOG("DISPLAY_SUBMIT time_us=%" PRIu64 " base=%p width=%u height=%u",
+            armTicksToNs(armGetSystemTick())/1000,pParam->base,pParam->width,pParam->height);
+    return result;
 }
 
 EXPORT(SceDisplayUser, 0x42AE6BBC, int, sceDisplayGetFrameBuf, SceDisplayFrameBuf *pParam,

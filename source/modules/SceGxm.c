@@ -53,6 +53,10 @@ typedef struct SceGxmContext {
     GxmTextureStaging *texture_staging;
     GxmDepthStaging *depth_staging;
     GxmUniformStaging *uniform_staging;
+    struct {
+        uint64_t scene_start, retire_wait, retire_release, textures, uniforms;
+        unsigned draws, texture_batches;
+    } timing;
     /* Dynamic state */
     struct {
         struct {
@@ -574,8 +578,10 @@ static int translate_shader(DkShader *shader, const SceGxmProgram *program, pipe
 #endif
 
     LOG("Converting shader (%s) to GLSL...", prefix);
+    uint64_t glsl_start=armGetSystemTick();
     ret = convert_gxp_to_glsl_c(&glsl, program, prefix, false, false, false, false, attributes,
                                 attributeCount, false, false, SHADER_DUMP_CB);
+    uint64_t glsl_ticks=armGetSystemTick()-glsl_start;
     LOG("  ret: %d", ret);
 #if DUMP_SHADER_GLSL
     if (ret)
@@ -587,8 +593,10 @@ static int translate_shader(DkShader *shader, const SceGxmProgram *program, pipe
     }
 
     LOG("UAM compiling shader (%s)...", prefix);
+    uint64_t uam_start=armGetSystemTick();
     void *compiled = NULL;
     ret = uam_compiler_compile_glsl_alloc(stage, glsl, &compiled, &shader_size);
+    uint64_t uam_ticks=armGetSystemTick()-uam_start;
     LOG("  compile ret: %d, size: 0x%x", ret, shader_size);
     free(glsl);
     if (!ret || !shader_size) {
@@ -605,6 +613,8 @@ static int translate_shader(DkShader *shader, const SceGxmProgram *program, pipe
     if (upload_result != 0) return upload_result;
     dkShaderMakerDefaults(&shader_maker, code, 0);
     dkShaderInitialize(shader, &shader_maker);
+    LOG("GXM_SHADER_TIMING program=%p size=%u stage=%s glsl_us=%" PRIu64 " uam_us=%" PRIu64,
+        program,program->size,prefix,armTicksToNs(glsl_ticks)/1000,armTicksToNs(uam_ticks)/1000);
 
     return 0;
 }
@@ -1166,6 +1176,8 @@ EXPORT(SceGxm, 0x8734FF4E, int, sceGxmBeginScene, SceGxmContext *context, unsign
         return SCE_GXM_ERROR_UNSUPPORTED;
 
     GxmDepthStaging *next_depth=NULL;
+    memset(&context->timing,0,sizeof(context->timing));
+    context->timing.scene_start=armGetSystemTick();
     int depth_result=prepare_depth_staging(depthStencil,&renderTarget->params,fragmentSyncObject,&next_depth);
     if (depth_result) return depth_result;
 
@@ -1177,10 +1189,14 @@ EXPORT(SceGxm, 0x8734FF4E, int, sceGxmBeginScene, SceGxmContext *context, unsign
     if (context->texture_staging || context->uniform_staging || context->depth_staging) {
         /* The previous scene was submitted by EndScene. Retire its temporary
          * images and uniform snapshots only after the GPU is finished. */
+        uint64_t retire_start=armGetSystemTick();
         dkQueueWaitIdle(g_render_queue);
+        context->timing.retire_wait=armGetSystemTick()-retire_start;
+        retire_start=armGetSystemTick();
         gxm_texture_staging_release(&context->texture_staging);
         gxm_uniform_staging_release(&context->uniform_staging);
         gxm_depth_staging_release(&context->depth_staging,g_render_queue);
+        context->timing.retire_release=armGetSystemTick()-retire_start;
     }
     context->depth_staging=next_depth;
 
@@ -1378,6 +1394,14 @@ EXPORT(SceGxm, 0xFE300E2F, int, sceGxmEndScene, SceGxmContext *context,
     dkQueueFlush(g_render_queue);
 
     context->state.in_scene = false;
+
+    LOG("GXM_SCENE_TIMING context=%p target=%p width=%u height=%u wall_us=%" PRIu64 " retire_wait_us=%" PRIu64
+        " retire_release_us=%" PRIu64 " textures_us=%" PRIu64 " uniforms_us=%" PRIu64 " draws=%u texture_batches=%u",
+        context,render_target,render_target->params.width,render_target->params.height,
+        armTicksToNs(armGetSystemTick()-context->timing.scene_start)/1000,
+        armTicksToNs(context->timing.retire_wait)/1000,armTicksToNs(context->timing.retire_release)/1000,
+        armTicksToNs(context->timing.textures)/1000,armTicksToNs(context->timing.uniforms)/1000,
+        context->timing.draws,context->timing.texture_batches);
 
     return 0;
 }
@@ -2241,13 +2265,17 @@ static int context_flush_dirty_state(SceGxmContext *context)
     }
 
     if (context->state.dirty.bit.textures) {
+        uint64_t texture_start=armGetSystemTick();
         int ret = upload_texture_descriptors(context);
+        context->timing.textures+=armGetSystemTick()-texture_start;
+        context->timing.texture_batches++;
         if (ret != 0)
             return ret;
     }
 
     /* Snapshot at every draw: callers may modify a buffer without rebinding it.
      * Distinct storage also protects queued draws when guest ringbuffers wrap. */
+    uint64_t uniform_start=armGetSystemTick();
     int ret = stage_uniforms(context, DkStage_Vertex, &vertex_program->uniform_layout,
                              context->state.vertex_default_uniform.cpu_addr,
                              context->state.vertex_uniform_buffers);
@@ -2255,6 +2283,7 @@ static int context_flush_dirty_state(SceGxmContext *context)
     ret = stage_uniforms(context, DkStage_Fragment, &fragment_program->uniform_layout,
                          context->state.fragment_default_uniform.cpu_addr,
                          context->state.fragment_uniform_buffers);
+    context->timing.uniforms+=armGetSystemTick()-uniform_start;
     if (ret) return ret;
     context->state.vertex_default_uniform.allocated = false;
     context->state.fragment_default_uniform.allocated = false;
@@ -2319,6 +2348,7 @@ static int draw_indexed(SceGxmContext *context, SceGxmPrimitiveType primType,
         dkCmdBufSetScissors(context->cmdbuf, 0, &scissors[i], 1);
         dkCmdBufDrawIndexed(context->cmdbuf, primitive, indexCount, instances, 0, 0, 0);
     }
+    context->timing.draws++;
 
     return 0;
 }

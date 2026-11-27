@@ -1937,3 +1937,22 @@ Native/hardware performance verification of this logging change is pending;
 no shader cache or precompilation feature is added. LOG_DISASM can still build
 its diagnostic string for the pinned translator's optional disassembly storage,
 so this change does not claim to eliminate all formatting overhead.
+
+## Loading-frame slowdown: profiling prepared
+
+User reports roughly one displayed update every five seconds. A50-second UDP
+observer on aecf224Release captured13display-queue enqueue attempts, with median
+inter-attempt gap3.2258seconds and77shader compile starts/74ends. This is a
+host-receipt/UDP proxy, not an exact physical-presentation FPS measurement.
+The observation confirms that draw-call counts alone did not establish smooth
+animation; shader activity alone does not establish the sole bottleneck.
+
+Native diagnostics now report per-program GLSL/UAM durations; per-scene total
+elapsed time, previous-scene queue-idle wait/release, texture and uniform setup
+durations, draw/batch counts and target dimensions; and timestamped framebuffer
+submissions after display_state_set succeeds. These are wall times including
+preemption, not exclusive CPU/GPU execution times. Scene elapsed also includes
+guest work between BeginScene/EndScene. DISPLAY_SUBMIT records a ready-buffer
+submission, not completion of physical scanout. Program pointer/size repetition
+is a clue, not proof of identical immutable shader contents. Native/hardware
+verification of these additional diagnostics is pending.
