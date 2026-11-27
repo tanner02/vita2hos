@@ -5,6 +5,7 @@
 #include <switch.h>
 #include "gxm/program_parameter.h"
 #include "gxm/texture.h"
+#include "gxm/surface.h"
 
 #define SCE_GXM_MAX_SCENES_PER_RENDERTARGET 8
 
@@ -21,8 +22,6 @@
 #define SCE_GXM_DEPTH_STENCIL_ZLS_CTRL_FORMAT_OFFSET 21
 #define SCE_GXM_DEPTH_STENCIL_ZLS_CTRL_FORMAT_MASK   0x7FF
 
-#define SCE_GXM_DEPTH_STENCIL_BG_CTRL_STENCIL_MASK 0xFF
-#define SCE_GXM_DEPTH_STENCIL_BG_CTRL_MASK_BIT     0x100
 
 
 typedef struct {

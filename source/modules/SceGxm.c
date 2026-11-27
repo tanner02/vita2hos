@@ -1089,8 +1089,7 @@ EXPORT(SceGxm, 0x8734FF4E, int, sceGxmBeginScene, SceGxmContext *context, unsign
     } else {
         if (!(depthStencil->zlsControl & SCE_GXM_DEPTH_STENCIL_FORCE_LOAD_ENABLED)) {
             dkCmdBufClearDepthStencil(context->cmdbuf, true, depthStencil->backgroundDepth, 0xFF,
-                                      depthStencil->zlsControl &
-                                          SCE_GXM_DEPTH_STENCIL_BG_CTRL_STENCIL_MASK);
+                                      sceGxmDepthStencilSurfaceGetBackgroundStencil(depthStencil));
         } else {
             /* TODO: Copy GXM DS to shadow? */
         }
