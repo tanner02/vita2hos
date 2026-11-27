@@ -2,6 +2,7 @@
 #include <psp2/kernel/error.h>
 #include <psp2/kernel/processmgr.h>
 #include <psp2/kernel/threadmgr.h>
+#include <psp2/kernel/threadmgr/signal.h>
 #include <stdlib.h>
 #include <switch.h>
 
@@ -107,6 +108,8 @@ static SceUID create_thread(const char *name, SceKernelThreadEntry entry, int in
     }
 
     memset(ti, 0, sizeof(*ti));
+    ueventCreate(&ti->signal_event,true); /* auto-reset: one pending signal */
+    atomic_init(&ti->signal_pending,false);
     atomic_init(&ti->started, false);
     atomic_init(&ti->completed, false);
     atomic_init(&ti->return_status, 0);
@@ -552,3 +555,43 @@ VitaThreadInfo *SceKernelThreadMgr_get_thread_info(void)
 {
     return threadTlsGet(g_vita_thread_info_tls_slot_id);
 }
+
+EXPORT(SceThreadmgr,0xD4C367B2,int,sceKernelSendSignal,SceUID uid)
+{
+    /* Keep the UID record alive until both the pending bit and native event
+     * are published; a raw pointer returned after unlocking is insufficient. */
+    rwlockReadLock(&g_vita_thread_infos_lock);
+    VitaThreadInfo **entry=vita_thread_info_dict_get(g_vita_thread_infos,uid);
+    int result=SCE_KERNEL_ERROR_UNKNOWN_THREAD_ID;
+    if(entry) {
+        VitaThreadInfo *thread=*entry;
+        if(atomic_exchange(&thread->signal_pending,true)) result=SCE_KERNEL_ERROR_ALREADY_SENT;
+        else {ueventSignal(&thread->signal_event);result=0;}
+    }
+    rwlockReadUnlock(&g_vita_thread_infos_lock);
+    return result;
+}
+EXPORT(SceLibKernel,0xADCA94E5,int,sceKernelWaitSignal,SceUInt32 unknown,SceUInt32 delay,
+       SceUInt32 *timeout)
+{
+    if(unknown) return SCE_KERNEL_ERROR_INVALID_ARGUMENT;
+    VitaThreadInfo *thread=SceKernelThreadMgr_get_thread_info();
+    if(!thread) return SCE_KERNEL_ERROR_UNKNOWN_THREAD_ID;
+    uint64_t start=armGetSystemTick(),duration=timeout ? (uint64_t)*timeout*1000 : UINT64_MAX;
+    /* A queued signal bypasses the optional pre-wait delay. As with DelayThread,
+     * delay is interpreted in microseconds; it consumes the original deadline. */
+    if(delay && !atomic_load(&thread->signal_pending)) svcSleepThread((s64)delay*1000);
+    uint64_t elapsed=armTicksToNs(armGetSystemTick()-start);
+    uint64_t remaining=timeout ? (elapsed>=duration ? 0 : duration-elapsed) : UINT64_MAX;
+    Result result=waitSingle(waiterForUEvent(&thread->signal_event),remaining);
+    if(!R_FAILED(result)) atomic_store(&thread->signal_pending,false);
+    if(timeout) {
+        elapsed=armTicksToNs(armGetSystemTick()-start);
+        *timeout=elapsed>=duration ? 0 : (SceUInt32)((duration-elapsed)/1000);
+    }
+    if(result==0xEA01) return SCE_KERNEL_ERROR_WAIT_TIMEOUT;
+    return R_FAILED(result) ? (int)SCE_KERNEL_ERROR_THREAD_ERROR : 0;
+}
+EXPORT(SceThreadmgr,0x50407BF4,int,_sceKernelWaitSignal,SceUInt32 unknown,SceUInt32 delay,
+       SceUInt32 *timeout)
+{ return sceKernelWaitSignal(unknown,delay,timeout); }

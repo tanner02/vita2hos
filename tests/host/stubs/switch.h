@@ -64,6 +64,14 @@ static inline Result condvarWaitTimeout(CondVar *condition, Mutex *mutex, uint64
     int result = pthread_cond_timedwait(condition, mutex, &deadline);
     return result == ETIMEDOUT ? 0xEA01 : (Result)result;
 }
+
+#else
+typedef int Mutex;
+static inline void mutexInit(Mutex *mutex) { *mutex = 0; }
+static inline void mutexLock(Mutex *mutex) { *mutex = 1; }
+static inline void mutexUnlock(Mutex *mutex) { *mutex = 0; }
+static inline bool mutexTryLock(Mutex *mutex) { *mutex = 1; return true; }
+#endif
 #ifndef TEST_KERNEL_TIME
 static inline uint64_t armGetSystemTick(void)
 {
@@ -73,15 +81,8 @@ static inline uint64_t armGetSystemTick(void)
 }
 static inline uint64_t armTicksToNs(uint64_t ticks) { return ticks; }
 #endif
-#else
-typedef int Mutex;
-static inline void mutexInit(Mutex *mutex) { *mutex = 0; }
-static inline void mutexLock(Mutex *mutex) { *mutex = 1; }
-static inline void mutexUnlock(Mutex *mutex) { *mutex = 0; }
-static inline bool mutexTryLock(Mutex *mutex) { *mutex = 1; return true; }
-#endif
-static inline void ueventCreate(UEvent *event, bool state) { *event = state; }
-static inline void ueventSignal(UEvent *event) { *event = 1; }
+static inline void ueventCreate(UEvent *event, bool autoclear) { (void)autoclear; __atomic_store_n(event,0,__ATOMIC_SEQ_CST); }
+static inline void ueventSignal(UEvent *event) { __atomic_store_n(event,1,__ATOMIC_SEQ_CST); }
 #ifdef TEST_THREAD_RUNTIME
 typedef int32_t s32;
 typedef int64_t s64;

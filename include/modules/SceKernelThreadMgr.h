@@ -22,6 +22,8 @@ typedef struct {
     void *vita_user_tls;
     atomic_bool started, completed;
     bool exit_notified;
+    UEvent signal_event;
+    atomic_bool signal_pending;
     VitaThreadEventFrame *event_frames;
 } VitaThreadInfo;
 

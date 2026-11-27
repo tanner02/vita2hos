@@ -137,3 +137,15 @@ use native metadata allocations. Base alignment currently requires 8 bytes;
 firmware edge cases, ARM execution, stats and additional mspace APIs are unverified
 or unimplemented. Destroying a heap invalidates all its outstanding allocations;
 callers must stop using them before destruction.
+
+Thread signals use one auto-reset native event and one atomic pending bit per
+guest thread. A registry read lock protects delivery against record deletion.
+The runtime fixture checks retained/duplicate signals, invalid UIDs, timeout
+translation and both public/raw wait entry points; the pthread startup fixture
+adds 128 actual wait/send round trips and delivery concurrent with deletion.
+The host auto-reset event is modeled with atomic state, not Horizon scheduling.
+The public SDK documents the single-pending contract. Unknown argument zero is
+supported; other values are rejected. Nonzero delay is currently interpreted
+as microseconds, bypassed for a pending signal, and counted against the original
+timeout deadline. Delay timing, timeout updates, dormant/completed targets and
+firmware edge cases still need comparison. Callback waits are not implemented.

@@ -56,6 +56,14 @@ Result threadClose(Thread *thread)
 }
 Result waitSingle(Waiter waiter,uint64_t ns)
 {
+    if(waiter.event) {
+        uint64_t start=armGetSystemTick();
+        while(!__atomic_exchange_n(waiter.event,0,__ATOMIC_SEQ_CST)) {
+            if(ns!=UINT64_MAX && armTicksToNs(armGetSystemTick()-start)>=ns)return 0xEA01;
+            sched_yield();
+        }
+        return 0;
+    }
     assert(waiter.thread && ns==UINT64_MAX);
     if (atomic_exchange(&fail_wait,0)) return 1;
     Thread *thread=waiter.thread;
@@ -141,6 +149,9 @@ static void *change_until_deleted(void *argument)
         int result=sceKernelChangeThreadPriority(uid,100);
         if ((uint32_t)result==SCE_KERNEL_ERROR_UNKNOWN_THREAD_ID) break;
         assert(!result);
+        result=sceKernelSendSignal(uid);
+        if((uint32_t)result==SCE_KERNEL_ERROR_UNKNOWN_THREAD_ID)break;
+        assert(!result || (uint32_t)result==SCE_KERNEL_ERROR_ALREADY_SENT);
         GuestThreadSnapshot snapshot={.size=128};
         result=_sceKernelGetThreadInfo(uid,(void *)&snapshot);
         if ((uint32_t)result==SCE_KERNEL_ERROR_UNKNOWN_THREAD_ID) break;
@@ -162,6 +173,29 @@ static void priority_delete_race(void)
     assert((uint32_t)sceKernelChangeThreadPriority(uid,100)==SCE_KERNEL_ERROR_UNKNOWN_THREAD_ID);
     assert(!vita_thread_info_dict_size(g_vita_thread_infos));
 }
+static atomic_uint signal_ready,signal_received;
+static int signal_receiver(SceSize args,void *argp)
+{
+    (void)args;(void)argp;
+    for(unsigned i=1;i<=128;++i) {
+        atomic_store(&signal_ready,i);unsigned timeout=1000000;
+        assert(!sceKernelWaitSignal(0,0,&timeout));
+        atomic_store(&signal_received,i);
+    }
+    return 0;
+}
+static void signal_roundtrips(void)
+{
+    SceUID uid=create_thread("signal receiver",signal_receiver,100,256*1024);assert(uid>0);
+    assert(!start_thread(uid,0,NULL));
+    uint64_t start=armGetSystemTick();
+    for(unsigned i=1;i<=128;++i) {
+        while(atomic_load(&signal_ready)<i) {assert(armTicksToNs(armGetSystemTick()-start)<UINT64_C(5000000000));sched_yield();}
+        assert(!sceKernelSendSignal(uid));
+        while(atomic_load(&signal_received)<i) {assert(armTicksToNs(armGetSystemTick()-start)<UINT64_C(5000000000));sched_yield();}
+    }
+    assert(!sceKernelWaitThreadEnd(uid,NULL,NULL));assert(!sceKernelDeleteThread(uid));
+}
 int main(void)
 {
     GuestTlsTemplate tls={0};uint32_t seed=0x12345678;
@@ -173,6 +207,7 @@ int main(void)
     run(false,0,0);run(true,0,0);run(true,2,0);run(false,-123,0);
     run(false,0,1);run(false,0,2);run(true,0,3);
     exit_process=true;run(false,0,0);
+    signal_roundtrips();
     priority_delete_race();
     SceKernelThreadMgr_finish();guest_tls_template_clear(&tls);
     puts("Module startup threads: return/exit status, main continuation, isolated TLS, events, joins and failure gating passed.");
