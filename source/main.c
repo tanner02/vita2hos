@@ -13,7 +13,7 @@
 #include <sys/stat.h>
 #include <time.h>
 
-#include "load.h"
+#include "load_process.h"
 #include "load_retry.h"
 #include "log.h"
 #include "module.h"
@@ -128,7 +128,7 @@ int main(int argc, char *argv[])
 {
     time_t now;
     char timestr[32];
-    LoadImage image = {0};
+    LoadProcess process = {0};
     void *entry;
     int ret;
     LoadRetryPacket previous_retry = read_layout_retry();
@@ -153,14 +153,15 @@ int main(int argc, char *argv[])
     strftime(timestr, sizeof(timestr), "%c", localtime(&now));
     LOG("Starting at %s", timestr);
 
-    ret = load_file(&image, VITA2HOS_EXE_FILE, &entry);
+    ret = load_process_load(&process, VITA2HOS_EXE_FILE, NULL, 0);
+    entry = process.entry;
     if (ret == LOAD_LAYOUT_CONFLICT) {
         u64 program_id = 0;
         LoadRetryPacket next;
         Result result = svcGetInfo(&program_id, InfoType_ProgramId, CUR_PROCESS_HANDLE, 0);
         LOG("Layout retry host program ID: 0x%016" PRIx64 ", query result 0x%x", program_id, result);
         if (R_SUCCEEDED(result) && appletGetAppletType() == AppletType_Application &&
-            load_retry_next(&previous_retry, image.source_tag, program_id, &next)) {
+            load_retry_next(&previous_retry, process.source_tag, program_id, &next)) {
             LOG("Restarting vita2hos for a compatible address layout: attempt %u/%u",
                 next.attempts, LOAD_LAYOUT_RETRY_LIMIT);
             result = appletRestartProgram(&next, sizeof(next));
@@ -168,12 +169,12 @@ int main(int argc, char *argv[])
             if (R_SUCCEEDED(result)) return 0;
         }
         LOG("Fixed-address layout unavailable; restart count %u, request result 0x%x",
-            load_retry_count(&previous_retry, image.source_tag), result);
+            load_retry_count(&previous_retry, process.source_tag), result);
         fatal_error("Could not reserve memory for the Vita program.",
                     "Relaunch vita2hos to try another layout. Details: /vita2hos/log.txt");
     }
     if (ret == 0) {
-        LOG("Compatible layout after %u restarts", load_retry_count(&previous_retry, image.source_tag));
+        LOG("Compatible layout after %u restarts", load_retry_count(&previous_retry, process.source_tag));
         LOG("Launching PlayStation Vita executable!");
 
         /* Jump to Vita's executable entrypoint */
@@ -182,8 +183,8 @@ int main(int argc, char *argv[])
         LOG("Returned from launch with result: %d", ret);
 
         /* Release guest code and data mappings after execution has stopped. */
-        ret = load_image_close(&image);
-        LOG("load_image_close() returned: 0x%x", ret);
+        ret = load_process_close(&process);
+        LOG("load_process_close() returned: 0x%x", ret);
     } else {
         fatal_error("Error loading PlayStation Vita executable.",
                     "Make sure to place it to '" VITA2HOS_EXE_FILE "'");

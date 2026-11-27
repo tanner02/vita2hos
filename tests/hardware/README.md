@@ -266,8 +266,8 @@ start, stop, and exit function addresses, without publishing those functions as
 ordinary library exports. Duplicate lifecycle functions are rejected. This is
 host-tested groundwork. The runtime registers the loaded image's public exports
 before binding imports, and removes them before releasing image mappings,
-including cleanup failures. The current loader still supports one process image;
-it does not yet discover, load, or start bundled SUPRX dependencies.
+including cleanup failures. The default launch still supplies only the main
+image; it does not yet discover or start bundled SUPRX dependencies.
 
 The loader also exposes explicit preparation, publication, and binding phases:
 `load_file_prepare` maps and relocates without resolving imports;
@@ -287,6 +287,16 @@ An exported lifecycle start takes precedence over the metadata offset. Main
 executables retain support for a valid entry at segment offset zero, and the
 single-executable `load_file` rejects an image with no entry. Lifecycle decoding
 does not invoke constructors or implement module-start/stop orchestration.
+
+`load_process_load` owns a main image and an explicit list of up to 32 module
+paths. It prepares all images, publishes every provider into a shared registry,
+and then binds all images. Failure rolls back in reverse image order; failed
+mapping cleanup retains the process owner for a later close attempt. The main
+executable fingerprint survives rollback for address-layout retries. The normal
+runtime launch now uses this process owner with an empty dependency list.
+Automated tests inject failures into preparation, publication, binding, and
+cleanup. This API does not infer module initialization order or call lifecycle
+functions, and no bundled commercial module has been executed on hardware.
 
 ### Experimental title-specific launch profile
 
