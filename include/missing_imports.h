@@ -9,7 +9,8 @@ extern "C" {
  * Zero means the bounded pool is full and the caller must use its old stub. */
 uintptr_t missing_import_bind(const void *owner,uint32_t library,uint32_t nid,uint32_t stub);
 void missing_import_release(const void *owner);
-int missing_import_report(unsigned index,uintptr_t return_address);
+int missing_import_report(unsigned index,uintptr_t return_address,
+                          uint32_t r0,uint32_t r1,uint32_t r2,uint32_t r3);
 uintptr_t missing_import_stub_address(unsigned index);
 #ifdef __cplusplus
 }

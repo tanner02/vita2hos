@@ -10,7 +10,7 @@
 typedef uint64_t (*Stub)(uint32_t,uint32_t,uint32_t,uint32_t);
 static pthread_mutex_t log_guard=PTHREAD_MUTEX_INITIALIZER;
 static atomic_uint reports;
-static char last_log[256];
+static char last_log[384];
 void log_printf(const char *format,...)
 {
     pthread_mutex_lock(&log_guard);va_list args;va_start(args,format);
@@ -34,6 +34,7 @@ int main(void)
     for(unsigned i=0;i<16;i++)assert(!pthread_create(&threads[i],NULL,worker,(void *)first));
     for(unsigned i=0;i<16;i++)assert(!pthread_join(threads[i],NULL));
     assert(reports==1 && strstr(last_log,"library=0x0000002a nid=0x00000063 stub=0x81001000 return_address=0x"));
+    assert(strstr(last_log,"r0=0x11111111 r1=0x22223333 r2=0x44444444 r3=0x55555555"));
     uintptr_t other=missing_import_bind(&b,42,99,0x81001000);assert(other && other!=first);
     check((Stub)other);assert(reports==2);
     missing_import_release(&a);check((Stub)first);assert(reports==2);
@@ -44,7 +45,7 @@ int main(void)
     assert(!missing_import_bind(&b,2,1234,0x82000000));
     missing_import_release(&a);assert(missing_import_bind(&b,2,1234,0x82000000));missing_import_release(&b);
     assert(!missing_import_bind(NULL,1,1,1));assert(!missing_import_stub_address(MISSING_IMPORT_SLOTS));
-    assert((uint32_t)missing_import_report(MISSING_IMPORT_SLOTS,0)==SCE_KERNEL_ERROR_MODULEMGR_NO_FUNC_NID);
+    assert((uint32_t)missing_import_report(MISSING_IMPORT_SLOTS,0,0,0,0,0)==SCE_KERNEL_ERROR_MODULEMGR_NO_FUNC_NID);
     assert(reports==3);
     puts("Missing import diagnostics: first-use logging, concurrent calls, legacy register-pair result, owner reuse and bounded exhaustion passed.");
 }

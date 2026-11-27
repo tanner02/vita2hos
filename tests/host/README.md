@@ -329,3 +329,9 @@ they do not simulate Horizon whole-process termination.
 Network host checks also call all six byte-order exports before initialization,
 checking literal wire bytes, unsigned boundaries, round trips and NID dispatch.
 These pure functions do not provide sockets, online authentication or callbacks.
+
+First-use missing-import records also capture raw r0-r3 bit patterns before
+logging. No guest pointers are dereferenced, stack arguments are not inspected,
+and register values are not interpreted as typed parameters. Reports retain
+optional first_argument_registers for new logs and accept older records without
+them. Unknown API return behavior remains the same (error r0, preserved r1).

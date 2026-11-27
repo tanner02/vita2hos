@@ -71,14 +71,16 @@ def report(log, libraries, symbols):
 CALL = re.compile(
     r"UNSUPPORTED_CALL kind=function library=(0x[0-9a-fA-F]{8}) "
     r"nid=(0x[0-9a-fA-F]{8}) stub=(0x[0-9a-fA-F]{8}) "
-    r"return_address=(0x[0-9a-fA-F]{8,16})\b")
+    r"return_address=(0x[0-9a-fA-F]{8,16})\b"
+    r"(?: r0=(0x[0-9a-fA-F]{8}) r1=(0x[0-9a-fA-F]{8})"
+    r" r2=(0x[0-9a-fA-F]{8}) r3=(0x[0-9a-fA-F]{8})\b)?")
 
 
 def called_imports(log, libraries, symbols):
     """First-use reports per import site; repeated log records are not calls."""
     sites = {}
     for match in CALL.finditer(log):
-        library, nid, stub, address = (int(value, 16) for value in match.groups())
+        library, nid, stub, address = (int(value, 16) for value in match.groups()[:4])
         key = library, nid, stub
         if key not in sites:
             sites[key] = {"library_nid": f"0x{library:08x}",
@@ -87,6 +89,9 @@ def called_imports(log, libraries, symbols):
                           "stub_address": f"0x{stub:08x}",
                           "first_return_address": f"0x{address:08x}",
                           "evidence": "runtime_first_use", "log_occurrences": 0}
+            if match.group(5) is not None:
+                sites[key]["first_argument_registers"] = {
+                    f"r{i}": value.lower() for i, value in enumerate(match.groups()[4:])}
         sites[key]["log_occurrences"] += 1
     return [sites[key] for key in sorted(sites)]
 

@@ -10,6 +10,17 @@ spec.loader.exec_module(module)
 
 
 class ReportTests(unittest.TestCase):
+    def test_argument_registers_are_optional_and_first_use_only(self):
+        prefix = ("UNSUPPORTED_CALL kind=function library=0x12345678 "
+                  "nid=0x11111111 stub=0x81000000 return_address=0x81002001")
+        registers = " r0=0xABCDEF01 r1=0x22223333 r2=0x44444444 r3=0x55555555"
+        rows = module.called_imports(prefix + registers + "\n" + prefix + "\n", {}, {})
+        self.assertEqual(rows[0]["first_argument_registers"], {
+            "r0": "0xabcdef01", "r1": "0x22223333", "r2": "0x44444444", "r3": "0x55555555"})
+        self.assertEqual(rows[0]["log_occurrences"], 2)
+        rows = module.called_imports(prefix + "\n" + prefix + registers + "\n", {}, {})
+        self.assertNotIn("first_argument_registers", rows[0])
+
     def test_legacy_context_switch_orphans_and_variables(self):
         rows = module.report(
             "Could not resolve NID 0x11111111, export not found!\n"
