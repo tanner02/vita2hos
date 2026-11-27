@@ -14,7 +14,23 @@
 static _Thread_local void *current_tls;
 static _Thread_local uintptr_t current_tp;
 static atomic_int entries, exits, main_calls, joins, creates;
-static atomic_int fail_create, fail_start, fail_wait;
+static atomic_int fail_create, fail_start, fail_wait, fail_query, fail_mask, closes;
+static VitaThreadInfo *pending_native_info;
+Result svcGetInfo(u64 *value,u32 type,Handle handle,u64 sub_id)
+{
+    assert(type==InfoType_CoreMask && handle==CUR_PROCESS_HANDLE && !sub_id);
+    *value=7;return atomic_exchange(&fail_query,0) ? 1 : 0;
+}
+Result svcSetThreadCoreMask(uint32_t handle,int32_t cpu,uint32_t mask)
+{
+    VitaThreadInfo *info=pending_native_info;
+    assert(info && handle==info->thread.handle && !info->thread.started);
+    assert(!vita_thread_info_dict_get(g_vita_thread_infos,info->uid));
+    unsigned expected=info->affinity_mask ? (unsigned)info->affinity_mask>>16 : 7;
+    assert(mask==expected && cpu>=0 && (mask&(1U<<cpu)));
+    for(int core=0;core<cpu;++core)assert(!(mask&(1U<<core)));
+    return atomic_exchange(&fail_mask,0) ? 1 : 0;
+}
 static bool explicit_exit;
 static int module_status;
 static atomic_bool process_exit;
@@ -39,10 +55,11 @@ static void *native_entry(void *arg)
 Result threadCreate(Thread *thread,void (*entry)(void *),void *arg,void *stack,
                     size_t size,int priority,int cpu)
 {
-    (void)stack;(void)cpu;
+    (void)stack;assert(cpu>=0 && cpu<3);
     if (atomic_exchange(&fail_create,0)) return 1;
     assert(size==256*1024 && priority==vita_priority_to_hos_priority(100));
-    *thread=(Thread){.entry=entry,.argument=arg};atomic_fetch_add(&creates,1);return 0;
+    *thread=(Thread){.entry=entry,.argument=arg,.handle=0x1234};
+    pending_native_info=arg;atomic_fetch_add(&creates,1);return 0;
 }
 Result threadStart(Thread *thread)
 {
@@ -53,7 +70,7 @@ Result threadStart(Thread *thread)
 }
 Result threadClose(Thread *thread)
 {
-    assert(!thread->started || thread->joined);return 0;
+    assert(!thread->started || thread->joined);atomic_fetch_add(&closes,1);return 0;
 }
 Result waitSingle(Waiter waiter,uint64_t ns)
 {
@@ -137,7 +154,7 @@ static void run(bool exit_call,int status,int injected)
 {
     explicit_exit=exit_call;module_status=status;atomic_store(&process_exit,false);
     atomic_store(&entries,0);atomic_store(&exits,0);atomic_store(&main_calls,0);
-    atomic_store(&creates,0);atomic_store(&joins,0);
+    atomic_store(&creates,0);atomic_store(&joins,0);atomic_store(&closes,0);
     LoadImage images[3]={{.bound=true},{.bound=true},{.bound=true}};
     images[1].lifecycle.start=dependency;images[2].lifecycle.start=dependency;
     LoadProcess process={.images=images,.count=3,.bound=true,.entry=guest_main},*ptr=&process;
@@ -145,6 +162,7 @@ static void run(bool exit_call,int status,int injected)
     /* The parent has already been created; inject a dependency-stage failure. */
     atomic_store(&fail_create,injected==1);atomic_store(&fail_start,injected==2);
     atomic_store(&fail_wait,injected==3);
+    atomic_store(&fail_query,injected==4);atomic_store(&fail_mask,injected==5);
     /* Bypass the injection for the parent's own start and join. */
     VitaThreadInfo *parent=get_thread_info_for_uid(parent_uid);
     parent->argp=malloc(sizeof(ptr));assert(parent->argp);memcpy(parent->argp,&ptr,sizeof(ptr));
@@ -152,15 +170,17 @@ static void run(bool exit_call,int status,int injected)
     assert(!pthread_create(&parent->thread.native,NULL,native_entry,&parent->thread));
     parent->thread.started=true;
     assert(!pthread_join(parent->thread.native,NULL));parent->thread.joined=true;
-    bool success=!status && injected!=1 && injected!=2 && !exit_process;
+    bool failed_creation=injected==1 || injected==2 || injected==4 || injected==5;
+    bool success=!status && !failed_creation && !exit_process;
     assert(parent->return_status==(exit_process ? 77 : (success ? 123 : (int)SCE_KERNEL_ERROR_MODULEMGR_START_FAILED)));
     assert(atomic_load(&main_calls)==(success ? 1 : 0));
     assert(process.modules_started==(success ? 2u : 0u));
-    int children=(injected==1 || injected==2) ? 0 : ((status || exit_process) ? 1 : 2);
+    int children=failed_creation ? 0 : ((status || exit_process) ? 1 : 2);
     assert(atomic_load(&entries)==children+1 && atomic_load(&exits)==children+1);
     assert(atomic_load(&joins)==children);
-    assert(atomic_load(&creates)==1+children+(injected==2));
+    assert(atomic_load(&creates)==1+children+(injected==2 || injected==5));
     assert(!sceKernelDeleteThread(parent_uid));
+    assert(atomic_load(&closes)==atomic_load(&creates));
     assert(vita_thread_info_dict_size(g_vita_thread_infos)==0);
 }
 static atomic_uint priority_successes;
@@ -296,7 +316,7 @@ int main(void)
     assert(thread_events_register("events",VITA_THREAD_EVENT_PROCESS_ALL,
            VITA_THREAD_EVENT_START|VITA_THREAD_EVENT_EXIT,event,NULL)>0);
     run(false,0,0);run(true,0,0);run(true,2,0);run(false,-123,0);
-    run(false,0,1);run(false,0,2);run(true,0,3);
+    run(false,0,1);run(false,0,2);run(true,0,3);run(false,0,4);run(false,0,5);
     exit_process=true;run(false,0,0);
     signal_roundtrips();
     priority_delete_race();

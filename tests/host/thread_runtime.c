@@ -1,11 +1,15 @@
 #define TEST_THREAD_RUNTIME
+#define TEST_FIXED_MEMORY
 #include <setjmp.h>
 #include <assert.h>
 #include <stdio.h>
 
 #include "../../source/guest_tls.c"
 #include "../../source/thread_events.c"
+static void track_thread_free(void *pointer);
+#define free track_thread_free
 #include "../../source/modules/SceKernelThreadMgr.c"
+#undef free
 #include "../../source/module.c"
 DECLARE_LIBRARY(SceLibKernel,0xcae9ace6);
 
@@ -23,7 +27,35 @@ static unsigned tp_exchanges;
 static bool expect_guest_tp;
 static size_t last_stack;
 static int last_priority;
-static unsigned create_calls;
+static unsigned create_calls, close_calls, start_calls, mask_calls, query_calls;
+static u64 allowed_cores=7;
+static Result query_result, mask_result;
+static int last_cpu, mask_cpu;
+static u32 last_mask;
+static VitaThreadInfo *native_info;
+static void *failed_info, *failed_tls;
+static unsigned failed_info_frees, failed_tls_frees;
+static void track_thread_free(void *pointer)
+{
+    if (pointer && pointer==failed_info) ++failed_info_frees;
+    if (pointer && pointer==failed_tls) ++failed_tls_frees;
+    free(pointer);
+}
+Result svcGetInfo(u64 *value,u32 type,Handle handle,u64 sub_id)
+{
+    assert(type==InfoType_CoreMask && handle==CUR_PROCESS_HANDLE && !sub_id);
+    ++query_calls;*value=allowed_cores;return query_result;
+}
+Result svcSetThreadCoreMask(uint32_t handle,int32_t cpu,uint32_t mask)
+{
+    assert(handle==0x1234 && native_info && !atomic_load(&native_info->started));
+    assert(!vita_thread_info_dict_get(g_vita_thread_infos,native_info->uid));
+    assert(cpu==last_cpu && mask && (mask&(1U<<cpu)));
+    for(int core=0;core<cpu;++core) assert(!(mask&(1U<<core)));
+    ++mask_calls;mask_cpu=cpu;last_mask=mask;
+    if(mask_result) {failed_info=native_info;failed_tls=native_info->vita_tls;}
+    return mask_result;
+}
 static int event_calls[8],event_count;
 static bool exit_in_start,exit_in_end;
 static int event_callback(SceInt32 type,SceUID uid,SceInt32 arg,void *common)
@@ -48,7 +80,7 @@ bool SceLibKernel_process_exit_requested(void) { return false; }
 Result threadCreate(Thread *thread, void (*entry)(void *), void *arg, void *stack,
                     size_t size, int priority, int cpu)
 {
-    (void)stack; (void)cpu;
+    (void)stack;last_cpu=cpu;native_info=arg;
     last_stack=size;last_priority=priority;++create_calls;
     thread->handle = 0x1234;
     thread->stack_mirror=(void *)(uintptr_t)0x90000000;thread->stack_sz=size;
@@ -56,8 +88,8 @@ Result threadCreate(Thread *thread, void (*entry)(void *), void *arg, void *stac
     thread->argument = arg;
     return 0;
 }
-Result threadStart(Thread *thread) { (void)thread; return start_result; }
-Result threadClose(Thread *thread) { (void)thread; return 0; }
+Result threadStart(Thread *thread) { (void)thread; ++start_calls;return start_result; }
+Result threadClose(Thread *thread) { assert(thread->handle==0x1234);++close_calls;return 0; }
 int threadTlsAlloc(void (*destructor)(void *)) { (void)destructor; return 1; }
 void threadTlsFree(int slot) { (void)slot; }
 void threadTlsSet(int slot, void *value) { (void)slot; tls_value = value; }
@@ -291,11 +323,55 @@ int main(void)
     threadTlsSet(g_vita_thread_info_tls_slot_id,NULL);assert(!sceKernelDeleteThread(uid));
     assert((uint32_t)sceKernelGetThreadCpuAffinityMask(uid)==SCE_KERNEL_ERROR_UNKNOWN_THREAD_ID);
     uid=create_thread("default affinity",entry,160,4096);assert(uid>0);
+    info=get_thread_info_for_uid(uid);
+    assert(!info->affinity_mask && !info->vita_tls[9]);
+    assert(last_mask==7 && last_cpu==0 && mask_cpu==0);
     assert(_sceKernelGetThreadCpuAffinityMask(uid)==SCE_KERNEL_CPU_MASK_USER_ALL);assert(!sceKernelDeleteThread(uid));
     for(unsigned mask=1;mask<8;++mask) {
+        unsigned queried=query_calls,configured=mask_calls;
         uid=sceKernelCreateThread("mask combinations",entry,160,4096,0,(int)(mask<<16),NULL);assert(uid>0);
+        info=get_thread_info_for_uid(uid);
+        assert(info->affinity_mask==(int)(mask<<16) && info->vita_tls[9]==mask<<16);
+        assert(query_calls==queried+1 && mask_calls==configured+1 && last_mask==mask);
         assert(sceKernelGetThreadCpuAffinityMask(uid)==(int)(mask<<16));assert(!sceKernelDeleteThread(uid));
     }
+    /* Defaults intersect native permissions, while explicit masks must fit in full. */
+    for(unsigned allowed=1;allowed<8;++allowed) {
+        allowed_cores=allowed | UINT64_C(0x100000008);
+        uid=create_thread("restricted default",entry,160,4096);assert(uid>0);
+        assert(last_mask==allowed);
+        info=get_thread_info_for_uid(uid);assert(!info->affinity_mask && !info->vita_tls[9]);
+        assert(sceKernelGetThreadCpuAffinityMask(uid)==SCE_KERNEL_CPU_MASK_USER_ALL);
+        assert(!sceKernelDeleteThread(uid));
+        for(unsigned mask=1;mask<8;++mask) {
+            unsigned before=create_calls,configured=mask_calls;
+            uid=sceKernelCreateThread("restricted explicit",entry,160,4096,0,(int)(mask<<16),NULL);
+            if((mask&allowed)==mask) {
+                assert(uid>0 && create_calls==before+1 && last_mask==mask);
+                assert(sceKernelGetThreadCpuAffinityMask(uid)==(int)(mask<<16));
+                assert(!sceKernelDeleteThread(uid));
+            } else {
+                assert((uint32_t)uid==SCE_KERNEL_ERROR_ILLEGAL_CPU_AFFINITY_MASK);
+                assert(create_calls==before && mask_calls==configured);
+            }
+            assert(!vita_thread_info_dict_size(g_vita_thread_infos));
+        }
+    }
+    unsigned before=create_calls,configured=mask_calls,closed=close_calls,started=start_calls;
+    allowed_cores=8; /* Native system cores cannot satisfy a guest user mask. */
+    assert((uint32_t)create_thread("no user cores",entry,160,4096)==SCE_KERNEL_ERROR_ILLEGAL_CPU_AFFINITY_MASK);
+    assert((uint32_t)sceKernelCreateThread("no explicit user core",entry,160,4096,0,SCE_KERNEL_CPU_MASK_USER_1,NULL)==SCE_KERNEL_ERROR_ILLEGAL_CPU_AFFINITY_MASK);
+    allowed_cores=7;query_result=1;
+    assert((uint32_t)create_thread("query failure",entry,160,4096)==SCE_KERNEL_ERROR_THREAD_ERROR);
+    query_result=0;
+    assert(create_calls==before && mask_calls==configured && close_calls==closed && start_calls==started);
+    mask_result=1;
+    assert((uint32_t)create_thread("mask failure",entry,160,4096)==SCE_KERNEL_ERROR_THREAD_ERROR);
+    assert(create_calls==before+1 && mask_calls==configured+1 && close_calls==closed+1 && start_calls==started);
+    assert(failed_info_frees==1 && failed_tls_frees==1);
+    assert(!vita_thread_info_dict_size(g_vita_thread_infos));
+    failed_info=failed_tls=NULL;mask_result=0;
+    uid=create_thread("after mask failure",entry,160,4096);assert(uid>0);assert(!sceKernelDeleteThread(uid));
     assert((uint32_t)sceKernelCreateThread("system affinity",entry,160,4096,0,0x80000,NULL)==SCE_KERNEL_ERROR_ILLEGAL_CPU_AFFINITY_MASK);
     assert(module_get_func_export(0x859a24b1,0xF1AE5654));
     assert(SceKernelThreadMgr_finish()==0);

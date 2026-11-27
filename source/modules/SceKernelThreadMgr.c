@@ -106,6 +106,26 @@ static SceUID create_thread_with_affinity(const char *name, SceKernelThreadEntry
     if (!name || !entry)
         return SCE_KERNEL_ERROR_ILLEGAL_ADDR;
 
+    /* Guest user-core bits map to the three application cores. Resolve the
+     * native process permissions before allocating or publishing a thread;
+     * an hbloader host can expose fewer cores than our standalone title. */
+    u64 allowed_cores = 0;
+    res = svcGetInfo(&allowed_cores, InfoType_CoreMask, CUR_PROCESS_HANDLE, 0);
+    if (R_FAILED(res))
+        return SCE_KERNEL_ERROR_THREAD_ERROR;
+    u32 native_mask = (u32)(allowed_cores & 7);
+    if (affinity) {
+        u32 requested = (u32)affinity >> 16;
+        if ((requested & native_mask) != requested)
+            return SCE_KERNEL_ERROR_ILLEGAL_CPU_AFFINITY_MASK;
+        native_mask = requested;
+    }
+    if (!native_mask)
+        return SCE_KERNEL_ERROR_ILLEGAL_CPU_AFFINITY_MASK;
+    int preferred_core = 0;
+    while (!(native_mask & (1U << preferred_core)))
+        ++preferred_core;
+
     rwlockWriteLock(&g_vita_thread_infos_lock);
     if(g_thread_shutdown) {
         rwlockWriteUnlock(&g_vita_thread_infos_lock);
@@ -140,7 +160,8 @@ static SceUID create_thread_with_affinity(const char *name, SceKernelThreadEntry
     ti->vita_tls[9] = affinity; /* Pinned guest kernel TLS affinity slot. */
     ti->vita_tls[8] = atomic_load(&ti->priority); /* Pinned kernel TLS priority slot. */
 
-    res = threadCreate(&ti->thread, thread_entry_wrapper, ti, NULL, stackSize, priority, -2);
+    res = threadCreate(&ti->thread, thread_entry_wrapper, ti, NULL, stackSize, priority,
+                       preferred_core);
     if (R_FAILED(res)) {
         LOG("Error creating thread: 0x%" PRIx32, res);
         free(ti->vita_tls);
@@ -149,7 +170,18 @@ static SceUID create_thread_with_affinity(const char *name, SceKernelThreadEntry
         return SCE_KERNEL_ERROR_THREAD_ERROR;
     }
 
-    LOG("Created thread \"%s\", thid: 0x%x", name, ti->uid);
+    res = svcSetThreadCoreMask(ti->thread.handle, preferred_core, native_mask);
+    if (R_FAILED(res)) {
+        LOG("Error configuring thread core mask 0x%x: 0x%" PRIx32, native_mask, res);
+        threadClose(&ti->thread);
+        free(ti->vita_tls);
+        free(ti);
+        rwlockWriteUnlock(&g_vita_thread_infos_lock);
+        return SCE_KERNEL_ERROR_THREAD_ERROR;
+    }
+
+    LOG("Created thread \"%s\", thid: 0x%x, native core=%d mask=0x%x",
+        name, ti->uid, preferred_core, native_mask);
 #ifdef __SWITCH__
     /* Atmosphere reports the native kernel ID, not the guest UID above.
      * Record the relation before starting the thread so an immediate crash

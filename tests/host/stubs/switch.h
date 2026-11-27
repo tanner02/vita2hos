@@ -92,6 +92,7 @@ Result threadCreate(Thread *, void (*)(void *), void *, void *, size_t, int, int
 Result threadStart(Thread *);
 Result threadClose(Thread *);
 Result svcSetThreadPriority(uint32_t, uint32_t);
+Result svcSetThreadCoreMask(uint32_t, int32_t, uint32_t);
 int threadTlsAlloc(void (*)(void *));
 void threadTlsFree(int);
 void threadTlsSet(int, void *);
@@ -123,6 +124,7 @@ typedef struct { int unused; } Jit;
 #define MAKERESULT(module, description) ((Result)(((description) << 9) | (module)))
 enum { Module_Libnx = 345, LibnxError_BadInput = 11, LibnxError_JitUnavailable = 35,
        LibnxError_OutOfMemory = 2, LibnxError_AlreadyMapped = 3,
+       InfoType_CoreMask = 0,
        InfoType_AliasRegionAddress = 2, InfoType_AliasRegionSize = 3,
        InfoType_HeapRegionAddress = 4, InfoType_HeapRegionSize = 5,
        MemType_Unmapped = 0, Perm_Rw = 3, Perm_Rx = 5,

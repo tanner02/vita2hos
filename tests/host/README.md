@@ -173,10 +173,16 @@ CPU-affinity queries now retain validated guest creation masks, publish the raw
 mask in TLS word 9 and thread-info snapshots, and resolve mask zero to USER_ALL
 for the query, following the pinned reference. Dependency startup threads inherit
 the parent's configured guest mask. Tests cover explicit/default/self/deleted
-UID queries, invalid masks, snapshots, TLS and dependency inheritance. This is
-guest metadata only: native threadCreate still uses Horizon's default affinity.
-No native core pinning or change-affinity API is implemented by this change;
-processor identity and firmware edge cases remain unverified.
+UID queries, invalid masks, snapshots, TLS and dependency inheritance.
+Native creation also maps guest user-core bits 16..18 to
+Horizon application cores 0..2. It queries the host process's allowed core mask,
+resolves a default mask to its available user cores, and rejects explicit masks
+the host cannot provide. The lowest permitted core is preferred at creation;
+the complete native mask is applied before the thread is published or started.
+Native query/configuration failures return a guest error, with dormant-thread
+cleanup on configuration failure. The raw guest mask remains in TLS/info.
+Change-affinity APIs, processor identity and firmware edge cases remain
+unverified; this does not claim a measured performance improvement.
 
 Power-tick checks resolve the Processmgr NID and verify one-shot Horizon user
 activity reports for DEFAULT, translated native failures, and no native activity
