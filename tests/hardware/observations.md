@@ -1,3 +1,9 @@
+## 2026-11-27: LittleBigPlanet network startup on d921c27 - initialization success
+
+The collected versioned log shows NET module load, sceNetInit and sceNetCtlInit returning zero. Repeated initialization returns EBUSY and NOT_TERMINATED respectively. Several later sysmodule requests return explicit FATAL errors. The executable creates job-manager worker records and reaches missing NP identity, AppUtil and trophy functions. It then performs libc termination and exits zero with image close zero. Created thread records do not by themselves establish that those workers ran. No rendering or game boot is verified.
+
+Private static inspection shows AppUtilInit's return is ignored at this call site; a negative sceNpTrophyInit return takes a startup-failure branch. The next source change implements trophy-library and operation-handle lifetime, not trophy contexts, unlocks or a PSN identity. Hardware validation remains pending. Evidence was collected privately in result-20261127-144729. No proprietary bytes or disassembly are included here.
+
 ## 2026-11-27: LittleBigPlanet main entry after module-query fix ee2e65e
 
 Installed runtime ee2e65e passed the earlier TLS-registration gate and created the executable's bringup thread. First-use records identify sceSysmoduleLoadModule, sceNetInit, sceNetCtlInit, sceNetCtlTerm and sceNetTerm, followed by libc termination handlers. The process exits zero and image close returns zero, but the user observes no visuals. This is startup progress, not a game boot. It also confirms that removing the output-size precondition in the address query moved execution past the preceding abort path.

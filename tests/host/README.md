@@ -217,7 +217,7 @@ sysmodule loads, and process cleanup. NET module load tracks the available HLE
 provider; it does not claim a complete Vita socket/resolver implementation.
 The caller pool is validated but not used as Horizon BSD backing memory; native
 socket buffers remain bootstrap-owned. Guest termination never closes netlog's
-shared native socket device. Only NET is loadable; other public module IDs fail
+shared native socket device. NET and the separate NP_TROPHY lifecycle provider are loadable; other public module IDs fail
 with FATAL and remain unloaded. Unload while NET/NetCtl is active is rejected
 rather than invalidating live services; exact firmware unload policy is unverified.
 No callbacks, adhoc mode, Vita sockets/resolvers, network info or native connection
@@ -235,3 +235,13 @@ calls Horizon ExitProcess directly, leaving shared resources intact for process
 reclamation. That native exit branch remains unverified on hardware. This does
 not add cooperative cancellation, stop guest workers individually, or claim to
 free every unused dormant-thread allocation before the Horizon process ends.
+
+Trophy-library tests cover init/term, allocation failure, reserved-option rejection,
+64 owned operation handles, UID isolation across slot reuse and reinitialization,
+recorded abort state, concurrent create/abort/destroy, provider load state and
+unload rejection while initialized. Trophy init allocates its operation registry;
+it does not establish a PSN identity or claim a trophy context exists. Contexts,
+TRP metadata/progress, icons, unlocks and synchronization remain unsupported.
+The 64-handle cap, non-null-option rejection and active-provider unload policy
+are explicit local limits, not firmware-verified behavior. Abort currently marks
+handle state; no asynchronous trophy operation is implemented or cancelled.

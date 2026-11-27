@@ -87,6 +87,8 @@ add_executable(vita2hos
     source/missing_imports.c
     source/missing_import_stubs.cpp
     source/load_module_info.c
+    source/modules/SceNpTrophy.c
+    source/modules/SceSysmodule.c
     source/modules/SceNet.c
     source/modules/SceModulemgr.c
     source/modules/SceRtc.c

@@ -24,6 +24,8 @@
 
 #include "modules/SceCtrl.h"
 #include "modules/SceNet.h"
+#include "modules/SceNpTrophy.h"
+#include "modules/SceSysmodule.h"
 #include "modules/SceDisplay.h"
 #include "modules/SceGxm.h"
 #include "modules/SceKernelThreadMgr.h"
@@ -143,6 +145,8 @@ static int launch(LoadProcess *process)
 
 done:
     SceNet_finish();
+    SceNpTrophy_finish();
+    SceSysmodule_finish();
     if (processmgr_initialized) SceProcessmgr_finish();
     if (modulemgr_initialized) SceModulemgr_finish();
     return ret;

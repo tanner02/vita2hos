@@ -14,7 +14,9 @@ static void nifmExit(void){released++;}
 static Result nifmGetInternetConnectionStatus(NifmInternetConnectionType *type,uint32_t *strength,NifmInternetConnectionStatus *status)
 {queries++;*type=NifmInternetConnectionType_WiFi;*strength=3;*status=(NifmInternetConnectionStatus)native_status;return query_failure;}
 #include "../../source/modules/SceNet.c"
+#include "../../source/modules/SceSysmodule.c"
 #include "../../source/module.c"
+bool SceNpTrophy_is_initialized(void){return false;}
 void log_printf(const char *format,...){(void)format;}
 int main(void)
 {
@@ -53,7 +55,7 @@ int main(void)
     assert(!sceSysmoduleUnloadModule(SCE_SYSMODULE_NET));
     assert(sceSysmoduleUnloadModule(SCE_SYSMODULE_NET)==(int)SCE_SYSMODULE_ERROR_UNLOADED);
     assert(!sceNetInit(&param));assert(!sceNetCtlInit());assert(!sceSysmoduleLoadModule(SCE_SYSMODULE_NET));
-    SceNet_finish();assert(!net_initialized && !ctl_initialized && !net_module_loaded && host_ready && released==2);
+    SceNet_finish();SceSysmodule_finish();assert(!net_initialized && !ctl_initialized && !net_module_loaded && host_ready && released==2);
     SceNet_finish();assert(released==2);
     assert(module_get_func_export(0x6bf8b2a2,0xeb03e265));
     assert(module_get_func_export(0xc6083ae1,0x495ca1db));

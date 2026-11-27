@@ -2,7 +2,6 @@
 #include <switch.h>
 #include <psp2/net/net.h>
 #include <psp2/net/netctl.h>
-#include <psp2/sysmodule.h>
 #include "modules/SceNet.h"
 #include "module.h"
 #include "log.h"
@@ -14,15 +13,19 @@
 #define CTL_INVALID_ADDR ((int)0x80412107)
 #define CTL_UNKNOWN_DEVICE ((int)0x80412188)
 static Mutex net_lock;
-static bool host_ready,net_initialized,ctl_initialized,net_module_loaded;
+static bool host_ready,net_initialized,ctl_initialized;
 
 void SceNet_set_host_ready(bool ready)
 { mutexLock(&net_lock);host_ready=ready;mutexUnlock(&net_lock); }
+bool SceNet_host_ready(void)
+{mutexLock(&net_lock);bool ready=host_ready;mutexUnlock(&net_lock);return ready;}
+bool SceNet_is_initialized(void)
+{mutexLock(&net_lock);bool active=net_initialized || ctl_initialized;mutexUnlock(&net_lock);return active;}
 void SceNet_finish(void)
 {
     mutexLock(&net_lock);
     if(ctl_initialized)nifmExit();
-    ctl_initialized=false;net_initialized=false;net_module_loaded=false;
+    ctl_initialized=false;net_initialized=false;
     mutexUnlock(&net_lock);
 }
 EXPORT(SceNet,0xEB03E265,int,sceNetInit,SceNetInitParam *param)
@@ -86,39 +89,5 @@ EXPORT(SceNetCtl,0x6D26AC68,int,sceNetCtlInetGetState,int *state)
     mutexUnlock(&net_lock);
     return result;
 }
-static bool valid_module(SceSysmoduleModuleId id)
-{ return (unsigned)id>=1 && (unsigned)id<=(unsigned)SCE_SYSMODULE_JSON; }
-EXPORT(SceSysmodule,0x79A0160A,int,sceSysmoduleLoadModule,SceSysmoduleModuleId id)
-{
-    if(!valid_module(id))return (int)SCE_SYSMODULE_ERROR_INVALID_VALUE;
-    mutexLock(&net_lock);
-    int result=(int)SCE_SYSMODULE_ERROR_FATAL;
-    if(id==SCE_SYSMODULE_NET && host_ready){net_module_loaded=true;result=0;}
-    mutexUnlock(&net_lock);
-    LOG("sceSysmoduleLoadModule id=0x%x result=0x%x",(unsigned)id,result);
-    return result;
-}
-EXPORT(SceSysmodule,0x53099B7A,int,sceSysmoduleIsLoaded,SceSysmoduleModuleId id)
-{
-    if(!valid_module(id))return (int)SCE_SYSMODULE_ERROR_INVALID_VALUE;
-    mutexLock(&net_lock);
-    int result=id==SCE_SYSMODULE_NET && net_module_loaded ? 0 : (int)SCE_SYSMODULE_ERROR_UNLOADED;
-    mutexUnlock(&net_lock);
-    return result;
-}
-EXPORT(SceSysmodule,0x31D87805,int,sceSysmoduleUnloadModule,SceSysmoduleModuleId id)
-{
-    if(!valid_module(id))return (int)SCE_SYSMODULE_ERROR_INVALID_VALUE;
-    mutexLock(&net_lock);
-    int result=(int)SCE_SYSMODULE_ERROR_UNLOADED;
-    if(id==SCE_SYSMODULE_NET && net_module_loaded) {
-        /* Do not remove a live provider out from under guest users. */
-        if(net_initialized || ctl_initialized)result=(int)SCE_SYSMODULE_ERROR_FATAL;
-        else {net_module_loaded=false;result=0;}
-    }
-    mutexUnlock(&net_lock);
-    return result;
-}
 DECLARE_LIBRARY(SceNet,0x6BF8B2A2);
 DECLARE_LIBRARY(SceNetCtl,0xC6083AE1);
-DECLARE_LIBRARY(SceSysmodule,0x03FCF19D);
