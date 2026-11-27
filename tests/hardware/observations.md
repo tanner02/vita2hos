@@ -334,6 +334,26 @@
   sequential reads with positioned reads/writes on the same handle. Async
   Pread/Pwrite remain unimplemented. No FIOS or game execution is established.
 
+## Host lightweight conditions after a5a6f54
+
+- Added six public SceLibKernel LwCond imports using the pinned VitaSDK
+  signatures/NIDs. The work area is 16 bytes, with a UID in the first word;
+  native queues and mutex ownership stay outside guest memory.
+- Waiter insertion and release of one associated mutex count share the mutex
+  backend's lock. Signals select one FIFO/priority waiter, all waiters, or a
+  pending target UID. Signals without a pending waiter are not retained.
+- Signaled waits reacquire one mutex count with the remaining original timeout.
+  Error/timeout returns leave that count released. These count/timeout rules
+  follow pinned Vita3K 1387f8558d909e8fe05138b1a4e3aba4fe2b0e95
+  `kernel/src/sync_primitives.cpp`; hardware equivalence remains unverified.
+- Condition/mutex deletion wakes affected waiters with distinct errors. Retained
+  object references prevent reused work areas from changing old waits, including
+  waiters already reacquiring their mutex. Host ASan/UBSan tests cover queue
+  order, broadcast, targeted signals, timeout in either phase, recursive counts,
+  deletion/reuse, and the existing mutex behavior. Callback waits, condition info,
+  thread cancellation, priority inheritance and exact invalid-target error
+  behavior remain unfinished. No hardware files were changed.
+
 ## Runtime 15d400f48e5d3a3f5d811e2a67bd30a1388cc102
 
 - Standalone HOME title, owned fixed-address CPU probe SHA-256

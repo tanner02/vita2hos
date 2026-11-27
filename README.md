@@ -81,6 +81,15 @@ work areas contain owner/count/attribute/UID fields, rather than a native Switch
 mutex. Ceiling attributes, priority inheritance, callback-aware waits, and mutex
 information queries are not implemented.
 
+Lightweight condition imports support FIFO/priority signal-one, broadcast,
+targeted signals, timed waits, and deletion. Waiters atomically release one
+associated mutex count; a successful signal reacquires it using the remaining
+timeout. Error returns leave it released. Those count/timeout rules follow the
+pinned Vita3K reference and still need hardware validation. Retained object
+references protect waits across condition/mutex deletion and work-area reuse.
+Callback-aware waits, condition information queries, and thread cancellation
+remain unfinished.
+
 The kernel system clock reports monotonic microseconds. Process-time imports
 report elapsed microseconds from runtime module initialization, before guest
 threads start; the Low variant returns the low 32 bits. These clocks do not
