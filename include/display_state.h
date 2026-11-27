@@ -12,5 +12,6 @@ bool display_state_snapshot(SceDisplayFrameBuf *framebuffer);
 int display_state_set(const SceDisplayFrameBuf *framebuffer, SceDisplaySetBufSync sync);
 int display_state_get(SceDisplayFrameBuf *framebuffer, SceDisplaySetBufSync sync);
 int display_state_wait(bool since_set);
+int display_state_wait_set_multi(unsigned int periods);
 
 #endif

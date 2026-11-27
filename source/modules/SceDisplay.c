@@ -174,6 +174,11 @@ EXPORT(SceDisplay, 0x9423560C, int, sceDisplayWaitSetFrameBuf, void)
     return display_state_wait(true);
 }
 
+EXPORT(SceDisplay, 0x7D9864A8, int, sceDisplayWaitSetFrameBufMulti, unsigned int vcount)
+{
+    return display_state_wait_set_multi(vcount);
+}
+
 DECLARE_LIBRARY(SceDisplay, 0x5ed8f994);
 DECLARE_LIBRARY(SceDisplayUser, 0x4faacd11);
 

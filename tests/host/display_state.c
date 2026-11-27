@@ -14,11 +14,11 @@ static Result observed_wait(CondVar *condition, Mutex *mutex, uint64_t ns)
     atomic_fetch_add(&waits, 1);
     return condvarWaitTimeout(condition, mutex, ns);
 }
-typedef struct { bool since_set; int result; atomic_bool done; } Waiter;
+typedef struct { bool since_set; unsigned int periods; int result; atomic_bool done; } Waiter;
 static void *waiter(void *argument)
 {
     Waiter *w = argument;
-    w->result = display_state_wait(w->since_set);
+    w->result = w->since_set ? display_state_wait_set_multi(w->periods) : display_state_wait(false);
     atomic_store(&w->done, true);
     return NULL;
 }
@@ -29,9 +29,9 @@ static void wait_until_blocked(unsigned target)
     /* Crossing the state lock proves the waiter reached the actual wait. */
     mutexLock(&g_lock); mutexUnlock(&g_lock);
 }
-static pthread_t start_wait(Waiter *w, bool since_set)
+static pthread_t start_wait_count(Waiter *w, bool since_set, unsigned int periods)
 {
-    *w = (Waiter){ .since_set = since_set, .result = 123 };
+    *w = (Waiter){ .since_set = since_set, .periods = periods, .result = 123 };
     unsigned target = atomic_load(&waits) + 1;
     pthread_t thread;
     assert(pthread_create(&thread, NULL, waiter, w) == 0);
@@ -39,6 +39,8 @@ static pthread_t start_wait(Waiter *w, bool since_set)
     assert(!atomic_load(&w->done));
     return thread;
 }
+static pthread_t start_wait(Waiter *w, bool since_set)
+{ return start_wait_count(w, since_set, 1); }
 static void finish_wait(pthread_t thread, Waiter *w, int result)
 {
     assert(pthread_join(thread, NULL) == 0);
@@ -58,6 +60,7 @@ int main(void)
 {
     assert(display_state_wait(false) == (int)SCE_DISPLAY_ERROR_NO_PIXEL_DATA);
     display_state_start();
+    assert(display_state_wait_set_multi(0) == 0);
     Waiter first, second;
     pthread_t a = start_wait(&first, false), b = start_wait(&second, true);
     unsigned target = atomic_load(&waits) + 2;
@@ -79,6 +82,32 @@ int main(void)
     assert(memcmp(&out, &fb, sizeof(out)) == 0);
     assert(!atomic_load(&first.done));
     display_state_tick(); finish_wait(a, &first, 0);
+
+    /* Count from the framebuffer submission, with no extra vblank. */
+    assert(display_state_set(&fb, SCE_DISPLAY_SETBUF_NEXTFRAME) == 0);
+    a = start_wait_count(&first, true, 2);
+    target = atomic_load(&waits) + 1;
+    display_state_tick();
+    wait_until_blocked(target);
+    assert(!atomic_load(&first.done));
+    /* A later submission cannot move the first wait's snapshotted target. */
+    assert(display_state_set(&fb, SCE_DISPLAY_SETBUF_NEXTFRAME) == 0);
+    display_state_tick(); finish_wait(a, &first, 0);
+    assert(display_state_wait_set_multi(0) == 0);
+    /* A second wait uses the newer submission and needs one more tick. */
+    a = start_wait_count(&first, true, 2);
+    display_state_tick(); finish_wait(a, &first, 0);
+    assert(display_state_wait_set_multi(2) == 0);
+
+    a = start_wait_count(&first, true, UINT32_MAX);
+    display_state_stop();
+    finish_wait(a, &first, (int)SCE_DISPLAY_ERROR_NO_PIXEL_DATA);
+    assert(display_state_wait_set_multi(0) == (int)SCE_DISPLAY_ERROR_NO_PIXEL_DATA);
+    display_state_start();
+    mutexLock(&g_lock);g_vblank = g_last_set = UINT64_MAX - 1;mutexUnlock(&g_lock);
+    assert(display_state_wait_set_multi(2) == (int)SCE_DISPLAY_ERROR_INVALID_VALUE);
+    assert(display_state_wait_set_multi(0) == 0);
+    display_state_stop();display_state_start();
 
     assert(display_state_set(NULL, SCE_DISPLAY_SETBUF_IMMEDIATE) == 0);
     assert(display_state_snapshot(&out) && !out.base);
@@ -106,6 +135,6 @@ int main(void)
     display_state_stop(); display_state_stop(); display_state_tick();
     assert(!display_state_snapshot(&out));
     assert(memcmp(&out, &before, sizeof(out)) == 0);
-    puts("Display state: predicate waits, spurious wakes, pre-frame ticks, set-relative waits, coherent snapshots and shutdown generations passed.");
+    puts("Display state: counted set-relative waits, predicate wakes, coherent snapshots, overflow and shutdown generations passed.");
     return 0;
 }

@@ -78,11 +78,16 @@ int display_state_get(SceDisplayFrameBuf *framebuffer, SceDisplaySetBufSync sync
     return display_state_snapshot(framebuffer) ? 0 : (int)SCE_DISPLAY_ERROR_NO_PIXEL_DATA;
 }
 
-int display_state_wait(bool since_set)
+static int wait_periods(bool since_set, unsigned int periods)
 {
     mutexLock(&g_lock);
     uint64_t generation = g_generation;
-    uint64_t target = (since_set ? g_last_set : g_vblank) + 1;
+    uint64_t base = since_set ? g_last_set : g_vblank;
+    if (UINT64_MAX - base < periods) {
+        mutexUnlock(&g_lock);
+        return (int)SCE_DISPLAY_ERROR_INVALID_VALUE;
+    }
+    uint64_t target = base + periods;
     while (g_ready && generation == g_generation && g_vblank < target) {
         if (R_FAILED(condvarWaitTimeout(&g_changed, &g_lock, UINT64_MAX))) {
             mutexUnlock(&g_lock);
@@ -92,4 +97,16 @@ int display_state_wait(bool since_set)
     int result = g_ready && generation == g_generation ? 0 : (int)SCE_DISPLAY_ERROR_NO_PIXEL_DATA;
     mutexUnlock(&g_lock);
     return result;
+}
+
+int display_state_wait(bool since_set)
+{
+    return wait_periods(since_set, 1);
+}
+
+int display_state_wait_set_multi(unsigned int periods)
+{
+    /* Snapshot the last-set count once; later submissions must not move the
+     * target of a wait already in progress. Zero periods need no new tick. */
+    return wait_periods(true, periods);
 }

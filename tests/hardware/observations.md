@@ -1,3 +1,38 @@
+## 2026-11-27: shader-tail correction renders real startup; counted wait added
+
+Private verification commitabc5a95 combines unchanged owner073ee41 HLE with
+Codexcfd9616's allocator/test/stub changes only. Native Debug compilation,
+source-archive byte checks, ARM32/runtime identity and three-NCA verification
+pass. On Switch, the original game gets past the former4096-byte shader fatal,
+compiles hundreds of shaders and renders Sony startup text followed by the
+animated autosave/loading screen. Black rectangles and other rendering artifacts
+remain visible. The loading run continues compiling; a title menu or interactive
+3D scene has not been established. Live UDP capture is best-effort and has
+missing/interleaved lines; it is used for progress, with screenshots as visual
+evidence. The shader fix is hardware progress, not a complete-game claim.
+
+One observed missing import is library5ed8f994/NID7d9864a8, called with vcount2.
+The pinned SDK identifies sceDisplayWaitSetFrameBufMulti; the pinned Vita3K
+reference waits until last-framebuffer-set vblank count plus vcount. The new
+noncallback export uses that snapshotted target, including immediate completion
+when already elapsed or count0, and the existing shutdown-generation checks.
+It rejects unrepresentable64-bit targets before addition. Later framebuffer
+submissions cannot move an in-progress wait's target. Existing single-period
+wait behavior is preserved. Callback waits and per-thread VblankMulti are not
+added by this change.
+
+Host ASan/UBSan thread checks verify two ticks without an extra tick, elapsed
+and zero waits, framebuffer resubmission during a wait, large-count cancellation,
+shutdown/restart isolation, target overflow and existing snapshot/predicate tests.
+No native or hardware result is claimed for the new counted export yet. A local
+readonly worker draft added an incorrect extra tick; it was rejected rather than
+applied. HLE owner source files and the held real-libc TLS probe remain untouched.
+
+A button-injection attempt during loading failed with HID result1c24ca; neutral
+and detach requests returned the same error. Screenshots and network logs still
+work. No reboot or game restart was issued for that failure. The existing game
+is preserved while checking input-session recovery and preparing later builds.
+
 ## 2026-11-27: real title reaches shader compilation, reserved code tail fixed
 
 The unchanged frozen073ee41 HLE runtime first passes the entire owned cube7
