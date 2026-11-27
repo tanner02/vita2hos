@@ -8,6 +8,7 @@
 #include "load.h"
 #include "load_layout.h"
 #include "load_format.h"
+#include "load_retry.h"
 #include "load_segment.h"
 #include "log.h"
 #include "module.h"
@@ -143,6 +144,7 @@ int load_file(LoadImage *image, const char *filename, void **entry)
         return -1;
     }
 
+    image->source_tag = load_source_tag(data, size);
     ret = load_detect_format(data, size) == LOAD_FORMAT_INVALID ?
         load_vpk(image, data, size, entry) : load_executable(image, data, size, entry);
     if (ret < 0) LOG("Unsupported file or executable load failed.");
@@ -408,6 +410,7 @@ static int load_segments(LoadImage *image, void **entry, Elf32_Addr e_entry, seg
 
     Jit *jit = &image->jit;
     bool fixed = type == ET_SCE_EXEC;
+    bool layout_conflict = false;
     if (fixed) {
         if (load_fixed_layout(segments, num_segments) != 0) {
             LOG("Unsupported or overlapping fixed-address segment layout.");
@@ -423,6 +426,7 @@ static int load_segments(LoadImage *image, void **entry, Elf32_Addr e_entry, seg
                                     segments[i].p_memsz, (segments[i].p_flags & PF_X) != 0);
             if (R_FAILED(res)) {
                 LOG("Fixed reservation at 0x%08" PRIx32 " failed: 0x%x", segments[i].p_vaddr, res);
+                layout_conflict = res == MAKERESULT(Module_Libnx, LibnxError_AlreadyMapped);
                 goto err_free_data;
             }
         }
@@ -595,9 +599,12 @@ err_free_data:
 err_jit_close:
     *entry = NULL;
     res = load_image_close(image);
-    if (R_FAILED(res)) LOG("Executable rollback failed: 0x%x", res);
+    if (R_FAILED(res)) {
+        LOG("Executable rollback failed: 0x%x", res);
+        return -1;
+    }
 
-    return -1;
+    return layout_conflict ? LOAD_LAYOUT_CONFLICT : -1;
 }
 
 static int resolve_imports(const segment_info_t *segments, int count, sce_module_imports_u_t *import)

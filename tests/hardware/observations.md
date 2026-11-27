@@ -133,6 +133,24 @@
   complete visible 3D run with clean runtime shutdown. It does not establish
   commercial-title compatibility.
 
+## Runtime f5ea659bed25ceda8ccf5eb21c5ae11b598297d1
+
+- Fixed-address probe SHA-256:
+  `ea59fcf2675f9a786613048e11a646875379b40d703c73564358171fd210bdc5`.
+  The user reported a loading/runtime error. USB readback shows reservation at
+  `0x81000000` failed with libnx BadInput `0x1759`, before guest execution.
+- A separate relocatable diagnostic linked only Horizon's query wrappers from
+  the pinned libnx32 archive. Guest SHA-256:
+  `aaecc3d059a58d91f1bed2807d57fef6a07a5e834576ff8e84996cb41399f2d0`.
+  All memory/region queries succeeded, the report reached `DONE address_probe`,
+  and the runtime exited with status 0 and successful image cleanup.
+- In that diagnostic process, both `0x81000000` and `0x81879000` were in memory
+  type 5 (heap), with read/write permissions. The complete heap reservation was
+  `0x5ca00000` + `0x40000000`; the alias reservation was `0xad200000` + `0x40000000`.
+- This explains the host address conflict, not a guest code failure. The runtime
+  now checks reserved regions explicitly and has bounded standalone-title layout
+  retries. Hardware confirmation of fixed-address execution is still pending.
+
 ## Runtime f55edbf626acb6ff46d510a55bdd026dd78ac5ad
 
 - Experimental route: a retargeted ARM32 ExeFS NSP at

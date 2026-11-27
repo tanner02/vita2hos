@@ -102,19 +102,25 @@ static inline void threadExit(void) { abort(); }
 typedef uint32_t Result;
 typedef uint32_t Handle;
 typedef uint32_t u32;
+typedef uint64_t u64;
 typedef struct { uint64_t addr, size; uint32_t type; } MemoryInfo;
 typedef struct VirtmemReservation { uintptr_t address; size_t size; } VirtmemReservation;
 typedef struct { int unused; } Jit;
 #define INVALID_HANDLE 0
+#define CUR_PROCESS_HANDLE 0xffff8001
 #define R_FAILED(value) ((value) != 0)
 #define R_SUCCEEDED(value) ((value) == 0)
 #define MAKERESULT(module, description) ((Result)(((description) << 9) | (module)))
-enum { Module_Libnx = 345, LibnxError_BadInput = 1, LibnxError_JitUnavailable = 2,
-       LibnxError_OutOfMemory = 3, MemType_Unmapped = 0, Perm_Rw = 3, Perm_Rx = 5,
+enum { Module_Libnx = 345, LibnxError_BadInput = 11, LibnxError_JitUnavailable = 35,
+       LibnxError_OutOfMemory = 2, LibnxError_AlreadyMapped = 3,
+       InfoType_AliasRegionAddress = 2, InfoType_AliasRegionSize = 3,
+       InfoType_HeapRegionAddress = 4, InfoType_HeapRegionSize = 5,
+       MemType_Unmapped = 0, Perm_Rw = 3, Perm_Rx = 5,
        CodeMapOperation_MapOwner = 0, CodeMapOperation_MapSlave = 1,
        CodeMapOperation_UnmapOwner = 2, CodeMapOperation_UnmapSlave = 3 };
 bool envIsSyscallHinted(unsigned);
 Result svcQueryMemory(MemoryInfo *, u32 *, uint64_t);
+Result svcGetInfo(uint64_t *, u32, Handle, uint64_t);
 Result svcCreateCodeMemory(Handle *, void *, size_t);
 Result svcControlCodeMemory(Handle, u32, uint64_t, uint64_t, u32);
 Result svcCloseHandle(Handle);

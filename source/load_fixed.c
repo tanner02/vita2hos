@@ -47,6 +47,26 @@ Result load_fixed_reserve(LoadFixedMemory *memory, uintptr_t address, size_t siz
         return MAKERESULT(Module_Libnx, LibnxError_BadInput);
     if (!envIsSyscallHinted(0x4B) || !envIsSyscallHinted(0x4C))
         return MAKERESULT(Module_Libnx, LibnxError_JitUnavailable);
+    /* An unmapped page can still lie in the heap or IPC reservation, where
+     * CodeMemory mapping is forbidden. Check those complete regions as well. */
+    const u32 ids[] = {InfoType_AliasRegionAddress, InfoType_AliasRegionSize,
+                       InfoType_HeapRegionAddress, InfoType_HeapRegionSize};
+    u64 regions[4];
+    for (unsigned i = 0; i < 4; ++i) {
+        Result query = svcGetInfo(&regions[i], ids[i], CUR_PROCESS_HANDLE, 0);
+        if (R_FAILED(query)) return query;
+    }
+    uint64_t end = (uint64_t)address + ((size + 4095) & ~(size_t)4095);
+    for (unsigned i = 0; i < 4; i += 2) {
+        if (regions[i + 1] > UINT64_MAX - regions[i])
+            return MAKERESULT(Module_Libnx, LibnxError_BadInput);
+        if (regions[i + 1] && address < regions[i] + regions[i + 1] && regions[i] < end) {
+            LOG("Fixed range 0x%08" PRIxPTR " intersects %s region 0x%llx size 0x%llx",
+                address, i ? "heap" : "alias", (unsigned long long)regions[i],
+                (unsigned long long)regions[i + 1]);
+            return MAKERESULT(Module_Libnx, LibnxError_AlreadyMapped);
+        }
+    }
     memory->address = address;
     memory->size = (size + 4095) & ~(size_t)4095;
     memory->executable = executable;
@@ -57,7 +77,7 @@ Result load_fixed_reserve(LoadFixedMemory *memory, uintptr_t address, size_t siz
     if (R_SUCCEEDED(result) &&
         ((info.type & 0xff) != MemType_Unmapped || info.addr > address ||
          address - info.addr > info.size || memory->size > info.size - (address - info.addr)))
-        result = MAKERESULT(Module_Libnx, LibnxError_BadInput);
+        result = MAKERESULT(Module_Libnx, LibnxError_AlreadyMapped);
     if (R_SUCCEEDED(result)) {
         memory->reservation = virtmemAddReservation((void *)address, memory->size);
         if (!memory->reservation)

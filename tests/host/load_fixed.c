@@ -16,6 +16,8 @@ static int fail_operation = -1;
 static unsigned failures;
 static bool hints = true, occupied, fail_query, fail_reservation, fail_create, fail_alias;
 static bool fail_allocation, bad_span;
+static bool fail_info;
+static uint64_t host_regions[4] = {0xc0000000, 0x10000000, 0x40000000, 0x20000000};
 static Result jit_close_result;
 static void *test_allocate(size_t alignment, size_t size)
 { return fail_allocation ? NULL : aligned_alloc(alignment, size); }
@@ -51,6 +53,12 @@ Result svcQueryMemory(MemoryInfo *info, u32 *page, uint64_t address)
     *info = (MemoryInfo){0x80000000, 0x10000000, occupied ? 1 : MemType_Unmapped};
     if (bad_span) info->size = 4096;
     return fail_query ? 0x901 : 0;
+}
+Result svcGetInfo(uint64_t *out, u32 id, Handle handle, uint64_t sub_id)
+{
+    assert(handle == CUR_PROCESS_HANDLE && sub_id == 0 && id >= 2 && id <= 5);
+    *out = host_regions[id - 2];
+    return fail_info ? 0x905 : 0;
 }
 VirtmemReservation *virtmemAddReservation(void *address, size_t size)
 {
@@ -128,6 +136,13 @@ int main(void)
     hints = false; assert(load_fixed_reserve(&code, 0x81000000, 100, true) != 0); hints = true; clean();
     occupied = true; assert(load_fixed_reserve(&code, 0x81000000, 100, true) != 0); occupied = false; clean();
     fail_query = true; assert(load_fixed_reserve(&code, 0x81000000, 100, true) != 0); fail_query = false; clean();
+    fail_info = true; assert(load_fixed_reserve(&code, 0x81000000, 100, true) != 0); fail_info = false; clean();
+    host_regions[2] = 0x81000000;
+    assert(load_fixed_reserve(&code, 0x81000000, 100, true) == MAKERESULT(Module_Libnx, LibnxError_AlreadyMapped));
+    host_regions[2] = 0x40000000; clean();
+    host_regions[0] = 0x81000010; host_regions[1] = 0;
+    assert(load_fixed_reserve(&code, 0x81000000, 100, true) == 0 && load_fixed_close(&code) == 0);
+    host_regions[0] = 0xc0000000; host_regions[1] = 0x10000000; clean();
     bad_span = true; assert(load_fixed_reserve(&code, 0x81000000, 100, true) != 0); bad_span = false; clean();
     fail_reservation = true; assert(load_fixed_reserve(&code, 0x81000000, 100, true) != 0); fail_reservation = false; clean();
     assert(load_fixed_reserve(&code, 0x81000000, 4097, true) == 0);

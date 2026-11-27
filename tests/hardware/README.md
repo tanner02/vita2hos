@@ -241,6 +241,23 @@ the fixed executable. Host tests cover layout, ownership, rollback, cache calls,
 and cleanup retry; hardware validation is pending. Passing this probe would not
 establish TLS, bundled-module linking, or LittleBigPlanet compatibility.
 
+The standalone runtime now checks the complete heap and IPC alias reservations,
+including currently unmapped portions. On a conflict it can relaunch its own
+default title (`0100f27432680000`) to obtain a different randomized layout, up to
+64 restarts. A private launch packet carries the attempt count and an executable
+fingerprint; changing the guest resets the count. Other host titles are excluded
+from automatic restart. This is a bounded workaround, not a guarantee that a
+compatible layout will be found. A test may therefore restart several times
+before exiting or reporting failure. Keep the final runtime log to verify actual
+mapping and execution; restart requests alone do not prove the guest booted.
+
+Guest-library function/variable export registration is also available for startup
+binding. It copies symbol tables, tracks their owning image, and rejects duplicate
+providers or ambiguous symbols. A guest provider owns its entire library namespace
+so missing functions cannot silently fall back to a different allocator. The
+loader still needs to map/register/init the bundled SUPRX modules and bind their
+variable relocations; the registry alone does not load those modules.
+
 ### Experimental title-specific launch profile
 
 **Hardware status:** this route failed to start Mario Kart 8 Deluxe on the tested
