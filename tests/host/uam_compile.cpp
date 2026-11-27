@@ -6,6 +6,7 @@
 
 unsigned int test_compilations, test_outputs;
 int test_output_mode;
+uint32_t test_code_size = 8;
 std::string test_output_path;
 #define UAM_TEMP_FILE_TEMPLATE "/tmp/vita2hos-uam-XXXXXX"
 #include "../../source/uam_compiler_iface_c.cpp"
@@ -46,5 +47,21 @@ int main()
     unsigned int calls = test_compilations;
     assert(!uam_compiler_compile_glsl(pipeline_stage_vertex, "valid", buffer, 0, &size));
     assert(size == 0 && test_compilations == calls);
+    void *allocated = reinterpret_cast<void *>(1);
+    test_output_mode = 0;
+    assert(!uam_compiler_compile_glsl_alloc(pipeline_stage_vertex, "invalid", &allocated, &size));
+    assert(allocated == nullptr && size == 0);
+    test_code_size = 70000; /* Exceeds the runtime's previous shared 64 KiB pool. */
+    assert(uam_compiler_compile_glsl_alloc(pipeline_stage_vertex, "valid", &allocated, &size));
+    assert(allocated && size == 70024 && !std::memcmp(allocated, "DKSH", 4));
+    assert(static_cast<char *>(allocated)[size - 1] == '8');
+    std::free(allocated);
+    assert(access(test_output_path.c_str(), F_OK) != 0);
+    for (test_output_mode = 1; test_output_mode <= 3; ++test_output_mode) {
+        allocated = reinterpret_cast<void *>(1);
+        size = UINT32_MAX;
+        assert(!uam_compiler_compile_glsl_alloc(pipeline_stage_vertex, "valid", &allocated, &size));
+        assert(allocated == nullptr && size == 0);
+    }
     std::puts("Shader compiler failure-contract checks passed.");
 }

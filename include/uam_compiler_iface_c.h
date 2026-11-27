@@ -13,6 +13,9 @@ extern "C" {
 
 bool uam_compiler_compile_glsl(pipeline_stage stage, const char *glsl_source, void *buffer,
                                uint32_t capacity, uint32_t *size);
+/* On success the caller owns *buffer and releases it with free(). */
+bool uam_compiler_compile_glsl_alloc(pipeline_stage stage, const char *glsl_source,
+                                     void **buffer, uint32_t *size);
 
 #ifdef __cplusplus
 }

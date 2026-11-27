@@ -171,8 +171,12 @@ static DkDevice g_dk_device;
 static DkQueue g_render_queue;
 static DkMemBlock g_notification_region_memblock;
 static DisplayQueueControlBlock *g_display_queue;
-static DkMemBlock g_code_memblock;
-static uint32_t g_code_mem_offset;
+typedef struct ShaderCodeBlock {
+    struct ShaderCodeBlock *next;
+    DkMemBlock block;
+} ShaderCodeBlock;
+static ShaderCodeBlock *g_shader_code_blocks;
+static Mutex g_shader_code_lock;
 
 static int SceGxmDisplayQueue_thread(SceSize args, void *argp);
 
@@ -256,13 +260,6 @@ EXPORT(SceGxm, 0xB0F1E4EC, int, sceGxmInitialize, const SceGxmInitializeParams *
 
     sceKernelStartThread(g_display_queue->thid, sizeof(g_display_queue), &g_display_queue);
 
-    /* Create memory block for the shader code */
-    g_code_memblock = dk_alloc_memblock(g_dk_device, 64 * 1024,
-                                        DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached |
-                                            DkMemBlockFlags_Code);
-
-    g_code_mem_offset = 0;
-
     g_gxm_initialized = true;
 
     return 0;
@@ -275,7 +272,15 @@ EXPORT(SceGxm, 0xB627DE66, int, sceGxmTerminate)
     sceKernelWaitThreadEnd(g_display_queue->thid, NULL, NULL);
 
     free(g_display_queue);
-    dkMemBlockDestroy(g_code_memblock);
+    /* Code can still be referenced by submitted command lists after its
+     * program wrapper is released. Retain it until the queue is idle here. */
+    dkQueueWaitIdle(g_render_queue);
+    while (g_shader_code_blocks) {
+        ShaderCodeBlock *code = g_shader_code_blocks;
+        g_shader_code_blocks = code->next;
+        dkMemBlockDestroy(code->block);
+        free(code);
+    }
     dkMemBlockDestroy(g_notification_region_memblock);
     dkQueueDestroy(g_render_queue);
 
@@ -486,22 +491,15 @@ EXPORT(SceGxm, 0xF103AF8A, int, sceGxmShaderPatcherUnregisterProgram,
 }
 
 static int translate_shader(DkShader *shader, const SceGxmProgram *program, pipeline_stage stage,
-                            const char *prefix, DkMemBlock code_memblock, uint32_t *code_offset,
+                            const char *prefix,
                             const SceGxmVertexAttribute *attributes, unsigned int attributeCount)
 {
     bool ret;
     char *glsl = NULL;
     uint32_t shader_size = 0;
     DkShaderMaker shader_maker;
-    if (!shader || !program || !code_memblock || !code_offset)
+    if (!shader || !program)
         return SCE_GXM_ERROR_INVALID_POINTER;
-    uint32_t code_size = dkMemBlockGetSize(code_memblock);
-    if (*code_offset > code_size || *code_offset % DK_SHADER_CODE_ALIGNMENT)
-        return SCE_GXM_ERROR_INVALID_VALUE;
-    uint32_t capacity = (code_size - *code_offset) & ~(DK_SHADER_CODE_ALIGNMENT - 1U);
-    if (!capacity)
-        return SCE_KERNEL_ERROR_NO_MEMORY;
-    void *shader_load_addr = dkMemBlockGetCpuAddr(code_memblock) + *code_offset;
 
 #if DUMP_SHADER_SPIRV
     uint32_t *spirv;
@@ -529,15 +527,39 @@ static int translate_shader(DkShader *shader, const SceGxmProgram *program, pipe
     }
 
     LOG("UAM compiling shader (%s)...", prefix);
-    ret = uam_compiler_compile_glsl(stage, glsl, shader_load_addr, capacity, &shader_size);
+    void *compiled = NULL;
+    ret = uam_compiler_compile_glsl_alloc(stage, glsl, &compiled, &shader_size);
     LOG("  compile ret: %d, size: 0x%x", ret, shader_size);
     free(glsl);
-    if (!ret || !shader_size)
+    if (!ret || !shader_size) {
+        free(compiled);
         return SCE_GXM_ERROR_INVALID_VALUE;
+    }
 
-    dkShaderMakerDefaults(&shader_maker, code_memblock, *code_offset);
+    if (shader_size > UINT32_MAX - (DK_MEMBLOCK_ALIGNMENT - 1U)) {
+        free(compiled);
+        return SCE_KERNEL_ERROR_NO_MEMORY;
+    }
+    ShaderCodeBlock *code = calloc(1, sizeof(*code));
+    if (!code) {
+        free(compiled);
+        return SCE_KERNEL_ERROR_NO_MEMORY;
+    }
+    code->block = dk_alloc_memblock(g_dk_device, shader_size,
+        DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached | DkMemBlockFlags_Code);
+    if (!code->block) {
+        free(compiled);
+        free(code);
+        return SCE_KERNEL_ERROR_NO_MEMORY;
+    }
+    memcpy(dkMemBlockGetCpuAddr(code->block), compiled, shader_size);
+    free(compiled);
+    dkShaderMakerDefaults(&shader_maker, code->block, 0);
     dkShaderInitialize(shader, &shader_maker);
-    *code_offset += ALIGN(shader_size, DK_SHADER_CODE_ALIGNMENT);
+    mutexLock(&g_shader_code_lock);
+    code->next = g_shader_code_blocks;
+    g_shader_code_blocks = code;
+    mutexUnlock(&g_shader_code_lock);
 
     return 0;
 }
@@ -586,7 +608,7 @@ EXPORT(SceGxm, 0xB7BBA6D5, int, sceGxmShaderPatcherCreateVertexProgram,
     vertex_program->streamCount = streamCount;
 
     ret = translate_shader(&vertex_program->dk_shader, programId->programHeader,
-                           pipeline_stage_vertex, "vert", g_code_memblock, &g_code_mem_offset,
+                           pipeline_stage_vertex, "vert",
                            attributes, attributeCount);
     if (ret != 0)
         goto fail;
@@ -638,7 +660,7 @@ EXPORT(SceGxm, 0x4ED2E49D, int, sceGxmShaderPatcherCreateFragmentProgram,
     }
 
     ret = translate_shader(&fragment_program->dk_shader, programId->programHeader,
-                           pipeline_stage_fragment, "frag", g_code_memblock, &g_code_mem_offset,
+                           pipeline_stage_fragment, "frag",
                            NULL, 0);
     if (ret != 0) {
         free(fragment_program);

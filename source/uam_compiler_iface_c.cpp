@@ -14,9 +14,11 @@
 
 extern "C" {
 
-bool uam_compiler_compile_glsl(pipeline_stage stage, const char *glsl_source, void *buffer,
-                               uint32_t capacity, uint32_t *size)
+static bool compile_alloc(pipeline_stage stage, const char *glsl_source, void **buffer,
+                           uint32_t capacity, uint32_t *size)
 {
+    if (buffer)
+        *buffer = nullptr;
     if (size)
         *size = 0;
     if (!glsl_source || !buffer || !size || !capacity)
@@ -52,8 +54,26 @@ bool uam_compiler_compile_glsl(pipeline_stage stage, const char *glsl_source, vo
         header[1] > header[2] || header[2] > (uint32_t)length ||
         header[3] != (uint32_t)length - header[2])
         return false;
-    memcpy(buffer, data.get(), (size_t)length);
+    *buffer = data.release();
     *size = (uint32_t)length;
+    return true;
+}
+
+bool uam_compiler_compile_glsl_alloc(pipeline_stage stage, const char *glsl_source,
+                                     void **buffer, uint32_t *size)
+{
+    return compile_alloc(stage, glsl_source, buffer, UINT32_MAX, size);
+}
+
+bool uam_compiler_compile_glsl(pipeline_stage stage, const char *glsl_source, void *buffer,
+                               uint32_t capacity, uint32_t *size)
+{
+    if (size) *size = 0;
+    if (!buffer || !size) return false;
+    void *compiled = nullptr;
+    if (!compile_alloc(stage, glsl_source, &compiled, capacity, size)) return false;
+    memcpy(buffer, compiled, *size);
+    free(compiled);
     return true;
 }
 }

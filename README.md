@@ -94,8 +94,11 @@ wraparound beyond 65,536 instances are rejected; that wraparound is not yet
 implemented. Instanced rendering still needs Switch hardware validation.
 
 Shader compilation stages DKSH output through temporary `.uam-*` files under
-`sd:/vita2hos/`, validates its size and header, and copies it only when it fits
-the remaining GPU code buffer. Temporary files are removed after each attempt.
+`sd:/vita2hos/`, validates its size and header, and allocates GPU code storage
+sized for each compiled shader. The former shared 64 KiB code limit is removed.
+Code allocations are retained until GXM termination and destroyed after the
+render queue is idle; individual program release does not reclaim code yet.
+Temporary files are removed after each attempt.
 This path requires writable SD storage and adds filesystem I/O during shader
 compilation; a capacity-aware in-memory UAM writer remains a future improvement.
 
