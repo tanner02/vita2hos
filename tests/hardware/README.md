@@ -96,6 +96,32 @@ their hashes, and copies the NSP and sample files without executing them.
 
 ## FTP deployment
 
+### Automated surface/notification guest
+
+`tests/hardware/surface_probe` builds a freestanding Vita executable with Vita SDK:
+
+```sh
+cmake -S tests/hardware/surface_probe -B build-surface-probe -G Ninja -DVITASDK=/path/to/vitasdk
+cmake --build build-surface-probe
+python3 tests/hardware/surface_probe/verify-imports.py --sdk /path/to/vitasdk --build-dir build-surface-probe
+```
+
+The guest imports only implemented runtime APIs and requires no libc startup or
+GXP files. Package it using `package-hardware-smoke.py --surface-probe
+build-surface-probe/executable` in addition to that tool's existing arguments.
+Then select it with `deploy-switch.py BUNDLE --host SWITCH_IP --sample surface_probe`.
+This replaces the test executable; it does not launch the console or change its
+homebrew configuration.
+
+After manual launch, read `/vita2hos/surface-probe.txt`. A final `PASS surface_probe`
+means two patterned framebuffers survived A/B/A switching, notification values
+completed, an invalid notification was rejected without ending the scene, and a
+null-color/null-sync scene finished. A report ending at `RUNNING` or an intermediate
+step is incomplete. This performs no draw calls: it does not prove shader,
+depth/stencil draw behavior, or commercial-title compatibility. Retain the matching
+runtime log when reporting a failure. The program exits when finished, so a visible
+3D scene is not expected.
+
 ### Experimental title-specific launch profile
 
 To prepare a separate 32-bit launch route while retaining normal hbmenu,

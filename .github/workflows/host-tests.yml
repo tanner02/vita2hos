@@ -24,6 +24,8 @@ jobs:
         run: python3 -B tests/host/test_title_profile.py
       - name: Check title-profile FTP installation and rollback
         run: python3 -B tests/host/test_deploy_title_profile.py
+      - name: Check optional hardware-probe packaging
+        run: python3 -B tests/host/test_package_hardware_smoke.py
 
   shader-integration:
     runs-on: ubuntu-latest
@@ -41,3 +43,26 @@ jobs:
           cmake --build /tmp/vita2hos-shader-integration --target shader_integration -j 4
       - name: Compare uniform layouts against SPIR-V reflection
         run: ctest --test-dir /tmp/vita2hos-shader-integration --output-on-failure
+
+  surface-probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch and verify pinned Vita compiler
+        run: |
+          curl --fail --location --silent --show-error https://github.com/vitasdk/autobuilds/releases/download/sdk-vita_softfp-snapshot-20261123.969.1/vitasdk-x86_64-linux-gnu-2026-11-23_22-03-46.tar.bz2 -o /tmp/vitasdk.tar.bz2
+          printf '%s  %s\n' 634c0db811d8fe88b5beb06c0a69f4c3f2fc2f102e3b0cd25d3166f4bea555b1 /tmp/vitasdk.tar.bz2 | sha256sum --check
+          mkdir /tmp/vita-probe-sdk
+          tar -xjf /tmp/vitasdk.tar.bz2 -C /tmp/vita-probe-sdk
+      - name: Build freestanding guest and audit imports
+        run: |
+          cmake -S tests/hardware/surface_probe -B /tmp/surface-probe -G Ninja -DVITASDK=/tmp/vita-probe-sdk/vitasdk
+          cmake --build /tmp/surface-probe
+          python3 -B tests/hardware/surface_probe/verify-imports.py --sdk /tmp/vita-probe-sdk/vitasdk --build-dir /tmp/surface-probe
+      - name: Upload hardware diagnostic guest
+        uses: actions/upload-artifact@v4
+        with:
+          name: Surface_probe
+          path: |
+            /tmp/surface-probe/executable
+            /tmp/surface-probe/surface_probe.elf

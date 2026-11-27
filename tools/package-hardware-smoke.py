@@ -4,6 +4,7 @@ import argparse
 import hashlib
 import io
 import json
+import struct
 from pathlib import Path
 import urllib.request
 import zipfile
@@ -26,6 +27,7 @@ def main():
     parser.add_argument("--build-run", required=True, help="GitHub Actions build run URL")
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--samples-dir", type=Path, help="Optional local pinned sample ZIPs")
+    parser.add_argument("--surface-probe", type=Path, help="Optional locally built freestanding Vita probe")
     args = parser.parse_args()
     if len(args.commit) != 40 or any(c not in "0123456789abcdef" for c in args.commit):
         parser.error("--commit must be a full lowercase Git commit SHA")
@@ -60,6 +62,15 @@ def main():
             files["sd/vita2hos/executable"] = executable
         samples.append({"name": name, "url": url, "archive_sha256": expected,
                         "executable_sha256": sha256(executable)})
+
+    if args.surface_probe:
+        probe = args.surface_probe.read_bytes()
+        if (len(probe) < 52 or probe[:6] != b"\x7fELF\x01\x01" or
+                struct.unpack_from("<HH", probe, 16) != (0xfe04, 40)):
+            raise ValueError("Surface probe must be an ELF32 ARM Vita relocatable executable")
+        files["samples/surface_probe/executable"] = probe
+        samples.append({"name": "surface_probe", "source": "tests/hardware/surface_probe",
+                        "executable_sha256": sha256(probe)})
 
     files["tools/capture-netlog.ps1"] = (repository / "tools/capture-netlog.ps1").read_bytes()
     instructions = (repository / "tests/hardware/README.md").read_text(encoding="utf-8")

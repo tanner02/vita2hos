@@ -1,0 +1,176 @@
+/* Freestanding Vita guest: no libc startup or precompiled shader dependency.
+ * A passing report proves only no-draw surface copies and notification handling. */
+#include <psp2/gxm.h>
+#include <psp2/io/fcntl.h>
+#include <psp2/kernel/sysmem.h>
+#include <stdint.h>
+#include <stddef.h>
+
+enum { WIDTH = 64, HEIGHT = 64, PIXELS = WIDTH * HEIGHT };
+static SceUID allocations[8];
+static unsigned allocation_count;
+static SceUID report = -1;
+
+void *memset(void *destination, int value, size_t size)
+{
+    unsigned char *p = destination;
+    for (size_t i = 0; i < size; ++i) p[i] = value;
+    return destination;
+}
+
+void *memcpy(void *destination, const void *source, size_t size)
+{
+    unsigned char *d = destination;
+    const unsigned char *s = source;
+    for (size_t i = 0; i < size; ++i) d[i] = s[i];
+    return destination;
+}
+
+static void record(const char *text)
+{
+    unsigned length = 0;
+    while (text[length]) ++length;
+    while (length && report >= 0) {
+        int count = sceIoWrite(report, text, length);
+        if (count <= 0) { report = -1; return; }
+        text += count;
+        length -= count;
+    }
+}
+
+static void result(const char *name, int code)
+{
+    static const char digits[] = "0123456789abcdef";
+    char hex[12] = "0x00000000\n";
+    for (unsigned i = 0; i < 8; ++i) hex[2 + i] = digits[((uint32_t)code >> (28 - 4 * i)) & 15];
+    record(name); record(" "); record(hex);
+}
+
+static void *allocate(unsigned bytes)
+{
+    if (allocation_count == sizeof(allocations) / sizeof(allocations[0])) return NULL;
+    SceUID uid = sceKernelAllocMemBlock("surface_probe", SCE_KERNEL_MEMBLOCK_TYPE_USER_RW_UNCACHE,
+                                       (bytes + 4095u) & ~4095u, NULL);
+    if (uid < 0) return NULL;
+    allocations[allocation_count++] = uid;
+    void *base = NULL;
+    if (sceKernelGetMemBlockBase(uid, &base) < 0) return NULL;
+    return base;
+}
+
+static uint32_t pattern(unsigned index, unsigned seed)
+{
+    return 0xff000000u | (((index * 3 + seed) & 255u) << 16) |
+           (((index * 5 + seed * 7) & 255u) << 8) | ((index * 11 + seed * 13) & 255u);
+}
+
+static void display_callback(const void *data) { (void)data; }
+
+int module_start(SceSize args, void *argp)
+{
+    (void)args; (void)argp;
+    report = sceIoOpen("app0:/surface-probe.txt", SCE_O_WRONLY | SCE_O_CREAT | SCE_O_TRUNC, 0666);
+    if (report < 0) return 1;
+    record("surface_probe v1\nRUNNING - no hardware result until a final PASS line\n");
+    int status = 1, initialized = 0, code;
+    SceGxmContext *context = NULL;
+    SceGxmRenderTarget *target = NULL;
+    SceGxmInitializeParams init = {0};
+    init.displayQueueMaxPendingCount = 1;
+    init.displayQueueCallback = display_callback;
+    init.parameterBufferSize = SCE_GXM_DEFAULT_PARAMETER_BUFFER_SIZE;
+    code = sceGxmInitialize(&init);
+    result("initialize", code);
+    if (code) goto done;
+    initialized = 1;
+
+    SceGxmContextParams params = {0};
+    params.hostMemSize = SCE_GXM_MINIMUM_CONTEXT_HOST_MEM_SIZE;
+    params.hostMem = allocate(params.hostMemSize);
+    params.vdmRingBufferMemSize = SCE_GXM_DEFAULT_VDM_RING_BUFFER_SIZE;
+    params.vdmRingBufferMem = allocate(params.vdmRingBufferMemSize);
+    params.vertexRingBufferMemSize = SCE_GXM_DEFAULT_VERTEX_RING_BUFFER_SIZE;
+    params.vertexRingBufferMem = allocate(params.vertexRingBufferMemSize);
+    params.fragmentRingBufferMemSize = SCE_GXM_DEFAULT_FRAGMENT_RING_BUFFER_SIZE;
+    params.fragmentRingBufferMem = allocate(params.fragmentRingBufferMemSize);
+    params.fragmentUsseRingBufferMemSize = SCE_GXM_DEFAULT_FRAGMENT_USSE_RING_BUFFER_SIZE;
+    void *usse = allocate(params.fragmentUsseRingBufferMemSize);
+    uint32_t *buffers[2] = {allocate(PIXELS * 4), allocate(PIXELS * 4)};
+    if (!params.hostMem || !params.vdmRingBufferMem || !params.vertexRingBufferMem ||
+        !params.fragmentRingBufferMem || !usse || !buffers[0] || !buffers[1]) {
+        record("FAIL allocation\n"); goto done;
+    }
+    code = sceGxmMapFragmentUsseMemory(usse, params.fragmentUsseRingBufferMemSize,
+                                      &params.fragmentUsseRingBufferOffset);
+    if (code) { result("FAIL map_usse", code); goto done; }
+    code = sceGxmCreateContext(&params, &context);
+    if (code) { result("FAIL create_context", code); goto done; }
+    SceGxmRenderTargetParams target_params = {0};
+    target_params.width = WIDTH; target_params.height = HEIGHT; target_params.scenesPerFrame = 1;
+    code = sceGxmCreateRenderTarget(&target_params, &target);
+    if (code) { result("FAIL create_target", code); goto done; }
+    SceGxmDepthStencilSurface disabled;
+    code = sceGxmDepthStencilSurfaceInitDisabled(&disabled);
+    if (code || sceGxmDepthStencilSurfaceIsEnabled(&disabled)) {
+        result("FAIL disabled_surface", code); goto done;
+    }
+    SceGxmColorSurface surfaces[2];
+    for (unsigned b = 0; b < 2; ++b) {
+        for (unsigned i = 0; i < PIXELS; ++i) buffers[b][i] = pattern(i, b + 1);
+        code = sceGxmColorSurfaceInit(&surfaces[b], SCE_GXM_COLOR_FORMAT_U8U8U8U8_ABGR,
+            SCE_GXM_COLOR_SURFACE_LINEAR, SCE_GXM_COLOR_SURFACE_SCALE_NONE,
+            SCE_GXM_OUTPUT_REGISTER_SIZE_32BIT, WIDTH, HEIGHT, WIDTH, buffers[b]);
+        if (code) { result("FAIL init_color", code); goto done; }
+    }
+    if (sceGxmEndScene(context, NULL, NULL) != (int)SCE_GXM_ERROR_NOT_WITHIN_SCENE) {
+        record("FAIL end_without_begin\n"); goto done;
+    }
+    volatile unsigned int *region = sceGxmGetNotificationRegion();
+    if (!region) { record("FAIL notification_region\n"); goto done; }
+    for (unsigned pass = 0; pass < 3; ++pass) {
+        unsigned selected = pass & 1;
+        region[0] = region[1] = 0;
+        SceGxmNotification vertex = {region, 0x12340000u + pass};
+        SceGxmNotification fragment = {region + 1, 0x56780000u + pass};
+        SceGxmNotification invalid = {region + 512, 0};
+        code = sceGxmBeginScene(context, 0, target, NULL, NULL, NULL, &surfaces[selected], &disabled);
+        if (code) { result("FAIL begin", code); goto done; }
+        code = sceGxmEndScene(context, &vertex, &invalid);
+        if (code != (int)SCE_GXM_ERROR_INVALID_POINTER) {
+            result("FAIL invalid_notification", code); goto done;
+        }
+        code = sceGxmEndScene(context, &vertex, &fragment);
+        if (code) { result("FAIL end", code); goto done; }
+        code = sceGxmNotificationWait(&fragment);
+        if (code) { result("FAIL notification_wait", code); goto done; }
+        sceGxmFinish(context);
+        if (region[0] != vertex.value || region[1] != fragment.value) {
+            record("FAIL notification_values\n"); goto done;
+        }
+        for (unsigned b = 0; b < 2; ++b) {
+            for (unsigned i = 0; i < PIXELS; ++i) {
+                if (buffers[b][i] != pattern(i, b + 1)) {
+                    result("FAIL pass", pass); result("buffer", b); result("pixel", i);
+                    result("actual", buffers[b][i]); result("expected", pattern(i, b + 1));
+                    goto done;
+                }
+            }
+        }
+        result("PASS framebuffer_switch", pass);
+    }
+    /* A depth-only scene must also tolerate no color surface and no sync object. */
+    code = sceGxmBeginScene(context, 0, target, NULL, NULL, NULL, NULL, &disabled);
+    if (!code) code = sceGxmEndScene(context, NULL, NULL);
+    if (code) { result("FAIL null_color_scene", code); goto done; }
+    sceGxmFinish(context);
+    record("PASS null_color_scene\n");
+    status = 0;
+done:
+    if (context) sceGxmDestroyContext(context);
+    if (target) sceGxmDestroyRenderTarget(target);
+    if (initialized) sceGxmTerminate();
+    while (allocation_count) sceKernelFreeMemBlock(allocations[--allocation_count]);
+    record(status ? "FAIL surface_probe\n" : "PASS surface_probe\n");
+    if (report >= 0) sceIoClose(report);
+    return status;
+}
