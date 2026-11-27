@@ -118,3 +118,10 @@ load/store image copies retain their UNORM view. Draw probe v7 / visible cube v3
 adds a console-only mid-gray RGB/alpha readback and a linear-reset pass. Native
 sRGB encoding and destination blending remain unverified until console runs;
 these host checks do not establish pixel accuracy. Surface clipping is pending.
+
+GXM marker/heartbeat checks exercise library-scoped NID dispatch, null arguments,
+literal format characters in tags, bounded 63-byte tag reads, and untouched
+surface/sync objects. Marker calls emit push/set/pop annotations in Debug logs;
+Release builds omit them. There is no Razor capture, GPU timestamp, or marker
+stack query. Heartbeat follows the pinned reference's validated no-op behavior
+and never signals/waits a rendering or display fence.

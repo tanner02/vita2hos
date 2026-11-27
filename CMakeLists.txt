@@ -60,6 +60,7 @@ add_executable(vita2hos
     source/gxm_region_clip.c
     source/gxm_blend.c
     source/gxm_surface.c
+    source/gxm_diagnostics.c
     source/gxm_depth_transfer.c
     source/gxm_depth_staging.c
     source/gxm_notification.c
