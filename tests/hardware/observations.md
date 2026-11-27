@@ -1,3 +1,9 @@
+## 2026-11-27: repeated LittleBigPlanet library startup on tracing runtime adbab65
+
+The collected log confirms installed runtime adbab65, compatible mapping after one layout restart, and successful libc/FIOS startup returns. It reaches LIBRARY_STARTUP_ONLY_RESULT status=0x0 main_skipped=1 close_title=1. There are no UNSUPPORTED_CALL or UNRESOLVED_TRACE_OVERFLOW records. The binding inventory still contains 395 distinct unresolved library/function pairs across the three images.
+
+No missing-function invocation was observed in this initialization run. This is not proof of complete library correctness: the logging path itself has not yet been positively exercised on hardware. An owned ARM/Thumb missing-import probe is built and source-audited locally but has not been deployed. Main entry, Ult, game data I/O and game boot remain unverified. Raw evidence was collected privately in result-20261127-141845.
+
 ## 2026-11-27: LittleBigPlanet libc/FIOS startup on runtime 3dda5cf - PASS
 
 User launched the private PCSF00516 dependencies-only payload and manually closed it after about one minute. Collected log identifies runtime 3dda5cf, maps LBP2_Final code at 0x81000000 and data at 0x81879000 after ten layout restarts, starts libc and FIOS in isolated module_start threads, and records LIBRARY_STARTUP_ONLY dependencies=2 startup_entries=2 main_skipped=1 followed by LIBRARY_STARTUP_ONLY_RESULT status=0x0 main_skipped=1 close_title=1. Libc requests a 0xb400000-byte SceLibcMalloc block. The copied module list and launch-mode file match the staged manifest.
