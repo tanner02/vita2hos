@@ -11,9 +11,12 @@
 static Mutex ngs_lock;
 static int ngs_next_rack_id,ngs_next_voice_id,ngs_next_patch_id;
 
-/* Voice definition getters hand back a pointer to zeroed template memory;
- * games read default parameter blocks from it. */
-static uint8_t ngs_voice_def[0x100];
+/* Voice definition getters hand back pointers to zeroed template memory;
+ * games read and write parameter blocks inside them, so each kind gets its
+ * own generously sized page-aligned region. */
+static uint8_t ngs_voice_def_simple[0x4000];
+static uint8_t ngs_voice_def_master[0x4000];
+static uint8_t ngs_voice_def_reverb[0x4000];
 
 EXPORT(SceNgs,0xED14CF4A,int,sceNgsSystemInit,void *memBlock,unsigned int size,unsigned int flags,void **system)
 {
@@ -81,8 +84,12 @@ EXPORT(SceNgs,0xFE1A98E9,int,sceNgsRackGetVoiceHandle,void *rack,unsigned int in
 
 static void *ngs_voice_def_ptr(unsigned int kind)
 {
-    (void)kind;
-    return ngs_voice_def;
+    /* Distinct storage per definition kind prevents cross-template writes. */
+    switch(kind & 3u) {
+    case 0:return ngs_voice_def_simple;
+    case 1:return ngs_voice_def_master;
+    default:return ngs_voice_def_reverb;
+    }
 }
 
 EXPORT(SceNgs,0x0D5399CF,void *,sceNgsVoiceDefGetSimpleVoice,unsigned int kind)
