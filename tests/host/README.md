@@ -393,3 +393,14 @@ access supports directory listing. Shutdown revokes new path resolutions; existi
 file descriptors retain native ownership until closed. The integration test writes
 through AppUtil, reads through sceIoOpen/Read, and checks revocation plus retained
 open-handle access. Filesystem mutation races with external actors are not covered.
+
+Slot replacement first attempts normal rename. On EEXIST during an update, it
+moves the old record to a reserved .bak name, promotes the flushed temporary file,
+and removes the backup only after promotion. Failed promotion attempts rollback.
+If rollback fails, reads may recover the validated old record from .bak while
+updates/deletes return EBUSY until explicit recovery. This is not an atomic rename
+or a power-loss guarantee. Tests emulate no-overwrite rename, promotion failure
+and rollback failure, checking record readability and blocked destructive changes.
+Upstream fsdev rename handling was reviewed at
+https://github.com/switchbrew/libnx/blob/master/nx/source/runtime/devices/fs_dev.c ;
+the exact installed backend and physical SD behavior still require the owned probe.

@@ -15,6 +15,18 @@ static int slot_path(char path[1024],const char *root,uint32_t id,bool temporary
                         temporary ? ".tmp" : ".bin");
     return length<0 || length>=1024 ? -ENAMETOOLONG : 0;
 }
+static int backup_path(char path[1024],const char *root,uint32_t id)
+{
+    int result=slot_path(path,root,id,false);
+    if(!result)memcpy(path+strlen(path)-4,".bak",5);
+    return result;
+}
+static int backup_absent(const char *root,uint32_t id)
+{
+    char path[1024];int result=backup_path(path,root,id);if(result)return result;
+    struct stat info;if(!stat(path,&info))return -EBUSY;
+    return errno==ENOENT ? 0 : -errno;
+}
 static void digest(const unsigned char *record,unsigned char output[20])
 {
     VitaSha1 hash;vita_sha1_init(&hash);
@@ -24,7 +36,12 @@ int savedata_slot_get(const char *root,uint32_t id,void *data)
 {
     if(!data)return -EINVAL;
     char path[1024];int result=slot_path(path,root,id,false);if(result)return result;
-    FILE *file=fopen(path,"rb");if(!file)return -errno;
+    FILE *file=fopen(path,"rb");
+    if(!file && errno==ENOENT) {
+        result=backup_path(path,root,id);if(result)return result;
+        file=fopen(path,"rb");
+    }
+    if(!file)return -errno;
     unsigned char record[RECORD_BYTES],hash[20];
     size_t count=fread(record,1,sizeof(record),file);
     bool valid=count==sizeof(record) && fgetc(file)==EOF && !ferror(file);
@@ -40,6 +57,7 @@ int savedata_slot_put(const char *root,uint32_t id,const void *data,bool create)
     char path[1024],temporary[1024];int result=slot_path(path,root,id,false);
     if(result)return result;
     result=slot_path(temporary,root,id,true);if(result)return result;
+    result=backup_absent(root,id);if(result)return result;
     struct stat info;
     if(!stat(path,&info)) {if(create)return -EEXIST;}
     else {if(errno!=ENOENT)return -errno;if(!create)return -ENOENT;}
@@ -56,7 +74,22 @@ int savedata_slot_put(const char *root,uint32_t id,const void *data,bool create)
     }
     if(!result && fsync(fd))result=-errno;
     if(close(fd) && !result)result=-errno;
-    if(!result && rename(temporary,path))result=-errno;
+    if(!result && rename(temporary,path)) {
+        result=-errno;
+        if(!create && result==-EEXIST) {
+            char backup[1024];int prepared=backup_path(backup,root,id);
+            if(prepared)result=prepared;
+            else if(rename(path,backup))result=-errno;
+            else if(!rename(temporary,path)) {
+                result=unlink(backup) ? -errno : 0;
+            } else {
+                result=-errno;
+                /* Never delete the old record to make room. Failed rollback
+                 * leaves .bak readable and blocks further mutation. */
+                if(rename(backup,path))result=-EIO;
+            }
+        }
+    }
     if(result)unlink(temporary); /* Only the temporary file this call created. */
     return result;
 }
@@ -64,5 +97,6 @@ int savedata_slot_delete(const char *root,uint32_t id)
 {
     char path[1024];int result=slot_path(path,root,id,false);
     if(result)return result;
+    result=backup_absent(root,id);if(result)return result;
     return unlink(path) ? -errno : 0;
 }
