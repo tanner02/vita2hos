@@ -35,3 +35,10 @@ target_include_directories(shader PRIVATE
 # M*LIB
 add_library(mlib INTERFACE)
 target_include_directories(mlib INTERFACE mlib)
+# Trophy configuration parsing reuses Vita3K's pinned MIT-licensed pugixml.
+add_library(vita_trophy_xml STATIC
+    ${PROJECT_SOURCE_DIR}/source/trophy_metadata.cpp
+    Vita3K/external/pugixml/src/pugixml.cpp)
+target_compile_definitions(vita_trophy_xml PUBLIC PUGIXML_NO_EXCEPTIONS PUGIXML_NO_XPATH)
+target_include_directories(vita_trophy_xml PUBLIC ${PROJECT_SOURCE_DIR}/include
+    PRIVATE Vita3K/external/pugixml/src)

@@ -49,6 +49,7 @@ target_compile_definitions(vita_mspace PRIVATE ONLY_MSPACES=1 USE_LOCKS=0
     HAVE_MMAP=0 HAVE_MORECORE=0 NO_MALLOC_STATS=1)
 
 add_executable(vita2hos
+    source/vita_sha1.c
     source/trophy_archive.c
     source/guest_tls.c
     source/thread_events.c
@@ -156,6 +157,7 @@ target_compile_definitions(vita2hos PRIVATE
 
 target_link_libraries(vita2hos PRIVATE
     vita_mspace
+    vita_trophy_xml
     shader
     spirv-cross-core
     fmt

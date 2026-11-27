@@ -240,14 +240,16 @@ Trophy-library tests cover init/term, allocation failure, reserved-option reject
 64 owned operation handles, UID isolation across slot reuse and reinitialization,
 recorded abort state, concurrent create/abort/destroy, provider load state and
 unload rejection while initialized. Trophy init allocates its operation registry;
-it does not establish a PSN identity or claim a trophy context exists. Contexts,
-TRP metadata/progress, icons, unlocks and synchronization remain unsupported.
+it does not establish a PSN identity or claim a trophy context exists. Archive-backed contexts and game-icon reads are implemented below; progress,
+unlocks and synchronization remain unsupported.
 The 64-handle cap, non-null-option rejection and active-provider unload policy
 are explicit local limits, not firmware-verified behavior. Abort currently marks
 handle state; no asynchronous trophy operation is implemented or cancelled.
 
 Trophy archive tests require OpenSSL development headers and libcrypto on the
-host (for example libssl-dev on Ubuntu). The Switch build uses libnx SHA-1.
+host (for example libssl-dev on Ubuntu). The Switch build uses a portable streaming SHA-1 backend; the pinned libnx32
+archive exposes declarations but omits the implementation. Host tests compare
+that backend with OpenSSL across block/padding boundaries and streamed chunks.
 Owned version-2/3 fixtures exercise stream hashing with the embedded digest
 zeroed, exact-name lookup, partial reads, empty reads, corrupt payloads,
 malformed sizes/counts/strides, unterminated or path-like names, duplicate names,
@@ -258,10 +260,39 @@ It limits archives to 64 MiB / 4096 entries, accepts flat printable ASCII names,
 and supports version 2/3 with 64-byte headers/records. Payload aliases are safe
 for read-only access and are allowed. No files are extracted or modified.
 SHA-1 checks archive integrity; publisher signatures/authenticity are not checked.
-This helper is not yet connected to trophy contexts or guest API exports.
+This helper backs trophy context creation and game-icon reads.
 Layout references: the pinned Vita3K TRP reader and
 https://github.com/RPCS3/rpcs3/blob/master/rpcs3/Loader/TRP.h .
 The size field at header offset 0x14 is record size, not a general table offset.
 A private host run validated the user-owned version-2 archive's SHA-1 and all
 107 entry ranges without extracting content or executing guest instructions.
 This does not establish trophy-context registration or hardware SHA-1 execution.
+
+Trophy contexts use Vita3K's pinned pugixml (MIT license), initialized with
+`git -C external/Vita3K submodule update --init external/pugixml` after fetching
+external/Vita3K. The host runner and CI build the same XML adapter with
+exceptions/XPath disabled. UTF-8 configuration validation checks one root,
+communication identity, bounded/unique IDs, declared groups, grades and hidden
+flags; absent gid means base group zero. DTDs, embedded NULs hiding content,
+malformed/oversized numeric IDs and allocation failure are rejected without
+publishing output.
+
+CreateContext reads only app0:/sce_sys/trophy/NPWRxxxxx_nn/TROPHY.TRP, checks its
+SHA-1 and metadata identity, and publishes a unique UID after successful parsing.
+Failures preserve caller output and release pending bytes/indexes. Contexts are
+bounded to eight and 128 MiB total archive bytes. Destroy/term/process finish
+release owned data. GetGameIcon requires a valid non-aborted operation handle,
+supports size query, and copies exact archive bytes. A too-small buffer returns
+INSUFFICIENT_BUFFER and the required size without copying; this local policy has
+not been verified against firmware. Only zero context options, explicit NPWR
+communication IDs and non-null signature pointers are supported. Publisher
+signature authenticity is not checked; this offline resource context establishes
+neither a PSN identity nor entitlement. No progress files, trophy unlocks or
+synchronization are fabricated or written.
+
+Owned context fixtures cover missing/corrupt archives, invalid configuration,
+identity mismatch, allocation failure, duplicate/stale IDs, pool exhaustion,
+icon size/query/copy/abort and full teardown. A private host run created a context
+from the real archive: 84 trophies, four extra groups, and an 80429-byte game
+icon. No files were modified and no guest instructions executed. ARM context
+creation, progress APIs and game rendering still require hardware evidence.

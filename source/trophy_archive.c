@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <string.h>
-#include <switch.h>
+#include <stdbool.h>
+#include "vita_sha1.h"
 #include "trophy_archive.h"
 static uint32_t read_be32(const uint8_t *p)
 {return (uint32_t)p[0]<<24|(uint32_t)p[1]<<16|(uint32_t)p[2]<<8|p[3];}
@@ -25,10 +26,10 @@ int trophy_archive_open(const void *input,size_t size,TrophyArchive *output)
     uint32_t version=read_be32(data+4),count=read_be32(data+16);
     if((version!=2 && version!=3) || read_be32(data+20)!=64)return TROPHY_ARCHIVE_UNSUPPORTED;
     if(!count || count>TROPHY_ARCHIVE_MAX_ENTRIES || count>(size-64)/64)return TROPHY_ARCHIVE_INVALID;
-    uint8_t digest[20],zero[20]={0};Sha1Context hash;
-    sha1ContextCreate(&hash);sha1ContextUpdate(&hash,data,28);
-    sha1ContextUpdate(&hash,zero,sizeof(zero));sha1ContextUpdate(&hash,data+48,size-48);
-    sha1ContextGetHash(&hash,digest);
+    uint8_t digest[20],zero[20]={0};VitaSha1 hash;
+    vita_sha1_init(&hash);vita_sha1_update(&hash,data,28);
+    vita_sha1_update(&hash,zero,sizeof(zero));vita_sha1_update(&hash,data+48,size-48);
+    vita_sha1_finish(&hash,digest);
     if(memcmp(digest,data+28,sizeof(digest)))return TROPHY_ARCHIVE_CHECKSUM;
     TrophyArchiveEntry *entries=calloc(count,sizeof(*entries));
     if(!entries)return TROPHY_ARCHIVE_NO_MEMORY;

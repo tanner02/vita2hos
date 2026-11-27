@@ -5,10 +5,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-typedef SHA_CTX Sha1Context;
-static void sha1ContextCreate(Sha1Context *ctx){assert(SHA1_Init(ctx));}
-static void sha1ContextUpdate(Sha1Context *ctx,const void *data,size_t size){assert(SHA1_Update(ctx,data,size));}
-static void sha1ContextGetHash(Sha1Context *ctx,void *output){assert(SHA1_Final(output,ctx));}
 static int fail_allocation;
 static void *archive_calloc(size_t count,size_t size);
 #define calloc archive_calloc

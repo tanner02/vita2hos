@@ -1,3 +1,9 @@
+## 2026-11-27: trophy initialization and guarded exit on runtime 7a39813
+
+The versioned log shows NP_TROPHY module load returning zero, passes the earlier init failure gate, and reaches unsupported sceNpTrophyCreateContext (library 0x4332c10d, NID 0xc49fd33f). Main then exits zero. The bootstrap logs PROCESS_EXIT_WITH_LIVE_GUEST_THREADS status=0x0 native_process_exit=1 teardown_skipped=1; no subsequent guest/GPU/image teardown is claimed. This positively exercises the guard's native exit path on hardware. It establishes an unquiesced worker, not that every created worker was running.
+
+Private static inspection identifies an explicit NPWR02031_00 communication ID and zero options at the context call. The archive was not previously staged. A new bounded reader and XML adapter validate the user-owned archive and its 84 trophies/four additional groups in a host-only context replay, without modifying files or executing guest instructions. Hardware context creation and rendering remain pending. Evidence was collected privately in result-20261127-150032; no proprietary bytes or disassembly are included here.
+
 ## 2026-11-27: LittleBigPlanet network startup on d921c27 - initialization success
 
 The collected versioned log shows NET module load, sceNetInit and sceNetCtlInit returning zero. Repeated initialization returns EBUSY and NOT_TERMINATED respectively. Several later sysmodule requests return explicit FATAL errors. The executable creates job-manager worker records and reaches missing NP identity, AppUtil and trophy functions. It then performs libc termination and exits zero with image close zero. Created thread records do not by themselves establish that those workers ran. No rendering or game boot is verified.

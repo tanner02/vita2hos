@@ -5,14 +5,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-static int fail_allocation;
+static int fail_allocation,fail_at,allocation_calls;
 static void *trophy_calloc(size_t count,size_t size);
 #define calloc trophy_calloc
 #include "../../source/modules/SceNpTrophy.c"
 #undef calloc
 #include "../../source/modules/SceSysmodule.c"
 #include "../../source/module.c"
-static void *trophy_calloc(size_t count,size_t size){if(fail_allocation)return NULL;return calloc(count,size);}
+static void *trophy_calloc(size_t count,size_t size){allocation_calls++;if(fail_allocation || (fail_at && fail_at==allocation_calls))return NULL;return calloc(count,size);}
 SceUID SceSysmem_get_next_uid(void){static atomic_int next=100;return atomic_fetch_add(&next,1);}
 bool SceNet_host_ready(void){return false;}
 bool SceNet_is_initialized(void){return false;}
@@ -34,7 +34,9 @@ int main(void)
     assert(sceNpTrophyCreateHandle(&handle)==TROPHY_NOT_INITIALIZED && handle==123);
     assert(sceNpTrophyInit(&handle)==TROPHY_INVALID_ARGUMENT && !SceNpTrophy_is_initialized());
     fail_allocation=1;assert(sceNpTrophyInit(NULL)==TROPHY_NO_MEMORY && !SceNpTrophy_is_initialized());
-    fail_allocation=0;assert(!sceSysmoduleLoadModule(SCE_SYSMODULE_NP_TROPHY));
+    fail_allocation=0;fail_at=2;allocation_calls=0;
+    assert(sceNpTrophyInit(NULL)==TROPHY_NO_MEMORY && !trophy_handles && !trophy_contexts);
+    fail_at=0;assert(!sceSysmoduleLoadModule(SCE_SYSMODULE_NP_TROPHY));
     assert(!sceSysmoduleIsLoaded(SCE_SYSMODULE_NP_TROPHY));
     assert(!sceNpTrophyInit(NULL) && SceNpTrophy_is_initialized());
     assert(sceNpTrophyInit(NULL)==TROPHY_ALREADY_INITIALIZED);
