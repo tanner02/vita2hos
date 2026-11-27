@@ -1,5 +1,26 @@
 #include "gxm/draw.h"
 
+int gxm_validate_vertex_layout(const SceGxmVertexAttribute *attributes, unsigned int attribute_count,
+                                const SceGxmVertexStream *streams, unsigned int stream_count)
+{
+    if (attribute_count > SCE_GXM_MAX_VERTEX_ATTRIBUTES || stream_count > SCE_GXM_MAX_VERTEX_STREAMS)
+        return SCE_GXM_ERROR_INVALID_VALUE;
+    if ((attribute_count && !attributes) || (stream_count && !streams))
+        return SCE_GXM_ERROR_INVALID_POINTER;
+    for (unsigned int i = 0; i < stream_count; ++i) {
+        uint32_t divisor;
+        int ret = gxm_stream_divisor((SceGxmIndexSource)streams[i].indexSource, &divisor);
+        if (ret != 0) return ret;
+    }
+    for (unsigned int i = 0; i < attribute_count; ++i) {
+        const SceGxmVertexAttribute *a = &attributes[i];
+        if (a->streamIndex >= stream_count || !a->componentCount || a->componentCount > 4 ||
+            a->format > SCE_GXM_ATTRIBUTE_FORMAT_F32 || a->offset > 0x3fff)
+            return SCE_GXM_ERROR_INVALID_VALUE;
+    }
+    return 0;
+}
+
 int gxm_stream_divisor(SceGxmIndexSource source, uint32_t *divisor)
 {
     if (!divisor) return SCE_GXM_ERROR_INVALID_POINTER;

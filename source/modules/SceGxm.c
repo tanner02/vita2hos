@@ -539,30 +539,54 @@ EXPORT(SceGxm, 0xB7BBA6D5, int, sceGxmShaderPatcherCreateVertexProgram,
     int ret;
     SceGxmVertexProgram *vertex_program;
 
+    if (!vertexProgram)
+        return SCE_GXM_ERROR_INVALID_POINTER;
+    *vertexProgram = NULL;
+    if (!shaderPatcher || !programId || !programId->programHeader)
+        return SCE_GXM_ERROR_INVALID_POINTER;
+    ret = gxm_validate_vertex_layout(attributes, attributeCount, streams, streamCount);
+    if (ret != 0)
+        return ret;
+
     vertex_program = malloc(sizeof(*vertex_program));
     if (!vertex_program)
         return SCE_KERNEL_ERROR_NO_MEMORY;
 
     memset(vertex_program, 0, sizeof(*vertex_program));
     vertex_program->programId = programId;
-    vertex_program->attributes = calloc(attributeCount, sizeof(SceGxmVertexAttribute));
-    memcpy(vertex_program->attributes, attributes, attributeCount * sizeof(SceGxmVertexAttribute));
+    if (attributeCount) {
+        vertex_program->attributes = calloc(attributeCount, sizeof(SceGxmVertexAttribute));
+        if (!vertex_program->attributes) {
+            ret = SCE_KERNEL_ERROR_NO_MEMORY;
+            goto fail;
+        }
+        memcpy(vertex_program->attributes, attributes, attributeCount * sizeof(SceGxmVertexAttribute));
+    }
     vertex_program->attributeCount = attributeCount;
-    vertex_program->streams = calloc(streamCount, sizeof(SceGxmVertexStream));
-    memcpy(vertex_program->streams, streams, streamCount * sizeof(SceGxmVertexStream));
+    if (streamCount) {
+        vertex_program->streams = calloc(streamCount, sizeof(SceGxmVertexStream));
+        if (!vertex_program->streams) {
+            ret = SCE_KERNEL_ERROR_NO_MEMORY;
+            goto fail;
+        }
+        memcpy(vertex_program->streams, streams, streamCount * sizeof(SceGxmVertexStream));
+    }
     vertex_program->streamCount = streamCount;
 
     ret = translate_shader(&vertex_program->dk_shader, programId->programHeader,
                            pipeline_stage_vertex, "vert", g_code_memblock, &g_code_mem_offset,
                            attributes, attributeCount);
-    if (ret != 0) {
-        free(vertex_program);
-        return ret;
-    }
+    if (ret != 0)
+        goto fail;
 
     *vertexProgram = vertex_program;
 
     return 0;
+fail:
+    free(vertex_program->attributes);
+    free(vertex_program->streams);
+    free(vertex_program);
+    return ret;
 }
 
 EXPORT(SceGxm, 0xAC1FF2DA, int, sceGxmShaderPatcherReleaseVertexProgram,

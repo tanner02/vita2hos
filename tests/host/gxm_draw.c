@@ -4,6 +4,37 @@
 
 int main(void)
 {
+    SceGxmVertexStream streams[SCE_GXM_MAX_VERTEX_STREAMS] = {0};
+    SceGxmVertexAttribute attributes[SCE_GXM_MAX_VERTEX_ATTRIBUTES] = {0};
+    for (unsigned int i = 0; i < SCE_GXM_MAX_VERTEX_ATTRIBUTES; ++i) {
+        attributes[i].streamIndex = i;
+        attributes[i].format = SCE_GXM_ATTRIBUTE_FORMAT_F32;
+        attributes[i].componentCount = 4;
+    }
+    assert(gxm_validate_vertex_layout(attributes, 16, streams, 16) == 0);
+    assert(gxm_validate_vertex_layout(NULL, 0, NULL, 0) == 0);
+    assert((uint32_t)gxm_validate_vertex_layout(attributes, 17, streams, 16) == SCE_GXM_ERROR_INVALID_VALUE);
+    assert((uint32_t)gxm_validate_vertex_layout(attributes, 16, streams, 17) == SCE_GXM_ERROR_INVALID_VALUE);
+    assert((uint32_t)gxm_validate_vertex_layout(NULL, 1, streams, 1) == SCE_GXM_ERROR_INVALID_POINTER);
+    assert((uint32_t)gxm_validate_vertex_layout(attributes, 1, NULL, 1) == SCE_GXM_ERROR_INVALID_POINTER);
+    assert((uint32_t)gxm_validate_vertex_layout(attributes, 1, NULL, 0) == SCE_GXM_ERROR_INVALID_VALUE);
+    attributes[0].streamIndex = 1;
+    assert((uint32_t)gxm_validate_vertex_layout(attributes, 1, streams, 1) == SCE_GXM_ERROR_INVALID_VALUE);
+    attributes[0].streamIndex = 0;
+    attributes[0].componentCount = 0;
+    assert((uint32_t)gxm_validate_vertex_layout(attributes, 1, streams, 1) == SCE_GXM_ERROR_INVALID_VALUE);
+    attributes[0].componentCount = 5;
+    assert((uint32_t)gxm_validate_vertex_layout(attributes, 1, streams, 1) == SCE_GXM_ERROR_INVALID_VALUE);
+    attributes[0].componentCount = 4;
+    attributes[0].format = SCE_GXM_ATTRIBUTE_FORMAT_UNTYPED;
+    assert((uint32_t)gxm_validate_vertex_layout(attributes, 1, streams, 1) == SCE_GXM_ERROR_INVALID_VALUE);
+    attributes[0].format = SCE_GXM_ATTRIBUTE_FORMAT_F32;
+    attributes[0].offset = 0x4000;
+    assert((uint32_t)gxm_validate_vertex_layout(attributes, 1, streams, 1) == SCE_GXM_ERROR_INVALID_VALUE);
+    attributes[0].offset = 0x3fff;
+    assert(gxm_validate_vertex_layout(attributes, 1, streams, 1) == 0);
+    streams[0].indexSource = 4;
+    assert((uint32_t)gxm_validate_vertex_layout(attributes, 1, streams, 1) == SCE_GXM_ERROR_INVALID_VALUE);
     uint32_t divisor = 123;
     assert(gxm_stream_divisor(SCE_GXM_INDEX_SOURCE_INDEX_16BIT, &divisor) == 0 && divisor == 0);
     assert(gxm_stream_divisor(SCE_GXM_INDEX_SOURCE_INDEX_32BIT, &divisor) == 0 && divisor == 0);
