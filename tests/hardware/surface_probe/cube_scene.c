@@ -11,6 +11,7 @@ int probe_cube(SceGxmContext *context, SceGxmVertexProgram *vertex,
     enum { WIDTH = 960, HEIGHT = 544, FRAMES = 360 };
     SceGxmRenderTarget *target = NULL;
     SceGxmRenderTargetParams params = {0};
+    params.driverMemBlock = -1; /* Request libgxm-owned driver memory. */
     params.width = WIDTH; params.height = HEIGHT; params.scenesPerFrame = 1;
     int ret = sceGxmCreateRenderTarget(&params, &target);
     if (ret) return ret;

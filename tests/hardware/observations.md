@@ -1,3 +1,37 @@
+## Offline render-target driver memory (2026-11-27)
+
+- Added sceGxmRenderTargetGetDriverMemBlock (0x49553737). Render targets now
+  reside in a real Sysmem allocation: driverMemBlock=-1 requests an owned
+  uncached allocation; an existing positive UID supplies borrowed storage.
+  GetRenderTargetMemSize returns this runtime's page-rounded metadata size,
+  allowing direct allocation through Sysmem. This is not Vita driver-data layout.
+- Creation validates dimensions/scenes/output pointers, snapshots params before
+  touching supplied storage, checks block identity/base/size, and publishes the
+  target only after both native shadow images are allocated. Owned driver memory
+  and partially allocated shadow images are released after allocation failure.
+  Supplied allocations must remain alive until target destruction; memory-type
+  enforcement and arbitrary concurrent guest frees are not implemented.
+- Native surface creation checks image size/alignment and GPU allocation before
+  initializing images. Destruction is empty-safe and clears the descriptor.
+  Render-target destruction flushes/waits for submitted render work before
+  destroying shadows and freeing only owned driver storage. Callers must end
+  scenes before destruction; queue waits cannot retire unsubmitted commands.
+- Driver helper tests use real Sysmem code with a mock GPU mapper, covering
+  owned/borrowed UIDs, page sizing, small/invalid blocks, mapping failures,
+  failure preservation, and an ownership record embedded in its own allocation.
+  Surface model tests cover failed allocation before image initialization,
+  overflow, invalid alignment, image/page alignment and repeated destruction.
+- The full ASan/UBSan host suite passed; final helper adjustments also passed
+  focused checks. Final ARM Debug/Release builds passed after the helper
+  adjustments.
+- Surface/draw/cube probes now use driverMemBlock=-1 explicitly (versions 2/6/2).
+  They check owned driver lookup, page sizing, a supplied UID and its survival
+  after target destruction. VitaSDK builds and the cube's 60-import source audit
+  passed. Old zero-initialized probes need rebuilding for this stricter API path.
+- GPU shadow-memory sizes/formats are runtime-specific. Existing multisample and
+  custom-location limitations are unchanged; no broader MSAA support is claimed.
+  No new runtime or probe has been transferred to the user's Switch yet.
+
 ## Offline polygon rasterization state (2026-11-27)
 
 - Added sceGxmSetFrontPolygonMode (0xFD93209D, imported by LittleBigPlanet)

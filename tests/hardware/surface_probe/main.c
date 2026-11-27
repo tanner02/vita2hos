@@ -10,16 +10,16 @@
 #include "draw_probe.h"
 #ifdef VITA2HOS_VISIBLE_CUBE
 #define PROBE_NAME "visible_cube"
-#define PROBE_VERSION "1"
+#define PROBE_VERSION "2"
 #define PROBE_REPORT "app0:/visible-cube.txt"
 #else
 #define PROBE_NAME "draw_probe"
-#define PROBE_VERSION "5"
+#define PROBE_VERSION "6"
 #define PROBE_REPORT "app0:/draw-probe.txt"
 #endif
 #else
 #define PROBE_NAME "surface_probe"
-#define PROBE_VERSION "1"
+#define PROBE_VERSION "2"
 #define PROBE_REPORT "app0:/surface-probe.txt"
 #endif
 
@@ -91,7 +91,7 @@ int module_start(SceSize args, void *argp)
     record(PROBE_NAME " v" PROBE_VERSION "\nRUNNING - no hardware result until a final PASS line\n");
     int status = 1, initialized = 0, code;
     SceGxmContext *context = NULL;
-    SceGxmRenderTarget *target = NULL;
+    SceGxmRenderTarget *target = NULL, *borrowed_target = NULL;
     SceGxmInitializeParams init = {0};
     init.displayQueueMaxPendingCount = 1;
     init.displayQueueCallback = display_callback;
@@ -123,9 +123,35 @@ int module_start(SceSize args, void *argp)
     code = sceGxmCreateContext(&params, &context);
     if (code) { result("FAIL create_context", code); goto done; }
     SceGxmRenderTargetParams target_params = {0};
+    target_params.driverMemBlock = -1; /* Request libgxm-owned driver memory. */
     target_params.width = WIDTH; target_params.height = HEIGHT; target_params.scenesPerFrame = 1;
     code = sceGxmCreateRenderTarget(&target_params, &target);
     if (code) { result("FAIL create_target", code); goto done; }
+    SceUID driver_uid = -1;
+    void *driver_base = NULL;
+    code = sceGxmRenderTargetGetDriverMemBlock(target, &driver_uid);
+    if (code || driver_uid <= 0 || sceKernelGetMemBlockBase(driver_uid, &driver_base) || !driver_base) {
+        result("FAIL owned_driver_memory", code); goto done;
+    }
+    unsigned driver_size = 0;
+    code = sceGxmGetRenderTargetMemSize(&target_params, &driver_size);
+    if (code || !driver_size || (driver_size & 4095)) {
+        result("FAIL driver_memory_size", code); goto done;
+    }
+    void *borrowed_base = allocate(driver_size);
+    if (!borrowed_base) { record("FAIL borrowed_driver_allocate\n"); goto done; }
+    SceUID borrowed_uid = allocations[allocation_count - 1];
+    target_params.driverMemBlock = borrowed_uid;
+    code = sceGxmCreateRenderTarget(&target_params, &borrowed_target);
+    if (!code) code = sceGxmRenderTargetGetDriverMemBlock(borrowed_target, &driver_uid);
+    if (code || driver_uid != borrowed_uid) { result("FAIL borrowed_driver_memory", code); goto done; }
+    code = sceGxmDestroyRenderTarget(borrowed_target);
+    if (code) { result("FAIL borrowed_driver_destroy", code); goto done; }
+    borrowed_target = NULL;driver_base = NULL;
+    if (sceKernelGetMemBlockBase(borrowed_uid, &driver_base) || driver_base != borrowed_base) {
+        record("FAIL borrowed_driver_lifetime\n"); goto done;
+    }
+    record("PASS render_target_driver_memory\n");
     SceGxmDepthStencilSurface disabled;
     code = sceGxmDepthStencilSurfaceInitDisabled(&disabled);
     if (code || sceGxmDepthStencilSurfaceIsEnabled(&disabled)) {
@@ -188,6 +214,7 @@ int module_start(SceSize args, void *argp)
 #endif
     status = 0;
 done:
+    if (borrowed_target) sceGxmDestroyRenderTarget(borrowed_target);
     if (context) sceGxmDestroyContext(context);
     if (target) sceGxmDestroyRenderTarget(target);
     if (initialized) sceGxmTerminate();

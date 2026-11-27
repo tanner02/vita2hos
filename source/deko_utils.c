@@ -4,35 +4,6 @@
 #include "gxm/gxm_to_dk.h"
 #include "modules/SceSysmem.h"
 
-void dk_surface_create(DkDevice device, dk_surface_t *surface, uint32_t width, uint32_t height,
-                       DkImageFormat format, uint32_t flags)
-{
-    DkImageLayoutMaker maker;
-    DkImageLayout layout;
-    uint32_t alignment;
-
-    dkImageLayoutMakerDefaults(&maker, device);
-    maker.flags = flags;
-    maker.format = format;
-    maker.dimensions[0] = width;
-    maker.dimensions[1] = height;
-    dkImageLayoutInitialize(&layout, &maker);
-
-    alignment = dkImageLayoutGetAlignment(&layout);
-    surface->size = dkImageLayoutGetSize(&layout);
-    surface->width = width;
-    surface->height = height;
-    surface->memblock = dk_alloc_memblock(device, ALIGN(surface->size, alignment),
-                                          DkMemBlockFlags_GpuCached | DkMemBlockFlags_Image);
-    dkImageInitialize(&surface->image, &layout, surface->memblock, 0);
-    dkImageViewDefaults(&surface->view, &surface->image);
-}
-
-void dk_surface_destroy(dk_surface_t *surface)
-{
-    dkMemBlockDestroy(surface->memblock);
-}
-
 void dk_cmdbuf_copy_image(DkCmdBuf cmdbuf, DkImage const *src_image, uint32_t src_width,
                           uint32_t src_height, DkImage const *dst_image, uint32_t dst_width,
                           uint32_t dst_height)

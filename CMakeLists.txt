@@ -53,6 +53,8 @@ add_executable(vita2hos
     source/gxm_uniform_layout.c
     source/gxm_uniform_staging.c
     source/gxm_draw.c
+    source/gxm_driver_memory.c
+    source/gxm_render_surface.c
     source/gxm_viewport.c
     source/gxm_vfp.c
     source/gxm_region_clip.c

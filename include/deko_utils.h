@@ -9,14 +9,7 @@
 
 #include "gxm/util.h"
 
-typedef struct {
-    uint32_t size;
-    uint16_t width;
-    uint16_t height;
-    DkMemBlock memblock;
-    DkImage image;
-    DkImageView view;
-} dk_surface_t;
+#include "gxm/render_surface.h"
 
 static inline DkMemBlock dk_alloc_memblock(DkDevice device, uint32_t size, uint32_t flags)
 {
@@ -41,10 +34,6 @@ static inline ptrdiff_t dk_memblock_cpu_addr_offset(const DkMemBlock memblock, c
     assert(offset >= 0);
     return offset;
 }
-
-void dk_surface_create(DkDevice device, dk_surface_t *surface, uint32_t width, uint32_t height,
-                       DkImageFormat format, uint32_t flags);
-void dk_surface_destroy(dk_surface_t *surface);
 
 void dk_cmdbuf_copy_image(DkCmdBuf cmdbuf, DkImage const *src_image, uint32_t src_width,
                           uint32_t src_height, DkImage const *dst_image, uint32_t dst_width,

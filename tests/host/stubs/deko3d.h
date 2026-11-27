@@ -76,6 +76,16 @@ typedef void *DkCmdBuf;
 typedef void *DkQueue;
 typedef struct { unsigned unused; } DkImage;
 typedef struct { const DkImage *pImage;DkImageFormat format; } DkImageView;
+typedef struct { DkDevice device;DkImageFormat format;uint32_t flags,dimensions[3]; } DkImageLayoutMaker;
+typedef struct { uint64_t size;uint32_t alignment; } DkImageLayout;
+static inline void dkImageLayoutMakerDefaults(DkImageLayoutMaker *maker,DkDevice device)
+{ *maker=(DkImageLayoutMaker){.device=device}; }
+void dkImageLayoutInitialize(DkImageLayout *,const DkImageLayoutMaker *);
+uint64_t dkImageLayoutGetSize(const DkImageLayout *);
+uint32_t dkImageLayoutGetAlignment(const DkImageLayout *);
+void dkImageInitialize(DkImage *,const DkImageLayout *,DkMemBlock,uint32_t);
+void dkImageViewDefaults(DkImageView *,const DkImage *);
+
 typedef struct { uint32_t x,y,z,width,height,depth; } DkImageRect;
 typedef struct { DkGpuAddr addr;uint32_t rowLength,imageHeight; } DkCopyBuf;
 typedef enum { DkBarrier_Full=4 } DkBarrier;

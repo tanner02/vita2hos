@@ -32,6 +32,7 @@
 #include "gxm/texture_layout.h"
 #include "gxm/texture_staging.h"
 #include "gxm/depth_staging.h"
+#include "gxm/driver_memory.h"
 #include "modules/SceSysmem.h"
 
 #define DUMP_SHADER_SPIRV     0
@@ -154,6 +155,7 @@ typedef struct SceGxmFragmentProgram {
 
 typedef struct SceGxmRenderTarget {
     SceGxmRenderTargetParams params;
+    GxmDriverMemory driver_memory;
     dk_surface_t shadow_color_surface;
     dk_surface_t shadow_ds_surface;
 } SceGxmRenderTarget;
@@ -787,50 +789,66 @@ EXPORT(SceGxm, 0xA949A803, const SceGxmProgram *, sceGxmShaderPatcherGetProgramF
     return NULL;
 }
 
+static int validate_render_target(const SceGxmRenderTargetParams *params)
+{
+    if (!params) return SCE_GXM_ERROR_INVALID_POINTER;
+    if (!params->width || params->width>4096 || !params->height || params->height>4096 ||
+        !params->scenesPerFrame || params->scenesPerFrame>SCE_GXM_MAX_SCENES_PER_RENDERTARGET)
+        return SCE_GXM_ERROR_INVALID_VALUE;
+    return 0;
+}
 EXPORT(SceGxm, 0xB291C959, int, sceGxmGetRenderTargetMemSize,
        const SceGxmRenderTargetParams *params, unsigned int *driverMemSize)
 {
-    *driverMemSize = sizeof(SceGxmRenderTarget);
-    return 0;
+    if (!driverMemSize) return SCE_GXM_ERROR_INVALID_POINTER;
+    int result=validate_render_target(params);
+    return result ? result : gxm_driver_memory_size(sizeof(SceGxmRenderTarget),driverMemSize);
 }
-
 EXPORT(SceGxm, 0x207AF96B, int, sceGxmCreateRenderTarget, const SceGxmRenderTargetParams *params,
        SceGxmRenderTarget **renderTarget)
 {
-    SceGxmRenderTarget *render_target;
-
-    if (!g_gxm_initialized)
-        return SCE_GXM_ERROR_UNINITIALIZED;
-    else if (!params)
-        return SCE_GXM_ERROR_INVALID_POINTER;
-    else if (params->scenesPerFrame > SCE_GXM_MAX_SCENES_PER_RENDERTARGET)
-        return SCE_GXM_ERROR_INVALID_VALUE;
-
-    render_target = malloc(sizeof(*render_target));
-    if (!render_target)
-        return SCE_KERNEL_ERROR_NO_MEMORY;
-
-    render_target->params = *params;
-    /* Create shadow color and depth/stencil surfaces */
-    dk_surface_create(g_dk_device, &render_target->shadow_color_surface, params->width,
-                      params->height, DkImageFormat_RGBA8_Unorm,
-                      DkImageFlags_UsageRender | DkImageFlags_Usage2DEngine |
-                          DkImageFlags_HwCompression);
-    dk_surface_create(g_dk_device, &render_target->shadow_ds_surface, params->width, params->height,
-                      DkImageFormat_ZF32_X24S8,
-                      DkImageFlags_UsageRender | DkImageFlags_Usage2DEngine);
-
-    *renderTarget = render_target;
-
+    if (!g_gxm_initialized) return SCE_GXM_ERROR_UNINITIALIZED;
+    if (!renderTarget) return SCE_GXM_ERROR_INVALID_POINTER;
+    int result=validate_render_target(params);
+    if (result) return result;
+    /* Params may reside in a caller-supplied driver allocation. */
+    SceGxmRenderTargetParams snapshot=*params;
+    GxmDriverMemory driver={0};
+    result=gxm_driver_memory_acquire(snapshot.driverMemBlock,sizeof(SceGxmRenderTarget),&driver);
+    if (result) return result;
+    SceGxmRenderTarget *target=driver.base;
+    memset(target,0,sizeof(*target));
+    target->params=snapshot;target->driver_memory=driver;
+    bool color=dk_surface_create(g_dk_device,&target->shadow_color_surface,snapshot.width,
+        snapshot.height,DkImageFormat_RGBA8_Unorm,
+        DkImageFlags_UsageRender|DkImageFlags_Usage2DEngine|DkImageFlags_HwCompression);
+    bool depth=color && dk_surface_create(g_dk_device,&target->shadow_ds_surface,snapshot.width,
+        snapshot.height,DkImageFormat_ZF32_X24S8,DkImageFlags_UsageRender|DkImageFlags_Usage2DEngine);
+    if (!depth) {
+        dk_surface_destroy(&target->shadow_ds_surface);
+        dk_surface_destroy(&target->shadow_color_surface);
+        gxm_driver_memory_release(&driver);
+        return SCE_GXM_ERROR_OUT_OF_MEMORY;
+    }
+    *renderTarget=target;
     return 0;
 }
-
-EXPORT(SceGxm, 0x0B94C50A, int, sceGxmDestroyRenderTarget, SceGxmRenderTarget *renderTarget)
+EXPORT(SceGxm, 0x49553737, int, sceGxmRenderTargetGetDriverMemBlock,
+       const SceGxmRenderTarget *target,SceUID *driverMemBlock)
 {
-    dk_surface_destroy(&renderTarget->shadow_color_surface);
-    dk_surface_destroy(&renderTarget->shadow_ds_surface);
-    free(renderTarget);
+    if (!target || !driverMemBlock) return SCE_GXM_ERROR_INVALID_POINTER;
+    *driverMemBlock=target->driver_memory.uid;
     return 0;
+}
+EXPORT(SceGxm, 0x0B94C50A, int, sceGxmDestroyRenderTarget, SceGxmRenderTarget *target)
+{
+    if (!target) return SCE_GXM_ERROR_INVALID_POINTER;
+    /* Scene command lists reference the shadow images until queue completion. */
+    if (g_render_queue) { dkQueueFlush(g_render_queue);dkQueueWaitIdle(g_render_queue); }
+    GxmDriverMemory driver=target->driver_memory;
+    dk_surface_destroy(&target->shadow_color_surface);
+    dk_surface_destroy(&target->shadow_ds_surface);
+    return gxm_driver_memory_release(&driver);
 }
 
 EXPORT(SceGxm, 0x14BD831F, void, sceGxmSetFrontDepthFunc, SceGxmContext *context,
