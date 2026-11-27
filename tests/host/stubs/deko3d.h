@@ -22,6 +22,7 @@ typedef struct DkVtxAttribState {
 
 typedef void *DkMemBlock;
 typedef void *DkDevice;
+typedef enum { DkResult_Success, DkResult_Fail } DkResult;
 typedef struct { float x, y, width, height, near, far; } DkViewport;
 typedef struct { uint32_t x, y, width, height; } DkScissor;
 typedef enum { DkFace_None = 0, DkFace_Front = 1, DkFace_Back = 2, DkFace_FrontAndBack = 3 } DkFace;
@@ -88,6 +89,7 @@ static inline void dkMemBlockMakerDefaults(DkMemBlockMaker *maker, DkDevice devi
 }
 DkMemBlock dkMemBlockCreate(const DkMemBlockMaker *maker);
 void *dkMemBlockGetCpuAddr(DkMemBlock block);
+DkResult dkMemBlockFlushCpuCache(DkMemBlock block, uint32_t offset, uint32_t size);
 
 typedef uint64_t DkGpuAddr;
 #define DK_GPU_ADDR_INVALID UINT64_MAX

@@ -7,31 +7,70 @@
 #include "../../source/gxm_texture_layout.c"
 #include "../../source/gxm_texture_staging.c"
 
-typedef struct { void *data; } TestBlock;
-static unsigned int live_blocks;
-static bool fail_create, fail_mapping;
+typedef struct { unsigned char *cpu, *gpu; uint32_t flags, size; } TestBlock;
+static unsigned int live_blocks, flush_calls;
+static bool fail_create, fail_mapping, fail_flush;
+static GxmTextureStaging **pending_list, *pending_head;
+static DkMemBlock *pending_output;
 DkMemBlock dkMemBlockCreate(const DkMemBlockMaker *maker)
 {
     assert(maker->size % DK_MEMBLOCK_ALIGNMENT == 0);
-    assert(maker->flags & DkMemBlockFlags_CpuUncached);
-    if (fail_create)
-        return NULL;
+    bool cached = (maker->flags & DkMemBlockFlags_CpuCached) != 0;
+    assert(cached != ((maker->flags & DkMemBlockFlags_CpuUncached) != 0));
+    if (fail_create) return NULL;
     TestBlock *block = malloc(sizeof(*block));
     assert(block);
-    block->data = malloc(maker->size);
-    assert(block->data);
+    *block = (TestBlock){.flags=maker->flags,.size=maker->size};
+    block->cpu = malloc(maker->size);
+    block->gpu = cached ? malloc(maker->size) : block->cpu;
+    assert(block->cpu && block->gpu);
+    memset(block->cpu, 0xa5, maker->size);
+    if (cached) memset(block->gpu, 0xcc, maker->size);
     live_blocks++;
     return block;
 }
 void *dkMemBlockGetCpuAddr(DkMemBlock block)
-{ return fail_mapping ? NULL : ((TestBlock *)block)->data; }
+{ return fail_mapping ? NULL : ((TestBlock *)block)->cpu; }
+static const unsigned char *gpu_bytes(DkMemBlock block)
+{ return ((TestBlock *)block)->gpu; }
+DkResult dkMemBlockFlushCpuCache(DkMemBlock handle, uint32_t offset, uint32_t size)
+{
+    TestBlock *block=handle;
+    assert(block->flags & DkMemBlockFlags_CpuCached);
+    assert(offset<=block->size && size<=block->size-offset);
+    if(pending_list) {
+        assert(*pending_list==pending_head && pending_output && !*pending_output);
+        assert(offset==0 && size==block->size); /* Publish the whole allocation. */
+    }
+    ++flush_calls;
+    if(fail_flush) return DkResult_Fail;
+    memcpy(block->gpu+offset,block->cpu+offset,size);
+    return DkResult_Success;
+}
 void dkMemBlockDestroy(DkMemBlock handle)
 {
     TestBlock *block = handle;
     assert(live_blocks > 0);
-    free(block->data);
+    if(block->gpu!=block->cpu) free(block->gpu);
+    free(block->cpu);
     free(block);
     live_blocks--;
+}
+static int checked_stage(DkDevice device,GxmTextureStaging **list,const GxmTextureLayout *layout,
+                         const void *source,size_t source_size,DkMemBlock *output)
+{
+    unsigned before=live_blocks;
+    pending_list=list;pending_head=*list;pending_output=output;
+    int result=gxm_texture_stage(device,list,layout,source,source_size,output);
+    pending_list=NULL;pending_output=NULL;
+    if(!result) {
+        TestBlock *block=*output;
+        assert((block->flags & DkMemBlockFlags_CpuCached) && !(block->flags & DkMemBlockFlags_CpuUncached));
+        assert(live_blocks==before+1);
+    } else {
+        assert(!*output && *list==pending_head && live_blocks==before);
+    }
+    return result;
 }
 
 /* Independent fixture builder: visit rectangular Morton blocks recursively,
@@ -64,6 +103,20 @@ int main(void)
     GxmTextureStaging *list = NULL;
     DkMemBlock block;
 
+    /* The fake cache is observably incoherent until a flush, independently
+     * of the staging implementation and its packing code. */
+    DkMemBlockMaker maker;
+    dkMemBlockMakerDefaults(&maker,NULL,DK_MEMBLOCK_ALIGNMENT);
+    maker.flags=DkMemBlockFlags_CpuCached | DkMemBlockFlags_GpuCached;
+    DkMemBlock probe=dkMemBlockCreate(&maker);
+    unsigned char *probe_cpu=dkMemBlockGetCpuAddr(probe);
+    probe_cpu[7]=0x5a;
+    assert(probe_cpu[7]==0x5a && gpu_bytes(probe)[7]==0xcc);
+    assert(dkMemBlockFlushCpuCache(probe,7,1)==DkResult_Success);
+    assert(gpu_bytes(probe)[7]==0x5a && gpu_bytes(probe)[6]==0xcc);
+    dkMemBlockDestroy(probe);
+    assert(!live_blocks);
+
     /* API-built strided descriptor must copy visible pixels from each row,
      * ignoring source padding and clearing the Maxwell-aligned destination. */
     unsigned char rows[40];memset(rows,0xee,sizeof(rows));
@@ -92,12 +145,18 @@ int main(void)
             assert(gxm_texture_get_linear_layout(inner, &layout) == 0);
             assert(gxm_texture_pack_linear(&layout, source, cursor, destination,
                                             sizeof(destination)) == 0);
+            GxmTextureStaging *fixture_list=NULL;
+            DkMemBlock fixture;
+            assert(!checked_stage(NULL,&fixture_list,&layout,source,cursor,&fixture));
+            assert(!memcmp(gpu_bytes(fixture),destination,layout.size));
             for (unsigned int y = 0; y < height; y++) {
                 for (unsigned int x = 0; x < width; x++)
                     assert(destination[y * layout.pitch + x] == (unsigned char)(y * 16 + x));
                 for (unsigned int x = width; x < layout.pitch; x++)
                     assert(destination[y * layout.pitch + x] == 0);
             }
+            gxm_texture_staging_release(&fixture_list);
+            assert(!fixture_list && !live_blocks);
         }
     }
     assert((uint32_t)sceGxmTextureInitSwizzled(&texture, NULL, SCE_GXM_TEXTURE_FORMAT_R8,
@@ -127,30 +186,44 @@ int main(void)
                                             5, 3, 1) == 0);
     assert(gxm_texture_get_linear_layout(inner, &layout) == 0);
     assert(layout.source_size == 32 && layout.width == 5 && layout.height == 3);
-    assert(gxm_texture_stage(NULL, &list, &layout, source, cursor, &block) == 0);
+    assert(checked_stage(NULL, &list, &layout, source, cursor, &block) == 0);
     for (unsigned int y = 0; y < 3; y++)
         for (unsigned int x = 0; x < 5; x++)
-            assert(((unsigned char *)dkMemBlockGetCpuAddr(block))[y * layout.pitch + x] == y * 16 + x);
+            assert(gpu_bytes(block)[y * layout.pitch + x] == y * 16 + x);
 
     for (unsigned int i = 0; i < 64; i++)
         source[i] = i;
     assert(sceGxmTextureInitLinear(&texture, NULL, SCE_GXM_TEXTURE_FORMAT_R8, 8, 8, 1) == 0);
     assert(gxm_texture_get_linear_layout(inner, &layout) == 0);
-    assert(gxm_texture_stage(NULL, &list, &layout, source, 64, &block) == 0);
+    assert(checked_stage(NULL, &list, &layout, source, 64, &block) == 0);
     assert(live_blocks == 2);
     for (unsigned int y = 0; y < 8; y++)
-        assert(memcmp((unsigned char *)dkMemBlockGetCpuAddr(block) + y * 32, source + y * 8, 8) == 0);
-    assert((uint32_t)gxm_texture_stage(NULL, &list, &layout, source, 63, &block) ==
+        assert(memcmp(gpu_bytes(block) + y * 32, source + y * 8, 8) == 0);
+    for(unsigned y=0;y<8;++y) for(unsigned x=8;x<32;++x)
+        assert(gpu_bytes(block)[y*32+x]==0);
+    memset(source,0xee,64);
+    for(unsigned y=0;y<8;++y) for(unsigned x=0;x<8;++x)
+        assert(gpu_bytes(block)[y*32+x]==y*8+x);
+    GxmTextureStaging *saved_images=list;
+    unsigned saved_flushes=flush_calls;
+    fail_flush=true;
+    assert((uint32_t)checked_stage(NULL,&list,&layout,source,64,&block)==SCE_GXM_ERROR_INVALID_VALUE);
+    assert(!block && list==saved_images && live_blocks==2 && flush_calls==saved_flushes+1);
+    fail_flush=false;fail_mapping=true;saved_flushes=flush_calls;
+    assert((uint32_t)checked_stage(NULL,&list,&layout,source,64,&block)==SCE_GXM_ERROR_INVALID_POINTER);
+    assert(!block && list==saved_images && live_blocks==2 && flush_calls==saved_flushes);
+    fail_mapping=false;
+    assert((uint32_t)checked_stage(NULL, &list, &layout, source, 63, &block) ==
            SCE_GXM_ERROR_INVALID_VALUE);
     fail_create = true;
-    assert((uint32_t)gxm_texture_stage(NULL, &list, &layout, source, 64, &block) ==
+    assert((uint32_t)checked_stage(NULL, &list, &layout, source, 64, &block) ==
            SCE_GXM_ERROR_OUT_OF_MEMORY);
     assert(live_blocks == 2);
     fail_create = false;
     layout.source_type = SCE_GXM_TEXTURE_CUBE;
-    assert((uint32_t)gxm_texture_stage(NULL, &list, &layout, source, 64, &block) ==
+    assert((uint32_t)checked_stage(NULL, &list, &layout, source, 64, &block) ==
            SCE_GXM_ERROR_UNSUPPORTED);
-    assert(live_blocks == 2);
+    assert(live_blocks == 2 && !block && list==saved_images && flush_calls==saved_flushes);
     gxm_texture_staging_release(&list);
     assert(list == NULL && live_blocks == 0);
     gxm_texture_staging_release(&list);
@@ -172,6 +245,31 @@ int main(void)
                                              sizeof(destination)) == SCE_GXM_ERROR_INVALID_VALUE);
     assert((uint32_t)gxm_texture_pack_linear(&layout, source, sizeof(source), destination,
                                              layout.size - 1) == SCE_GXM_ERROR_INVALID_VALUE);
+    assert(!checked_stage(NULL,&list,&layout,source,sizeof(source),&block));
+    for(unsigned y=0;y<33;++y) {
+        for(unsigned x=0;x<35;++x) assert(gpu_bytes(block)[y*64+x]==x+y);
+        for(unsigned x=35;x<64;++x) assert(!gpu_bytes(block)[y*64+x]);
+    }
+    memset(source,0xee,sizeof(source));
+    assert(gpu_bytes(block)[32*64+34]==66);
+    gxm_texture_staging_release(&list);
+    assert(!list && !live_blocks);
+
+    /* BC1 uses compressed blocks; source row padding is excluded on the GPU. */
+    assert(!sceGxmTextureInitLinear(&texture,NULL,SCE_GXM_TEXTURE_FORMAT_UBC1_ABGR,9,5,1));
+    assert(!gxm_texture_get_linear_layout(inner,&layout));
+    assert(layout.source_size==64 && layout.pitch==32);
+    memset(source,0xee,sizeof(source));
+    for(unsigned y=0;y<2;++y) memset(source+y*32,0x31+y,24);
+    assert(!checked_stage(NULL,&list,&layout,source,64,&block));
+    memset(source,0xab,64);
+    for(unsigned y=0;y<2;++y) {
+        for(unsigned x=0;x<24;++x) assert(gpu_bytes(block)[y*32+x]==0x31+y);
+        for(unsigned x=24;x<32;++x) assert(!gpu_bytes(block)[y*32+x]);
+    }
+    gxm_texture_staging_release(&list);
+    assert(!list && !live_blocks);
+
     /* Descriptor changes must not overwrite an earlier recorded snapshot. */
     DkMemBlock first, second;
     unsigned char descriptors[17];
@@ -180,12 +278,14 @@ int main(void)
     memset(descriptors, 0x34, sizeof(descriptors));
     assert(!gxm_texture_stage_data(NULL, &list, descriptors, sizeof(descriptors), &second));
     assert(first != second && live_blocks == 2);
+    assert(((TestBlock *)first)->flags==(DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached));
+    assert(((TestBlock *)second)->cpu==((TestBlock *)second)->gpu);
     for (unsigned i = 0; i < sizeof(descriptors); ++i) {
-        assert(((unsigned char *)dkMemBlockGetCpuAddr(first))[i] == 0x12);
-        assert(((unsigned char *)dkMemBlockGetCpuAddr(second))[i] == 0x34);
+        assert(gpu_bytes(first)[i] == 0x12);
+        assert(gpu_bytes(second)[i] == 0x34);
     }
     for (unsigned i = sizeof(descriptors); i < DK_MEMBLOCK_ALIGNMENT; ++i)
-        assert(((unsigned char *)dkMemBlockGetCpuAddr(first))[i] == 0);
+        assert(gpu_bytes(first)[i] == 0);
     GxmTextureStaging *saved = list;
     fail_create = true;
     assert((uint32_t)gxm_texture_stage_data(NULL, &list, descriptors, sizeof(descriptors), &block)
@@ -200,7 +300,10 @@ int main(void)
             == SCE_GXM_ERROR_INVALID_VALUE && !block);
     gxm_texture_staging_release(&list);
     assert(!list && !live_blocks);
+    saved_flushes=flush_calls;
     assert(!gxm_texture_allocate_image(NULL, &list, 8193, &block) && live_blocks == 1);
+    assert(((TestBlock *)block)->flags==(DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached | DkMemBlockFlags_Image));
+    assert(((TestBlock *)block)->cpu==((TestBlock *)block)->gpu && flush_calls==saved_flushes);
     saved = list;
     assert((uint32_t)gxm_texture_allocate_image(NULL, &list, UINT64_MAX, &block)
             == SCE_GXM_ERROR_OUT_OF_MEMORY && !block && list == saved);

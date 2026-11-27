@@ -462,3 +462,14 @@ Tests cover small/default/large requests, rejection before native allocation for
 zero or alignment-overflow sizes, and unchanged module-start/affinity ownership.
 The additional backing consumes memory per guest thread; shader work has not
 been moved to a separate native stack.
+
+
+Converted texture images are packed through CPU-cached staging and explicitly
+flushed before publication to GPU commands. Host staging tests model distinct
+CPU and GPU views: they verify visible pixels, row padding, Morton/tiled/BC
+layout, and immutable snapshots after source mutation. An isolated no-flush
+counterfactual fails the GPU-byte comparison. Flush, mapping, packing and
+allocation failures leave the output null, preserve the existing staging list
+and release temporary storage. Descriptor-data and GPU-only allocations retain
+their previous policies. Native cache-operation correctness and performance
+still require hardware verification; host coherence is a model.

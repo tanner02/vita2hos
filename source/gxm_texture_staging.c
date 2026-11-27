@@ -77,7 +77,7 @@ int gxm_texture_stage(DkDevice device, GxmTextureStaging **list, const GxmTextur
     const uint32_t size = (layout->size + DK_MEMBLOCK_ALIGNMENT - 1) & ~(DK_MEMBLOCK_ALIGNMENT - 1);
     DkMemBlockMaker maker;
     dkMemBlockMakerDefaults(&maker, device, size);
-    maker.flags = DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached | DkMemBlockFlags_Image;
+    maker.flags = DkMemBlockFlags_CpuCached | DkMemBlockFlags_GpuCached | DkMemBlockFlags_Image;
     entry->block = dkMemBlockCreate(&maker);
     if (!entry->block) {
         free(entry);
@@ -86,6 +86,10 @@ int gxm_texture_stage(DkDevice device, GxmTextureStaging **list, const GxmTextur
 
     int ret = gxm_texture_pack_linear(layout, source, source_size,
                                       dkMemBlockGetCpuAddr(entry->block), size);
+    /* Pack through the CPU cache, then make every write visible before the
+     * block can be published to commands that read it on the GPU. */
+    if (!ret && dkMemBlockFlushCpuCache(entry->block, 0, size) != DkResult_Success)
+        ret = SCE_GXM_ERROR_INVALID_VALUE;
     if (ret != 0) {
         dkMemBlockDestroy(entry->block);
         free(entry);
