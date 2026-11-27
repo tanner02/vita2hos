@@ -176,3 +176,11 @@ for unsupported selective timer modes or invalid values. DEFAULT maps to
 appletReportUserIsActive; it never enables persistent AutoSleepDisabled. Native
 idle/screen behavior still needs console observation. Selective suspend/off/dim
 ticks and power lock/unlock remain unsupported.
+
+Launch-mode parsing checks absent-file normal execution, explicit normal and
+dependencies-only values, LF/CRLF, bounded reads, embedded NULs, extra content,
+real file errors and output preservation. Loader tests prove diagnostic startup
+order, failed-dependency gating, one-shot invocation and main remaining READY.
+The frontend holds diagnostic execution for manual closure even after startup
+failure: module-start joins cannot establish that resident workers stopped.
+This mode does not make unresolved imports implemented or prove a title boots.

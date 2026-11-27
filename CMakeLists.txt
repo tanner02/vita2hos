@@ -83,6 +83,7 @@ add_executable(vita2hos
     source/load_bind.c
     source/load_process.c
     source/load_process_run.c
+    source/launch_mode.c
     source/load_module_info.c
     source/modules/SceModulemgr.c
     source/modules/SceRtc.c

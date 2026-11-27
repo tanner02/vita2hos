@@ -33,6 +33,11 @@ int load_process_run(LoadProcess *process, uint32_t args, void *argp)
         ++process->modules_started;
         atomic_store(&process->images[i].module_state,SCE_KERNEL_MODULE_STATE_STARTED);
     }
+    if(process->dependencies_only) {
+        LOG("LIBRARY_STARTUP_ONLY dependencies=%zu startup_entries=%zu main_skipped=1",
+            process->count-1,process->modules_started);
+        return 0;
+    }
     atomic_store(&process->images[0].module_state,SCE_KERNEL_MODULE_STATE_STARTED);
     int result=((GuestEntry)process->entry)(args,argp);
     atomic_store(&process->images[0].module_state,SCE_KERNEL_MODULE_STATE_ENDED);

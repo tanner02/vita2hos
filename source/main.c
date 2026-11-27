@@ -15,6 +15,7 @@
 #include <time.h>
 
 #include "load_process.h"
+#include "launch_mode.h"
 #include "load_module_paths.h"
 #include "load_retry.h"
 #include "log.h"
@@ -51,6 +52,13 @@ static int guest_process_entry(SceSize args, void *argp)
     LoadProcess *process = NULL;
     if (args == sizeof(process) && argp) memcpy(&process, argp, sizeof(process));
     int result = load_process_run(process, 0, NULL);
+    if(process && process->dependencies_only) {
+        /* Resident libraries may create workers. Retain all mappings/native
+         * objects until Horizon closes this diagnostic title; do not pretend
+         * that joining module_start also joins every thread it created. */
+        LOG("LIBRARY_STARTUP_ONLY_RESULT status=0x%x main_skipped=1 close_title=1",result);
+        for(;;)svcSleepThread(1000000000);
+    }
     /* A returning main or startup failure must also wake the process waiter.
      * A guest calling sceKernelExitProcess itself never returns here. */
     sceKernelExitProcess(result);
@@ -180,6 +188,9 @@ int main(int argc, char *argv[])
     strftime(timestr, sizeof(timestr), "%c", localtime(&now));
     LOG("Starting at %s", timestr);
 
+    bool dependencies_only=false;
+    if(launch_mode_file(VITA2HOS_LAUNCH_MODE_FILE,&dependencies_only)<0)
+        fatal_error("Invalid launch mode.","Use normal or dependencies-only in /vita2hos/launch-mode.txt.");
     LoadModulePaths modules;
     if (load_module_paths_file(&modules, VITA2HOS_MODULES_FILE, VITA2HOS_APP0_PATH) < 0)
         fatal_error("Error reading guest module list.",
@@ -207,14 +218,18 @@ int main(int argc, char *argv[])
         LOG("Compatible layout after %u restarts", load_retry_count(&previous_retry, process.source_tag));
         LOG("Launching PlayStation Vita executable!");
 
-        /* Jump to Vita's executable entrypoint */
+        process.dependencies_only=dependencies_only;
+        if(dependencies_only)LOG("Launch mode: dependencies-only; game main will be skipped");
+        /* Start guest dependencies, then enter main unless diagnostics disable it. */
         ret = launch(&process);
 
         LOG("Returned from launch with result: %d", ret);
 
         /* Release guest code and data mappings after execution has stopped. */
-        ret = load_process_close(&process);
-        LOG("load_process_close() returned: 0x%x", ret);
+        int launch_result=ret;
+        Result close_result=load_process_close(&process);
+        LOG("load_process_close() returned: 0x%x", close_result);
+        ret=R_FAILED(close_result) ? (int)close_result : launch_result;
     } else {
         fatal_error("Error loading PlayStation Vita executable.",
                     "Make sure to place it to '" VITA2HOS_EXE_FILE "'");

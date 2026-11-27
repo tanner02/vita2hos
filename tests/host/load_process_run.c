@@ -67,5 +67,15 @@ int main(void)
     process.count=1; main_result=-321;
     assert(load_process_run(&process, 4, &argument) == -321 && call_count == 1);
     assert(!process.modules_started && calls[0] == 3);
+    reset(&process,images);process.dependencies_only=true;
+    assert(!load_process_run(&process,0,NULL));
+    assert(call_count==2 && calls[0]==1 && calls[1]==2 && process.modules_started==2);
+    assert(atomic_load(&images[0].module_state)==SCE_KERNEL_MODULE_STATE_READY);
+    assert(load_process_run(&process,0,NULL)<0 && call_count==2);
+    reset(&process,images);process.dependencies_only=true;failed_module=1;failure_result=-1;
+    assert(load_process_run(&process,0,NULL)<0 && call_count==1 && !process.modules_started);
+    assert(atomic_load(&images[0].module_state)==SCE_KERNEL_MODULE_STATE_READY);
+    reset(&process,images);process.dependencies_only=true;process.count=1;
+    assert(!load_process_run(&process,0,NULL) && !call_count && !process.modules_started);
     puts("Guest module startup ordering, failure gating and main-result checks passed.");
 }

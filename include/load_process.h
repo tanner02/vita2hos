@@ -12,6 +12,7 @@ typedef struct {
     void *entry;
     bool bound;
     bool run_started;
+    bool dependencies_only; /* Diagnostic: stop after dependency startup, before main. */
     size_t modules_started;
     bool guest_tp_retargeted;
 } LoadProcess;
@@ -36,7 +37,8 @@ int load_process_load_app(LoadProcess *process, const char *executable,
  * thread is joined before continuing; return and explicit thread-exit status
  * are equivalent. Only resident success (0) is
  * supported. Failure prevents entry into main. This does not run stop callbacks
- * or stop threads created by guest modules. */
+ * or stop threads created by guest modules. dependencies_only is an explicit
+ * diagnostic mode: main remains READY and its entry is never called. */
 int load_process_run(LoadProcess *process, uint32_t args, void *argp);
 
 #endif

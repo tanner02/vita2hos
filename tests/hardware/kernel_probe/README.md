@@ -26,3 +26,7 @@ interpret an absent final result or a timeout report as a pass.
 Coverage does not include condition deletion races, signal callback waits,
 nonzero delay timing, heap realloc/alignment/statistics, Ult fibers, commercial
 library startup, or a game boot. Those need separate evidence.
+
+If a newer runtime has launch-mode.txt from a library diagnostic, remove that
+file or set it to normal before running this probe; dependencies-only would
+intentionally skip its module_start entry and produce no new kernel report.
