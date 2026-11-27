@@ -2,12 +2,30 @@
 #include <stdio.h>
 #include <string.h>
 #include "../../source/gxm_surface.c"
+static SceGxmContext *viewport_context;
+static float viewport_arguments[6];
+void sceGxmSetViewport(SceGxmContext *context, float xo, float xs, float yo, float ys, float zo, float zs)
+{
+    viewport_context = context;
+    const float arguments[6] = {xo, xs, yo, ys, zo, zs};
+    memcpy(viewport_arguments, arguments, sizeof(arguments));
+}
+#include "../../source/gxm_vfp.c"
 #include "../../source/module.c"
 
 DECLARE_LIBRARY(SceGxm, 0xf76b66bd);
 
 int main(void)
 {
+    void (*set_viewport)(SceGxmContext *, float, float, float, float, float, float) =
+        (void (*)(SceGxmContext *, float, float, float, float, float, float))
+        module_get_func_export(0xf76b66bd, 0x3EB3380B);
+    assert(set_viewport);
+    SceGxmContext *fake_context = (SceGxmContext *)(uintptr_t)0x1234;
+    const float transform[6] = {480, -480, 272, 272, 0.25f, -0.75f};
+    set_viewport(fake_context, 480, -480, 272, 272, 0.25f, -0.75f);
+    assert(viewport_context == fake_context);
+    assert(memcmp(viewport_arguments, transform, sizeof(transform)) == 0);
     uint32_t pitch = 0;
     assert(gxm_color_surface_linear_pitch(960, 544, 960, 960 * 544 * 4, &pitch) == 0);
     assert(pitch == 3840);
@@ -72,11 +90,15 @@ int main(void)
     void (*set_stencil)(SceGxmDepthStencilSurface *, unsigned char) =
         (void (*)(SceGxmDepthStencilSurface *, unsigned char))module_get_func_export(0xf76b66bd, 0xF5D3F3E8);
     assert(set_depth && set_stencil);
+    float (*get_depth)(const SceGxmDepthStencilSurface *) =
+        (float (*)(const SceGxmDepthStencilSurface *))module_get_func_export(0xf76b66bd, 0x269B56BE);
+    assert(get_depth);
     for (unsigned value = 0; value < 256; ++value) {
         set_depth(&surface, (float)value / 255.0f);
         set_stencil(&surface, value);
         assert(sceGxmDepthStencilSurfaceGetBackgroundStencil(&surface) == value);
         assert(sceGxmDepthStencilSurfaceGetBackgroundDepth(&surface) == (float)value / 255.0f);
+        assert(get_depth(&surface) == (float)value / 255.0f);
         assert(sceGxmDepthStencilSurfaceGetBackgroundMask(&surface));
         sceGxmDepthStencilSurfaceSetBackgroundMask(&surface, false);
         assert(!sceGxmDepthStencilSurfaceGetBackgroundMask(&surface));

@@ -73,6 +73,22 @@
   remains unresolved; version 4 adds coverage/axis diagnostics without changing
   the runtime or weakening the expected result.
 
+### Texture probe version 4: explicit viewport calls produce no coverage
+
+- Guest source `120e92d993fe43da08f18a18e91d9cedc21d728a`, SHA-256
+  `bac36e8af23cda5d33791c2a821bd75c3e89a893d864978c8fa0683716cdc20e`.
+- Default-viewport texture quadrants and texture updates passed again.
+- All four samples retained the distinctive `0xff332211` background in each
+  scene with an explicit viewport call, including restoring the default signs.
+- Inspection of the built guest shows the SDK's `sceGxmSetViewport` shim moves
+  six float arguments into s0-s5 and reuses r1-r3 for stack arguments before
+  branching to the imported stub. The runtime implementation expected base-PCS
+  core/stack arguments, so it received the wrong transform. This explains why
+  explicit calls fail while the runtime's internal default setter works.
+- A runtime fix now exports VFP adapters for viewport and background depth
+  getter/setter. The matching hardware confirmation is pending; version 5 adds
+  an explicit background-depth return-value and descriptor check as well.
+
 ## Runtime f55edbf626acb6ff46d510a55bdd026dd78ac5ad
 
 - Experimental route: a retargeted ARM32 ExeFS NSP at

@@ -94,6 +94,16 @@ int probe_draw(SceGxmContext *context, SceGxmRenderTarget *target,
     SceGxmDepthStencilSurface ds;
     CHECK(sceGxmDepthStencilSurfaceInit(&ds, SCE_GXM_DEPTH_STENCIL_FORMAT_DF32_S8,
         SCE_GXM_DEPTH_STENCIL_SURFACE_LINEAR, 64, depth, NULL));
+    /* Exercise both directions of the native GXM VFP ABI, including returns.
+     * Read before setting so a stale argument in s0 cannot fake a getter pass. */
+    if (sceGxmDepthStencilSurfaceGetBackgroundDepth(&ds) != 1.0f) {
+        hooks->record("FAIL background_depth_initial\n"); ret = -1; goto done;
+    }
+    sceGxmDepthStencilSurfaceSetBackgroundDepth(&ds, 0.375f);
+    if (ds.backgroundDepth != 0.375f || sceGxmDepthStencilSurfaceGetBackgroundDepth(&ds) != 0.375f) {
+        hooks->record("FAIL background_depth_roundtrip\n"); ret = -1; goto done;
+    }
+    hooks->record("PASS background_depth_roundtrip\n");
     sceGxmDepthStencilSurfaceSetBackgroundDepth(&ds, 1.0f);
     sceGxmDepthStencilSurfaceSetBackgroundStencil(&ds, 0);
     const float red[4] = {1, 0, 0, 1}, green[4] = {0, 1, 0, 1};

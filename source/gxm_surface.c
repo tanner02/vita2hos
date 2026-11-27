@@ -63,14 +63,12 @@ EXPORT(SceGxm, 0x082200E1, SceBool, sceGxmDepthStencilSurfaceIsEnabled,
     return surface && gxm_ds_surface_get_format(surface) != 0;
 }
 
-EXPORT(SceGxm, 0x269B56BE, float, sceGxmDepthStencilSurfaceGetBackgroundDepth,
-       const SceGxmDepthStencilSurface *surface)
+float sceGxmDepthStencilSurfaceGetBackgroundDepth(const SceGxmDepthStencilSurface *surface)
 {
     return surface ? surface->backgroundDepth : 1.0f;
 }
 
-EXPORT(SceGxm, 0x32F280F0, void, sceGxmDepthStencilSurfaceSetBackgroundDepth,
-       SceGxmDepthStencilSurface *surface, float depth)
+void sceGxmDepthStencilSurfaceSetBackgroundDepth(SceGxmDepthStencilSurface *surface, float depth)
 {
     if (surface) surface->backgroundDepth = depth;
 }

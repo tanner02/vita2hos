@@ -970,7 +970,7 @@ EXPORT(SceGxm, 0x0DE9AEB7, void, sceGxmSetTwoSidedEnable, SceGxmContext *context
     fragment_control_changed(context);
 }
 
-EXPORT(SceGxm, 0x3EB3380B, void, sceGxmSetViewport, SceGxmContext *context,
+void sceGxmSetViewport(SceGxmContext *context,
        float xOffset, float xScale, float yOffset, float yScale, float zOffset, float zScale)
 {
     if (!context)

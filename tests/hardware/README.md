@@ -160,7 +160,7 @@ triangles using the pinned Vita3K `color_v.gxp` and `clear_f.gxp` fixtures. It c
 red color output, depth-only occlusion, and stencil replacement at nine interior
 pixels. The vertex program uses an identity WVP matrix to preserve varying depth;
 the clear vertex fixture is deliberately not used because it forces depth to one.
-Version 4 then uses `texture_v.gxp` and `texture_f.gxp` to sample a 16-by-16
+Version 5 then uses `texture_v.gxp` and `texture_f.gxp` to sample a 16-by-16
 four-color texture with point filtering. Four interior samples verify UVs and
 image layout. A second scene rotates the colors in the same guest allocation
 and verifies re-upload, reporting `PASS texture_quadrants` and `PASS texture_update`.
@@ -171,6 +171,12 @@ Version 4 also tests both reversed axes, negative X alone, and restoring the
 default viewport. Each scene starts from a distinctive background, records all
 four sample values, and continues after mismatches to distinguish missing
 coverage from coordinate errors. A mismatch still fails the complete probe.
+Version 5 first reads the initial background depth, sets a nondefault depth,
+and checks both descriptor memory and the getter's returned value. The native
+GXM scalar-float exports use the VFP PCS, even when the guest uses a softfp SDK:
+the SDK inserts bridges before its import stubs. The runtime adapts those three
+exports to its base-PCS implementations in `source/gxm_vfp.c`. SceLibm's SDK
+stubs do not use these bridges and retain their existing base PCS.
 The version 1 hardware pass does not establish these new texture checks.
 
 Audit it with `verify-imports.py --variant draw_probe` in addition to the existing

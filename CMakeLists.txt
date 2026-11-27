@@ -49,6 +49,7 @@ add_executable(vita2hos
     source/gxm_uniform_staging.c
     source/gxm_draw.c
     source/gxm_viewport.c
+    source/gxm_vfp.c
     source/gxm_region_clip.c
     source/gxm_blend.c
     source/gxm_surface.c
@@ -92,6 +93,11 @@ target_include_directories(vita2hos PRIVATE
     include
     ${NX_ROOT}/include/uam/mesa-imported
 )
+
+# Only the GXM import adapters use the VFP variant PCS. Internal calls and
+# libnx/deko3d keep the existing base PCS; softfp allows the adapter instructions.
+set_source_files_properties(source/gxm_vfp.c PROPERTIES
+    COMPILE_OPTIONS "-mfpu=neon;-mfloat-abi=softfp")
 
 target_compile_options(vita2hos PRIVATE
     -Wextra
