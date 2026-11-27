@@ -18,18 +18,30 @@ start and follow it. It exists to prevent merge conflicts and duplicated work.
   other tree's `git status --porcelain` and recent commits; treat any file it
   touched in its last ~10 commits or holds dirty as **owned** by it.
 
-## Lane ownership (updated 2026-11-27)
+## Working agreement (updated 2026-11-27, per Tanner)
 
-- **Codex owns**: hardware debugging loop (Switch via MTP/Atmosphere),
-  `SceKernelThreadMgr.c`, `SceDisplay.c`, `SceCtrl.c`, `SceGxm.c` +
-  `gxm_*.c`, shader recompiler glue, `load*.c`, `main.c`, `missing_import*.c`,
-  thread/display/trophy/NET work, `tests/host/*`.
-- **ZCode owns**: `SceSysmodule.c`, NEW module files (new `Sce*.c` in
-  `source/modules/`), NID/import DB work under `external/vita-headers`
-  lookups, `AGENTS.md` itself, `scripts/` in the ZCode tree.
-- **Shared, coordinate before touching**: `CMakeLists.txt` (new source files
-  must be added — keep your diff minimal and rebase before pushing),
-  `source/modules/SceLibKernel.c`, `SceSysmem.c`.
+- **ZCode is offline-only**: static analysis, HLE implementation, host tests,
+  audits and documentation. ZCode does NOT drive the Switch, install, launch,
+  flash or pull logs. All hardware verification/testing is done by Codex (or
+  Tanner), then logged in AGENT-PROGRESS.md so ZCode can decode results.
+- **Codex owns**: hardware debugging loop (Switch via MTP/Atmosphere/
+  sys-autopilot), `SceKernelThreadMgr.c`, `SceDisplay.c`, `SceCtrl.c`,
+  `SceGxm.c` + `gxm_*.c`, shader recompiler glue, `load*.c` (ZCode additive
+  edits allowed, flagged in AGENT-PROGRESS.md), `main.c`,
+  `missing_import*.c`, thread/display/trophy/NET work, `tests/host/*`,
+  savedata/AppUtil core.
+- **ZCode owns**: NEW module files (`source/modules/Sce*.c` not previously
+  existing), `source/load_unbound_stubs.c`, NID/import DB work,
+  `AGENTS.md` itself, `ZCode/scripts/` + `ZCode/outputs/`.
+- **ZCode additive edits in Codex files are allowed** when strictly additive
+  (new EXPORT lines, one-line call sites, test-suite source lines); each must
+  be flagged in AGENT-PROGRESS.md and rebased before pushing.
+- **Shared, coordinate before touching**: `CMakeLists.txt` (additive source
+  lines only), `source/modules/SceLibKernel.c`, `SceSysmem.c`.
+- **Verification flow**: ZCode commits offline work + artifacts + expected
+  log markers into `Documents/ZCode/outputs/ZCODE-VERIFICATION.md` and
+  AGENT-PROGRESS.md → Codex verifies on hardware → Codex logs results →
+  ZCode decodes and iterates offline.
 
 ## Serial resources
 
