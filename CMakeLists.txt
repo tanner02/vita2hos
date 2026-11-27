@@ -94,6 +94,7 @@ add_executable(vita2hos
     source/load_module_info.c
     source/modules/SceNpTrophy.c
     source/modules/SceSysmodule.c
+    source/modules/SceAppUtil.c
     source/modules/SceNet.c
     source/modules/SceModulemgr.c
     source/modules/SceRtc.c

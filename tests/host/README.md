@@ -360,3 +360,14 @@ malformed overrides are rejected instead of silently falling back to TITLE_ID.
 Tests cover truncation, duplicates, traversal, format and bounds failures, while
 preserving caller output. The optional host-test filename argument reads a
 private PARAM.SFO without modifying it. No save directory or mount is created.
+
+AppUtil now exports initialization/shutdown and the four slot metadata operations.
+Init reads app0:/sce_sys/param.sfo and creates /vita2hos/savedata/<declared-directory>
+on the host filesystem. The service serializes operations and preserves stored
+records across shutdown; bootstrap cleanup resets service state after guests stop.
+Missing metadata/directories, missing/duplicate slots and unsupported explicit
+mount-point arguments return errors. Only the default single-user storage context
+is supported. Tests use a temporary root and owned SFO data, never the Switch.
+File-payload saves, savedata0 file-I/O mounting, quotas, slot search, custom mounts,
+boot-parameter synthesis and sysmodule lifecycle support remain unimplemented.
+Do not infer a complete savedata service or successful game startup from slot tests.
