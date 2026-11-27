@@ -193,6 +193,21 @@
   measure the actual runtime's missing-function count. Successful mechanical
   binding does not demonstrate usable functions, TLS, initialization, or boot.
 
+## Host-only native ScePerf variable binding after 9481d0e
+
+- Added a native variable descriptor for `_pLibPerfCaptureFlagPtr`, whose stored
+  value points to a 32-bit capture flag initialized to zero. This follows the
+  pointer/flag layout in the bundled Vita3K ScePerf source. Capture remains
+  inactive; profiling and capture-control APIs are not implemented.
+- The four-image host replay now completes mechanical import binding for main,
+  libc, FIOS2, and Ult under ASan/UBSan. The harness substitutes a simulated
+  32-bit address for the native variable descriptor; a separate host unit test
+  checks the actual descriptor address and both pointer/flag indirections.
+- The harness still omits native function providers and leaves error-return
+  function stubs. This is not evidence that imports are usable at runtime,
+  module startup succeeds, TLS works, or the title boots. No target instructions
+  were executed and the Switch was not modified.
+
 ## Runtime 15d400f48e5d3a3f5d811e2a67bd30a1388cc102
 
 - Standalone HOME title, owned fixed-address CPU probe SHA-256

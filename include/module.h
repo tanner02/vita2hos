@@ -38,6 +38,20 @@ typedef struct {
 extern const library_t __start_exported_libraries[];
 extern const library_t __stop_exported_libraries[];
 
+typedef struct {
+    uint32_t library, nid;
+    const void *address;
+} ModuleNativeVariable;
+extern const ModuleNativeVariable __start_exported_variables[] __attribute__((weak));
+extern const ModuleNativeVariable __stop_exported_variables[] __attribute__((weak));
+/* The variable's address is exported, not the value stored in it. Keep this
+ * pointer-bearing descriptor writable for runtime relocation. Numeric library
+ * NIDs avoid requiring a function library for a variable-only provider. */
+#define EXPORT_VAR(library_nid, variable_nid, variable) \
+    static ModuleNativeVariable variable##_export_##library_nid##_##variable_nid \
+        __attribute__((used, section("exported_variables"), aligned(__alignof__(ModuleNativeVariable)))) = \
+            {library_nid, variable_nid, &variable};
+
 #define DECLARE_LIBRARY(_name, _nid)                                                               \
     extern const uint32_t __start_##_name##_func_nidtable[];                                       \
     extern const uint32_t __stop_##_name##_func_nidtable[];                                        \

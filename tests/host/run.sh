@@ -24,7 +24,7 @@ done
 # Switch builds use non-PIC objects; pointer tables must still permit relocation.
 "${CC:-cc}" -std=gnu11 -fno-pic -fno-pie -Iinclude \
     -c tests/host/module_exports.c -o "$build_dir/module_exports.o"
-for section in TestLibrary_func_table exported_libraries; do
+for section in TestLibrary_func_table exported_libraries exported_variables; do
     readelf -SW "$build_dir/module_exports.o" | \
-        awk -v name="$section" '$3 == name && $9 ~ /W/ { found = 1 } END { exit !found }'
+        awk -v name="$section" '{ for (i=1; i+6<=NF; ++i) if ($i == name && $(i+6) ~ /W/) found=1 } END { exit !found }'
 done

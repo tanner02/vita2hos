@@ -85,6 +85,7 @@ add_executable(vita2hos
     source/util.c
     source/vita3k_shader_recompiler_iface_c.cpp
     source/modules/SceCtrl.c
+    source/modules/ScePerf.c
     source/modules/SceDisplay.c
     source/modules/SceGxm.c
     source/modules/SceKernelThreadMgr.c

@@ -122,6 +122,15 @@ const void *module_get_func_export(uint32_t lib_nid, uint32_t func_nid)
 
 const void *module_get_var_export(uint32_t lib_nid, uint32_t var_nid)
 {
-    return module_guest_exports_find(active_guest_exports, lib_nid,
-                                     MODULE_SYMBOL_VARIABLE, var_nid, NULL);
+    bool owned;
+    const void *guest = module_guest_exports_find(active_guest_exports, lib_nid,
+                                                 MODULE_SYMBOL_VARIABLE, var_nid, &owned);
+    if (owned) return guest;
+    size_t count = ((uintptr_t)__stop_exported_variables -
+                    (uintptr_t)__start_exported_variables) / sizeof(ModuleNativeVariable);
+    for (size_t i = 0; i < count; ++i) {
+        const ModuleNativeVariable *variable = &__start_exported_variables[i];
+        if (variable->library == lib_nid && variable->nid == var_nid) return variable->address;
+    }
+    return NULL;
 }

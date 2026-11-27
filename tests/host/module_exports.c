@@ -8,6 +8,7 @@ static void *test_malloc(size_t size) { return fail_allocation ? NULL : malloc(s
 #define malloc test_malloc
 #include "../../source/module.c"
 #undef malloc
+#include "../../source/modules/ScePerf.c"
 
 EXPORT(TestLibrary, 0x11223344, int, test_export, int value)
 {
@@ -15,6 +16,8 @@ EXPORT(TestLibrary, 0x11223344, int, test_export, int value)
 }
 
 DECLARE_LIBRARY(TestLibrary, 0x12345678);
+static int native_variable=77;
+EXPORT_VAR(0x12345678, 0x5555, native_variable);
 static int guest_function(int value) { return value + 10; }
 
 int main(void)
@@ -24,6 +27,10 @@ int main(void)
     assert(function(41) == 42);
     assert(module_get_func_export(0x12345678, 0xffffffff) == NULL);
     assert(module_get_func_export(0xffffffff, 0x11223344) == NULL);
+    assert(module_get_var_export(0x12345678, 0x5555) == &native_variable);
+    uint32_t *const *capture = module_get_var_export(0x447f047d, 0x936a5f31);
+    assert(capture == &perf_capture_flag_ptr && *capture == &perf_capture_flag && **capture == 0);
+    assert(module_get_func_export(0x447f047d, 0x936a5f31) == NULL);
     ModuleGuestExports exports = {0};
     int owner1, owner2, variable = 23;
     ModuleGuestSymbol symbols[] = {
@@ -62,8 +69,10 @@ int main(void)
     /* Even an empty guest-owned namespace must not mix in native symbols. */
     assert(module_guest_exports_register(&exports, &owner1, 0x12345678, NULL, 0) == 0);
     assert(module_get_func_export(0x12345678, 0x11223344) == NULL);
+    assert(module_get_var_export(0x12345678, 0x5555) == NULL);
     module_guest_exports_clear(&exports);
     assert(module_get_func_export(0x12345678, 0x11223344) != NULL);
+    assert(module_get_var_export(0x12345678, 0x5555) == &native_variable);
     module_guest_exports_clear(&exports);
     puts("Module export regression checks passed.");
     return 0;

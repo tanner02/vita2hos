@@ -339,6 +339,14 @@ Missing optional parameters do not synthesize one. This enables the bundled
 libc's variable import to bind without a placeholder structure; it does not yet
 apply preload-disable flags, thread settings, or TLS initialization.
 
+Native variable exports now have a separate typed descriptor table. Guest
+libraries retain ownership of their entire namespace, so a missing guest
+variable cannot fall back to an unrelated native provider. The ScePerf capture
+variable exports the address of a pointer to a 32-bit inactive capture flag,
+matching the layout in the bundled Vita3K source. No profiling recorder or
+capture-control API is implemented. The descriptor table remains writable for
+runtime relocation and its retention is checked in the ARM build.
+
 ### Experimental title-specific launch profile
 
 **Hardware status:** this route failed to start Mario Kart 8 Deluxe on the tested
