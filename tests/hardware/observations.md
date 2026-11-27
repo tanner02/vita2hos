@@ -1,3 +1,23 @@
+## 2026-11-27: high-ID sysmodule handoff audit (offline)
+
+The reviewed HLE sysmodule implementation tracks loaded stub modules in one
+uint64_t but accepts public IDs above63, including NP_SIGNALING0x46. Its load,
+query and unload paths shift by the raw ID. A host UBSan check stops on shift
+exponent70. A private draft replaces the mask with a bounds-checked state array;
+high-ID load/unload and independence from low-ID FIBER pass on that draft.
+
+Codex's current sysmodule implementation has no such mask and remains unchanged.
+The host network/sysmodule regression now exercises lifecycle consistency and
+low-ID isolation across public IDs64..JSON; ASan/UBSan passes. This guards a later
+integration. The private draft changes state representation only; it does not
+validate the handoff's stub-load whitelist or implement its services.
+
+HLE source ownership handoff is pending before editing/integrating ZCode's lane.
+Other review limits include inline fiber execution without real yield/context
+switching and dialogs reporting success without a corresponding host operation.
+No complete HLE integration or successful 3D-title boot is claimed. No hardware,
+probe, payload or deployment changes occurred.
+
 ## 2026-11-27: import-pool handoff audit (offline)
 
 A proposed second-pool scanner is excluded from this branch. Source-bound replay

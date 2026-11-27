@@ -83,6 +83,23 @@ int main(void)
     assert(!sceNetInit(&param));assert(!sceNetCtlInit());assert(!sceSysmoduleLoadModule(SCE_SYSMODULE_NET));
     SceNet_finish();SceSysmodule_finish();assert(!net_initialized && !ctl_initialized && !net_module_loaded && host_ready && released==2);
     SceNet_finish();assert(released==2);
+    /* Public module IDs extend beyond a 64-bit loaded-state mask. Each ID
+     * must retain independent lifecycle state, including unsupported modules. */
+    for(unsigned id=SCE_SYSMODULE_MONO;id<=SCE_SYSMODULE_JSON;++id) {
+        SceSysmoduleModuleId module=(SceSysmoduleModuleId)id;
+        assert(sceSysmoduleIsLoaded(module)==(int)SCE_SYSMODULE_ERROR_UNLOADED);
+        const int low_state=sceSysmoduleIsLoaded(SCE_SYSMODULE_FIBER);
+        int result=sceSysmoduleLoadModule(module);
+        if(!result) {
+            assert(!sceSysmoduleIsLoaded(module));
+            assert(!sceSysmoduleUnloadModule(module));
+        } else {
+            assert(sceSysmoduleIsLoaded(module)==(int)SCE_SYSMODULE_ERROR_UNLOADED);
+            assert(sceSysmoduleUnloadModule(module)==(int)SCE_SYSMODULE_ERROR_UNLOADED);
+        }
+        assert(sceSysmoduleIsLoaded(module)==(int)SCE_SYSMODULE_ERROR_UNLOADED);
+        assert(sceSysmoduleIsLoaded(SCE_SYSMODULE_FIBER)==low_state);
+    }
     assert(module_get_func_export(0x6bf8b2a2,0xeb03e265));
     assert(module_get_func_export(0xc6083ae1,0x495ca1db));
     assert(module_get_func_export(0x03fcf19d,0x79a0160a));
