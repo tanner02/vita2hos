@@ -925,6 +925,7 @@ EXPORT(SceGxm, 0xB8645A9A, void, sceGxmSetFrontStencilFunc, SceGxmContext *conte
     context->state.depth_stencil.stencilFrontFailOp = gxm_stencil_op_to_dk_stencil_op(stencilFail);
     context->state.depth_stencil.stencilFrontDepthFailOp =
         gxm_stencil_op_to_dk_stencil_op(depthFail);
+    context->state.depth_stencil.stencilFrontPassOp = gxm_stencil_op_to_dk_stencil_op(depthPass);
     context->state.depth_stencil.stencilFrontCompareOp = gxm_stencil_func_to_dk_compare_op(func);
     context->state.front_stencil.compare_mask = compareMask;
     context->state.front_stencil.write_mask = writeMask;
@@ -944,6 +945,7 @@ EXPORT(SceGxm, 0x1A68C8D2, void, sceGxmSetBackStencilFunc, SceGxmContext *contex
     context->state.depth_stencil.stencilBackFailOp = gxm_stencil_op_to_dk_stencil_op(stencilFail);
     context->state.depth_stencil.stencilBackDepthFailOp =
         gxm_stencil_op_to_dk_stencil_op(depthFail);
+    context->state.depth_stencil.stencilBackPassOp = gxm_stencil_op_to_dk_stencil_op(depthPass);
     context->state.depth_stencil.stencilBackCompareOp = gxm_stencil_func_to_dk_compare_op(func);
     context->state.back_stencil.compare_mask = compareMask;
     context->state.back_stencil.write_mask = writeMask;
