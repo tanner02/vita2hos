@@ -20,3 +20,20 @@ jobs:
         run: python3 -B tests/host/test_deploy_switch.py
       - name: Check unresolved import reports
         run: python3 -B tests/host/test_report_imports.py
+
+  shader-integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch pinned shader dependencies and fixtures
+        run: |
+          git submodule update --init external/Vita3K external/vita-headers
+          git -C external/Vita3K submodule update --init external/glslang external/SPIRV-Cross
+      - name: Install native build dependencies
+        run: sudo apt-get update && sudo apt-get install -y ninja-build libfmt-dev
+      - name: Build real shader integration checks
+        run: |
+          cmake -S tests/shader_integration -B /tmp/vita2hos-shader-integration -G Ninja -DCMAKE_BUILD_TYPE=Debug
+          cmake --build /tmp/vita2hos-shader-integration --target shader_integration -j 4
+      - name: Compare uniform layouts against SPIR-V reflection
+        run: ctest --test-dir /tmp/vita2hos-shader-integration --output-on-failure
