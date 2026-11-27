@@ -1888,3 +1888,20 @@ HLE revision requests SHUTTER_SOUND0x27, receives805a10ff and its initializer
 returnsfalse. Detailed verification was returned through AGENT-PROGRESS.md;
 HLE source remains with its owner. Captured GXM ColorSurfaceSetClip86456f7b
 is an additional unsupported API requiring graphics-lane investigation.
+
+## Color-store clip implementation prepared (hardware verification pending)
+
+Real-game logs include unsupported sceGxmColorSurfaceSetClip86456f7b. The pinned
+and current Vita3K references leave GetClip/SetClip unimplemented. Read-only
+export decoding of the locally installed SceGxm library establishes twelve-bit
+coordinate masks and optional getter outputs. Initialization packs width-1 and
+height-1 as default maxima. No library code, keys or firmware binary is tracked.
+Runtime descriptors retain copied clip values within the existing48-byte ABI;
+BeginScene snapshots the descriptor and validates the store rectangle before
+changing scene state. EndScene limits color writeback, preserving destination
+pixels outside inclusive bounds without restricting depth/stencil rasterization.
+Partial stores with unequal render/surface dimensions return unsupported before
+scene setup; full scaling is retained. Sanitized host export/copy/mask/empty/
+bounds/unsupported checks pass; cube9/draw12 compile with warnings as errors.
+Seven pixel-readback cases are prepared, bringing the cube batch to47checks.
+Hardware execution remains pending until the verified runtime is installed.

@@ -14,6 +14,8 @@ EXPORT(SceGxm,0xED0F6E25,int,sceGxmColorSurfaceInit,SceGxmColorSurface *surface,
     if ((uintptr_t)data>UINT32_MAX) return SCE_GXM_ERROR_INVALID_POINTER;
 #endif
     if (!width || width>4096 || !height || height>4096) return SCE_GXM_ERROR_INVALID_VALUE;
+    if (registers!=SCE_GXM_OUTPUT_REGISTER_SIZE_32BIT &&
+        registers!=SCE_GXM_OUTPUT_REGISTER_SIZE_64BIT) return SCE_GXM_ERROR_UNSUPPORTED;
     if (stride & 1) return SCE_GXM_ERROR_INVALID_ALIGNMENT;
     if (stride<width || ((uintptr_t)data & 3)) return SCE_GXM_ERROR_INVALID_VALUE;
     if (type==SCE_GXM_COLOR_SURFACE_SWIZZLED &&
@@ -21,6 +23,7 @@ EXPORT(SceGxm,0xED0F6E25,int,sceGxmColorSurfaceInit,SceGxmColorSurface *surface,
     SceGxmColorSurfaceInner value={0};
     value.downscale=scale==SCE_GXM_COLOR_SURFACE_SCALE_MSAA_DOWNSCALE;
     value.width=width;value.height=height;value.strideInPixels=stride;
+    value.clip_x_max=width-1;value.clip_y_max=height-1;
     value.data=(uint32_t)(uintptr_t)data;
     value.colorFormat=format;value.surfaceType=type;value.outputRegisterSize=registers;
     memcpy(surface,&value,sizeof(value));
@@ -49,6 +52,47 @@ EXPORT(SceGxm,0x2DB6026C,void *,sceGxmColorSurfaceGetData,const SceGxmColorSurfa
 EXPORT(SceGxm,0xF33D9980,unsigned,sceGxmColorSurfaceGetStrideInPixels,const SceGxmColorSurface *surface)
 {
     return surface ? ((const SceGxmColorSurfaceInner *)surface)->strideInPixels : 0;
+}
+
+EXPORT(SceGxm,0x86456F7B,void,sceGxmColorSurfaceSetClip,SceGxmColorSurface *surface,
+       unsigned x_min,unsigned y_min,unsigned x_max,unsigned y_max)
+{
+    if (!surface) return;
+    SceGxmColorSurfaceInner *inner=(void *)surface;
+    /* Native getters/setters retain exactly twelve bits per coordinate. */
+    inner->clip_x_min=x_min&0xfff;inner->clip_y_min=y_min&0xfff;
+    inner->clip_x_max=x_max&0xfff;inner->clip_y_max=y_max&0xfff;
+}
+
+EXPORT(SceGxm,0x07DFEE4B,void,sceGxmColorSurfaceGetClip,const SceGxmColorSurface *surface,
+       unsigned *x_min,unsigned *y_min,unsigned *x_max,unsigned *y_max)
+{
+    if (!surface) return;
+    const SceGxmColorSurfaceInner *inner=(const void *)surface;
+    if (x_min) *x_min=inner->clip_x_min;
+    if (y_min) *y_min=inner->clip_y_min;
+    if (x_max) *x_max=inner->clip_x_max;
+    if (y_max) *y_max=inner->clip_y_max;
+}
+
+int gxm_color_surface_store_rect(const SceGxmColorSurfaceInner *surface,
+    uint32_t source_width,uint32_t source_height,GxmColorStoreRect *rect)
+{
+    if (!surface || !rect) return SCE_GXM_ERROR_INVALID_POINTER;
+    GxmColorStoreRect result={0};
+    uint32_t right=surface->clip_x_max+1,bottom=surface->clip_y_max+1;
+    if (right>surface->width) right=surface->width;
+    if (bottom>surface->height) bottom=surface->height;
+    if (!surface->disabled && right>surface->clip_x_min && bottom>surface->clip_y_min) {
+        result=(GxmColorStoreRect){surface->clip_x_min,surface->clip_y_min,
+            right-surface->clip_x_min,bottom-surface->clip_y_min};
+        bool full=!result.x && !result.y && result.width==surface->width &&
+            result.height==surface->height;
+        if (!full && (surface->width!=source_width || surface->height!=source_height))
+            return SCE_GXM_ERROR_UNSUPPORTED;
+    }
+    *rect=result;
+    return 0;
 }
 
 EXPORT(SceGxm,0xEE0B4DF0,SceGxmColorSurfaceGammaMode,sceGxmColorSurfaceGetGammaMode,

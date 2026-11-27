@@ -1,10 +1,10 @@
-The visible cube guest is version 8. It retains the existing surface, shader,
+The visible cube guest is version 9. It retains the existing surface, shader,
 gamma, depth, stencil, texture and 360-frame animated cube checks. Its VDM,
 vertex-uniform and fragment-uniform rings now share one allocation at distinct
 page-aligned interior addresses. Four 4096-byte regions filled with 0xa5 surround
 the rings. After rendering and cleanup, every guard byte must remain unchanged.
 
-A successful hardware report must identify `visible_cube v8`, include
+A successful hardware report must identify `visible_cube v9`, include
 `PASS cube_frames` and `PASS interior_ring_buffers_guards`, and end with
 `PASS visible_cube`. A built executable or successful import audit does not
 establish a hardware pass. Collect the versioned runtime log and check process
@@ -19,7 +19,7 @@ and verifies every pixel in both, including the inactive buffer. Require
 `PASS multisample_2x_preservation`, `PASS multisample_4x_preservation` and
 `PASS multisample_restore_1x`. These cases do not draw and do not prove sample
 coverage, sample positions or antialiased geometry. The other target versions
-are surface probe v3 and draw probe v11. New versions require a runtime with MSAA
+are surface probe v3 and draw probe v12. New versions require a runtime with MSAA
 attachment/resolve support; do not infer a hardware pass from compilation.
 
 The draw and visible-cube variants also draw a near green triangle followed by
@@ -56,5 +56,14 @@ missing blending from alpha-factor or channel-mask errors. Interior samples
 allow two UNORM rounding steps. The first cube frame also calls counted
 framebuffer waits for zero and two periods; host tests establish target timing,
 while this hardware check establishes import/ABI execution and continued frames.
-A complete cube v8 run has 40 PASS tags. These additions require a runtime with
+A complete cube v9 run has 47 PASS tags. These additions require a runtime with
 sceDisplayWaitSetFrameBufMulti (1e9f698 or later); the installed abc5a95 lacks it.
+
+Version 9 adds seven color-store clipping cases: unaligned inclusive bounds,
+one pixel, an empty rectangle, twelve-bit coordinate masking, full restoration,
+BeginScene descriptor snapshot and intersection with tiled region clipping.
+Each case checks every pixel of a 64x64 target, including preserved destination
+pixels. This is output clipping; rasterizer/depth clipping remains independent.
+Requires the color-clip runtime exports and clipped store path, not just 1e9f698.
+Partial clipped stores with unequal target/surface dimensions are explicitly
+unsupported; full-surface copies retain the existing scaling behavior.

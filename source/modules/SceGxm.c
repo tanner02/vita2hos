@@ -65,6 +65,8 @@ typedef struct SceGxmContext {
         const void *fragment_uniform_buffers[SCE_GXM_MAX_UNIFORM_BUFFERS];
         const SceGxmRenderTarget *render_target;
         const SceGxmColorSurfaceInner *color_surface;
+        SceGxmColorSurfaceInner color_snapshot;
+        GxmColorStoreRect color_store_rect;
         const SceGxmDepthStencilSurface *ds_surface;
         SceGxmDepthStencilSurface ds_snapshot;
         SceGxmSyncObject *fragment_sync_object;
@@ -1148,6 +1150,13 @@ EXPORT(SceGxm, 0x8734FF4E, int, sceGxmBeginScene, SceGxmContext *context, unsign
     if (validRegion && (validRegion->xMax >= rt_width || validRegion->yMax >= rt_height))
         return SCE_GXM_ERROR_INVALID_VALUE;
 
+    GxmColorStoreRect color_store_rect={0};
+    if (gxm_color_surface_enabled(color_surface_inner)) {
+        int result=gxm_color_surface_store_rect(color_surface_inner,rt_width,rt_height,
+            &color_store_rect);
+        if (result) return result;
+    }
+
     /* Without downscale, Vita exposes raw sample storage. A resolved native
      * color image cannot represent that layout. Gamma-correct sample resolve
      * also needs an explicit shader path. Validate before scene changes. */
@@ -1247,7 +1256,9 @@ EXPORT(SceGxm, 0x8734FF4E, int, sceGxmBeginScene, SceGxmContext *context, unsign
     /* Mark all state as dirty to make sure we bind everything before the first draw call */
     context->state.dirty.raw = ~(uint32_t)0;
     context->state.render_target = renderTarget;
-    context->state.color_surface = color_surface_inner;
+    if (color_surface_inner) context->state.color_snapshot=*color_surface_inner;
+    context->state.color_surface = color_surface_inner ? &context->state.color_snapshot : NULL;
+    context->state.color_store_rect=color_store_rect;
     if (depthStencil) context->state.ds_snapshot=*depthStencil;
     context->state.ds_surface = depthStencil ? &context->state.ds_snapshot : NULL;
     context->state.fragment_sync_object = fragmentSyncObject;
@@ -1312,10 +1323,21 @@ EXPORT(SceGxm, 0xFE300E2F, int, sceGxmEndScene, SceGxmContext *context,
             const DkImage *source=dk_surface_resolve_color(context->cmdbuf,shadow_color_surface,
                 &render_target->resolved_color_surface);
             if (!source) return SCE_GXM_ERROR_DRIVER;
-            dk_cmdbuf_copy_image(context->cmdbuf, source,
+            GxmColorStoreRect clip=context->state.color_store_rect;
+            bool full=!clip.x && !clip.y && clip.width==gxm_color_surface->width &&
+                clip.height==gxm_color_surface->height;
+            if (full) dk_cmdbuf_copy_image(context->cmdbuf, source,
                                  shadow_color_surface->width, shadow_color_surface->height,
                                  &color_surface_image, gxm_color_surface->width,
                                  gxm_color_surface->height);
+            else if (clip.width && clip.height) {
+                DkImageView source_view,destination_view;
+                dkImageViewDefaults(&source_view,source);
+                dkImageViewDefaults(&destination_view,&color_surface_image);
+                DkImageRect rect={clip.x,clip.y,0,clip.width,clip.height,1};
+                dkCmdBufBlitImage(context->cmdbuf,&source_view,&rect,
+                    &destination_view,&rect,0,1);
+            }
         }
     }
 

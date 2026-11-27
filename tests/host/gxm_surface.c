@@ -44,6 +44,49 @@ int main(void)
     assert(color->pbeSidebandWord==2 && color->pbeEmitWords[3]==0x81000000);
     SceGxmColorSurface copy=*color;
     assert(color_data(&copy)==color_data(color) && color_stride(&copy)==color_stride(color));
+    void (*set_clip)(SceGxmColorSurface *,unsigned,unsigned,unsigned,unsigned)=
+        (void *)module_get_func_export(0xf76b66bd,0x86456F7B);
+    void (*get_clip)(const SceGxmColorSurface *,unsigned *,unsigned *,unsigned *,unsigned *)=
+        (void *)module_get_func_export(0xf76b66bd,0x07DFEE4B);
+    assert(set_clip && get_clip);
+    unsigned bounds[4]={99,99,99,99};
+    get_clip(color,bounds,bounds+1,bounds+2,bounds+3);
+    assert(bounds[0]==0 && bounds[1]==0 && bounds[2]==959 && bounds[3]==543);
+    set_clip(color,0x1007,0x200b,0x3028,0x402b);
+    get_clip(color,bounds,bounds+1,bounds+2,bounds+3);
+    assert(bounds[0]==7 && bounds[1]==11 && bounds[2]==40 && bounds[3]==43);
+    get_clip(color,NULL,NULL,NULL,NULL);
+    GxmColorStoreRect rect={99,99,99,99};
+    assert(!gxm_color_surface_store_rect((const void *)color,960,544,&rect));
+    assert(rect.x==7 && rect.y==11 && rect.width==34 && rect.height==33);
+    SceGxmColorSurface clipped_copy=*color;
+    set_clip(color,1,2,1,2);
+    assert(!gxm_color_surface_store_rect((const void *)color,960,544,&rect));
+    assert(rect.x==1 && rect.y==2 && rect.width==1 && rect.height==1);
+    get_clip(&clipped_copy,NULL,NULL,bounds+2,bounds+3);
+    assert(bounds[2]==40 && bounds[3]==43);
+    const SceGxmColorSurfaceInner *inner=(const void *)color;
+    assert(inner->width==960 && inner->height==544 && inner->strideInPixels==1024 &&
+        inner->data==0x81000000 && inner->downscale && !inner->disabled &&
+        inner->colorFormat==SCE_GXM_COLOR_FORMAT_U8U8U8U8_ABGR &&
+        inner->surfaceType==SCE_GXM_COLOR_SURFACE_LINEAR && !inner->outputRegisterSize);
+    rect=(GxmColorStoreRect){99,98,97,96};
+    GxmColorStoreRect unchanged_rect=rect;
+    assert((uint32_t)gxm_color_surface_store_rect((const void *)color,480,272,&rect)
+        ==SCE_GXM_ERROR_UNSUPPORTED);
+    assert(!memcmp(&rect,&unchanged_rect,sizeof(rect)));
+    set_clip(color,40,20,39,30);
+    assert(!gxm_color_surface_store_rect((const void *)color,480,272,&rect) && !rect.width && !rect.height);
+    set_clip(color,UINT32_MAX,0,UINT32_MAX,UINT32_MAX);
+    get_clip(color,bounds,NULL,bounds+2,bounds+3);
+    assert(bounds[0]==4095 && bounds[2]==4095 && bounds[3]==4095);
+    assert(!gxm_color_surface_store_rect((const void *)color,960,544,&rect) && !rect.width);
+    set_clip(color,0,0,4095,4095);
+    assert(!gxm_color_surface_store_rect((const void *)color,480,272,&rect));
+    assert(rect.width==960 && rect.height==544);
+    get_clip(NULL,bounds,NULL,NULL,NULL);set_clip(NULL,0,0,0,0);
+    assert((uint32_t)gxm_color_surface_store_rect(NULL,1,1,&rect)==SCE_GXM_ERROR_INVALID_POINTER);
+    *color=copy;
     int (*set_gamma)(SceGxmColorSurface *,SceGxmColorSurfaceGammaMode)=
         (void *)module_get_func_export(0xf76b66bd,0xF5C89643);
     SceGxmColorSurfaceGammaMode (*get_gamma)(const SceGxmColorSurface *)=

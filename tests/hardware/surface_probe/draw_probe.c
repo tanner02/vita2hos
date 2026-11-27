@@ -179,6 +179,49 @@ int probe_draw(SceGxmContext *context, SceGxmRenderTarget *target,
     }
     hooks->record("PASS color_surface_gamma_rgb_alpha_and_reset\n");
 
+    /* Pixel-output clipping must preserve untouched guest pixels, without
+     * being rounded to the rasterizer's 32-pixel region tiles. */
+    static const char *clip_passes[]={
+        "PASS color_clip_unaligned\n","PASS color_clip_single_pixel\n",
+        "PASS color_clip_empty\n","PASS color_clip_masked_coordinates\n",
+        "PASS color_clip_full_reset\n","PASS color_clip_scene_snapshot\n",
+        "PASS color_clip_region_intersection\n"};
+    for (unsigned pass=0;pass<7;++pass) {
+        SceGxmColorSurface clipped=*surface;
+        unsigned left=7,top=11,right=40,bottom=43;
+        if (pass==1) { left=right=21;top=bottom=22; }
+        if (pass==2) { left=40;right=39;top=20;bottom=30; }
+        if (pass==4) { left=top=0;right=bottom=63; }
+        unsigned extra=pass==3 ? 0x1000 : 0;
+        sceGxmColorSurfaceSetClip(&clipped,left+extra,top+extra,right+extra,bottom+extra);
+        unsigned bounds[4];
+        sceGxmColorSurfaceGetClip(&clipped,bounds,bounds+1,bounds+2,bounds+3);
+        if (bounds[0]!=left || bounds[1]!=top || bounds[2]!=right || bounds[3]!=bottom) {
+            hooks->record("FAIL color_clip_roundtrip\n");ret=-1;goto done;
+        }
+        for (unsigned i=0;i<64*64;++i) pixels[i]=0xff332211;
+        sceGxmSetFrontDepthFunc(context,SCE_GXM_DEPTH_FUNC_ALWAYS);
+        sceGxmSetFrontDepthWriteEnable(context,SCE_GXM_DEPTH_WRITE_DISABLED);
+        CHECK(sceGxmBeginScene(context,0,target,NULL,NULL,NULL,&clipped,NULL));
+        if (pass==5) sceGxmColorSurfaceSetClip(&clipped,0,0,63,63);
+        if (pass==6) sceGxmSetRegionClip(context,SCE_GXM_REGION_CLIP_OUTSIDE,32,0,63,63);
+        CHECK(sceGxmSetVertexStream(context,0,vertices));
+        CHECK(color(context,clear_color,matrix,red));
+        CHECK(sceGxmDraw(context,SCE_GXM_PRIMITIVE_TRIANGLES,SCE_GXM_INDEX_FORMAT_U16,indices,3));
+        CHECK(sceGxmEndScene(context,NULL,NULL));sceGxmFinish(context);
+        for (unsigned y=0;y<64;++y) for (unsigned x=0;x<64;++x) {
+            int stored=x>=left && x<=right && y>=top && y<=bottom;
+            if (pass==6 && x<32) stored=0;
+            uint32_t expected=stored ? 0xff0000ff : 0xff332211;
+            if (pixels[y*64+x]!=expected) {
+                hooks->record("FAIL color_clip_pixel\n");hooks->result("clip_case",pass);
+                hooks->result("pixel",y*64+x);hooks->result("actual",pixels[y*64+x]);
+                hooks->result("expected",expected);ret=-1;goto done;
+            }
+        }
+        hooks->record(clip_passes[pass]);
+    }
+
     /* One draw over CPU-written background separates blend errors from depth
      * occlusion. RGB and alpha intentionally use different blend factors. */
     static const struct {

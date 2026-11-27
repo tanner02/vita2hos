@@ -13,12 +13,17 @@ typedef struct __attribute__((may_alias)) {
     uint32_t disabled : 1;
     uint32_t downscale : 1;
     uint32_t gamma : 2;
-    uint32_t pad : 28;
+    uint32_t clip_x_min : 12;
+    uint32_t clip_y_min : 12;
+    uint32_t pad : 4;
     uint32_t width, height, strideInPixels;
     uint32_t data;
     SceGxmColorFormat colorFormat;
     SceGxmColorSurfaceType surfaceType;
-    uint32_t outputRegisterSize;
+    uint32_t outputRegisterSize : 1;
+    uint32_t clip_x_max : 12;
+    uint32_t clip_y_max : 12;
+    uint32_t clip_pad : 7;
     SceGxmTexture backgroundTex;
 } SceGxmColorSurfaceInner;
 static_assert(sizeof(SceGxmColorSurfaceInner)==sizeof(SceGxmColorSurface),"Color surface ABI");
@@ -37,6 +42,12 @@ static inline void *gxm_color_surface_data(const SceGxmColorSurfaceInner *surfac
 /* Native ABGR8 linear-image fast path; available starts at the surface data. */
 int gxm_color_surface_linear_pitch(uint32_t width, uint32_t height, uint32_t stride,
                                     size_t available, uint32_t *pitch);
+
+typedef struct { uint32_t x, y, width, height; } GxmColorStoreRect;
+/* Inclusive pixel-output bounds, independent of rasterizer/depth clipping.
+ * Empty rectangles are valid. Partial scaled stores need a separate path. */
+int gxm_color_surface_store_rect(const SceGxmColorSurfaceInner *surface,
+    uint32_t source_width, uint32_t source_height, GxmColorStoreRect *rect);
 
 /* Packed ZLS descriptor fields, matching the pinned GXM reference layout. */
 #define GXM_DS_FORMAT_MASK 0x07eee000u
