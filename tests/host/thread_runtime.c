@@ -9,9 +9,11 @@ static jmp_buf thread_return;
 static void *tls_value;
 static Result start_result, wait_result;
 static UEvent exit_event;
+static int process_exit_status;
 void log_printf(const char *format, ...) { (void)format; }
 SceUID SceSysmem_get_next_uid(void) { static SceUID next = 1; return next++; }
 UEvent *SceLibKernel_get_process_exit_uevent(void) { return &exit_event; }
+int SceLibKernel_get_process_exit_res(void) { return process_exit_status; }
 Result threadCreate(Thread *thread, void (*entry)(void *), void *arg, void *stack,
                     size_t size, int priority, int cpu)
 {
@@ -75,6 +77,15 @@ int main(void)
     wait_result = 0;
     assert(sceKernelDeleteThread(uid) == 0);
     assert((uint32_t)sceKernelWaitThreadEnd(uid, NULL, NULL) == SCE_KERNEL_ERROR_UNKNOWN_THREAD_ID);
+    /* The event wait and thread join succeeding do not mean the guest passed.
+     * Preserve the status set by sceKernelExitProcess, including negative values. */
+    const int exits[] = {0, 1, -7};
+    for (unsigned i = 0; i < sizeof(exits) / sizeof(exits[0]); ++i) {
+        process_exit_status = exits[i];
+        assert(SceKernelThreadMgr_main_entry(entry, 0, NULL) == exits[i]);
+    }
+    start_result = 1;
+    assert((uint32_t)SceKernelThreadMgr_main_entry(entry, 0, NULL) == SCE_KERNEL_ERROR_THREAD_ERROR);
     assert(SceKernelThreadMgr_finish() == 0);
     puts("Thread runtime regression checks passed.");
     return 0;

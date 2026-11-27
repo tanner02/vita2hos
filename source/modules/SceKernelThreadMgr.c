@@ -272,7 +272,7 @@ int SceKernelThreadMgr_main_entry(SceKernelThreadEntry entry, int args, void *ar
     sceKernelWaitThreadEnd(thid, NULL, NULL);
     sceKernelDeleteThread(thid);
 
-    return 0;
+    return SceLibKernel_get_process_exit_res();
 }
 
 EXPORT(SceThreadmgr, 0x4B675D05, int, sceKernelDelayThread, SceUInt delay)
