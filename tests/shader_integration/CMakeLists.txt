@@ -27,7 +27,8 @@ vita2hos_fix_uniform_shuffle("${REPO}")
 include("${REPO}/cmake/Vita3KVertexLocations.cmake")
 vita2hos_fix_vertex_locations("${REPO}")
 add_executable(shader_integration main.cpp
-    "${REPO}/source/vita3k_shader_recompiler_iface_c.cpp" "${REPO}/source/gxm_uniform_layout.c")
+    "${REPO}/source/vita3k_shader_recompiler_iface_c.cpp" "${REPO}/source/gxm_uniform_layout.c"
+    "${REPO}/source/gxm_texture_usage.c")
 target_include_directories(shader_integration PRIVATE "${REPO}/include"
     "${REPO}/external/Vita3K/external/glslang")
 target_link_libraries(shader_integration PRIVATE shader spirv-cross-glsl)

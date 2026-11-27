@@ -13,6 +13,7 @@
 #include <vector>
 #include "vita3k_shader_recompiler_iface_c.h"
 #include "gxm/texture_binding.h"
+#include "gxm/texture_usage.h"
 
 static void require(bool value, const char *message)
 { if (!value) throw std::runtime_error(message); }
@@ -303,7 +304,7 @@ static bool check_array_locations(SceGxmProgram *program)
     return true;
 }
 
-static bool check_sampler_bindings(SceGxmProgram *program)
+static bool check_sampler_bindings(SceGxmProgram *program, size_t available)
 {
     auto *parameters = const_cast<SceGxmProgramParameter *>(program->program_parameters());
     for (unsigned i = 0; i < program->parameter_count; ++i) {
@@ -325,6 +326,9 @@ static bool check_sampler_bindings(SceGxmProgram *program)
             free(words);
             spirv_cross::Compiler reflection(spirv);
             const auto resources = reflection.get_shader_resources();
+            uint16_t used=0;
+            require(gxm_program_texture_mask(program,available,&used), "derived sampler metadata was not bounded");
+            require(used & (1U<<unit), "declared sampler missing from runtime usage mask");
             const auto expected = gxm_texture_binding_index(!program->is_fragment(), unit);
             bool found = false;
             for (const auto &sampler : resources.sampled_images) {
@@ -338,6 +342,26 @@ static bool check_sampler_bindings(SceGxmProgram *program)
         return true;
     }
     return false;
+}
+
+static bool check_texture_usage(const SceGxmProgram *program, size_t available)
+{
+    uint16_t used=0;
+    bool bounded=gxm_program_texture_mask(program,available,&used);
+    require(bounded || used==UINT16_MAX,"unknown metadata must retain every unit");
+    uint32_t *words=nullptr,count=0;
+    require(convert_gxp_to_spirv_c(&words,&count,program,"texture-usage",
+        false,false,false,false,nullptr,0,false,false,nullptr),"usage translation failed");
+    std::vector<uint32_t> spirv(words,words+count);
+    free(words);
+    spirv_cross::Compiler reflection(spirv);
+    unsigned base=program->is_fragment() ? 0 : GXM_TEXTURE_STAGE_UNITS;
+    for (const auto &sampler:reflection.get_shader_resources().sampled_images) {
+        unsigned binding=reflection.get_decoration(sampler.id,spv::DecorationBinding);
+        require(binding>=base && binding-base<GXM_TEXTURE_STAGE_UNITS,"sampler binding outside stage");
+        require(used&(1U<<(binding-base)),"translated sampler omitted from runtime mask");
+    }
+    return bounded;
 }
 
 static GxmUniformLayout check_layout(const SceGxmProgram *program, const std::string &name, unsigned misalignment = 0)
@@ -469,6 +493,7 @@ int main(int argc, char **argv)
         }
         require(argc == 2, "expected fixture directory or --single <program.gxp> [output.glsl]");
         unsigned checked = 0;
+        unsigned usage_checked = 0;
         unsigned named_checked = 0;
         unsigned misaligned_checked = 0;
         unsigned vertex_inputs_checked = 0;
@@ -483,6 +508,7 @@ int main(int argc, char **argv)
             require(data.size() >= sizeof(SceGxmProgram), "truncated GXP fixture");
             const auto *program = reinterpret_cast<const SceGxmProgram *>(data.data());
             check_layout(program, entry.path().filename().string());
+            usage_checked += check_texture_usage(program,data.size());
             // Controlled derivatives exercise named slots without adding opaque
             // fixture blobs. These validate container declarations, not rendering.
             auto *mutable_program = reinterpret_cast<SceGxmProgram *>(data.data());
@@ -495,7 +521,7 @@ int main(int argc, char **argv)
                 stripped_checked = true;
             }
             const unsigned stage = program->is_fragment() ? 0 : 1;
-            if (!sampler_checked[stage]) sampler_checked[stage] = check_sampler_bindings(mutable_program);
+            if (!sampler_checked[stage]) sampler_checked[stage] = check_sampler_bindings(mutable_program, data.size());
             auto *parameters = const_cast<SceGxmProgramParameter *>(mutable_program->program_parameters());
             for (unsigned i = 0; i < program->parameter_count; ++i) {
                 if (parameters[i].category != SCE_GXM_PARAMETER_CATEGORY_UNIFORM) continue;
@@ -526,6 +552,7 @@ int main(int argc, char **argv)
             }
             ++checked;
         }
+        require(usage_checked >= 7,"expected bounded masks for seven pinned GXP fixtures");
         require(checked >= 7, "expected seven pinned real GXP fixtures");
         require(vertex_inputs_checked >= 1, "expected real vertex input metadata coverage");
         require(c10_locations_checked, "expected C10 input followed by another attribute");

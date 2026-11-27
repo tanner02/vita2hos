@@ -32,6 +32,7 @@
 #include "gxm/program_ref.h"
 #include "gxm/texture_layout.h"
 #include "gxm/texture_staging.h"
+#include "gxm/texture_usage.h"
 #include "gxm/depth_staging.h"
 #include "gxm/driver_memory.h"
 #include "modules/SceSysmem.h"
@@ -62,6 +63,7 @@ typedef struct SceGxmContext {
         struct {
             uint32_t head;
         } vertex_rb, fragment_rb;
+        uint32_t used_textures;
         const SceGxmVertexProgram *vertex_program;
         const SceGxmFragmentProgram *fragment_program;
         const void *vertex_streams[SCE_GXM_MAX_VERTEX_STREAMS];
@@ -142,6 +144,7 @@ typedef struct SceGxmVertexProgram {
     const SceGxmProgram *program; /* Caller-owned GXP, independent of registration ID. */
     GxmProgramRef ref;
     uint32_t default_uniform_count;
+    uint16_t texture_mask;
     GxmUniformLayout uniform_layout;
     SceGxmVertexAttribute *attributes;
     unsigned int attributeCount;
@@ -154,6 +157,7 @@ typedef struct SceGxmFragmentProgram {
     const SceGxmProgram *program;
     GxmProgramRef ref;
     uint32_t default_uniform_count;
+    uint16_t texture_mask;
     GxmUniformLayout uniform_layout;
     SceGxmOutputRegisterFormat outputFormat;
     SceGxmMultisampleMode multisampleMode;
@@ -620,6 +624,22 @@ static int translate_shader(DkShader *shader, const SceGxmProgram *program, pipe
     return 0;
 }
 
+/* Only narrow usage when the GXP lies in an independently known allocation.
+ * Static/unknown spans retain every unit instead of trusting the GXP size word. */
+static uint16_t shader_texture_mask(const SceGxmProgram *program, const char *stage)
+{
+    uint16_t mask=UINT16_MAX;
+    bool bounded=false;
+    VitaMemBlockInfo *block=SceSysmem_get_vita_memblock_info_for_addr(program);
+    if (block && (uintptr_t)program >= (uintptr_t)block->base) {
+        uintptr_t offset=(uintptr_t)program-(uintptr_t)block->base;
+        if (offset <= block->size)
+            bounded=gxm_program_texture_mask(program,block->size-offset,&mask);
+    }
+    LOG("GXM_TEXTURE_USAGE program=%p stage=%s mask=0x%04x bounded=%u",program,stage,(unsigned)mask,(unsigned)bounded);
+    return mask;
+}
+
 EXPORT(SceGxm, 0xB7BBA6D5, int, sceGxmShaderPatcherCreateVertexProgram,
        SceGxmShaderPatcher *shaderPatcher, SceGxmShaderPatcherId programId,
        const SceGxmVertexAttribute *attributes, unsigned int attributeCount,
@@ -651,6 +671,7 @@ EXPORT(SceGxm, 0xB7BBA6D5, int, sceGxmShaderPatcherCreateVertexProgram,
     memset(vertex_program, 0, sizeof(*vertex_program));
     atomic_init(&vertex_program->ref.count, 1);
     vertex_program->program = programId->programHeader;
+    vertex_program->texture_mask = shader_texture_mask(programId->programHeader,"vert");
     vertex_program->default_uniform_count = programId->programHeader->default_uniform_buffer_count;
     if (!gxp_uniform_layout_c(programId->programHeader, &vertex_program->uniform_layout)) {
         ret = SCE_GXM_ERROR_INVALID_VALUE;
@@ -749,6 +770,7 @@ EXPORT(SceGxm, 0x4ED2E49D, int, sceGxmShaderPatcherCreateFragmentProgram,
     memset(fragment_program, 0, sizeof(*fragment_program));
     atomic_init(&fragment_program->ref.count, 1);
     fragment_program->program = programId->programHeader;
+    fragment_program->texture_mask = shader_texture_mask(programId->programHeader,"frag");
     fragment_program->default_uniform_count = programId->programHeader->default_uniform_buffer_count;
     if (!gxp_uniform_layout_c(programId->programHeader, &fragment_program->uniform_layout)) {
         free(fragment_program);
@@ -1527,6 +1549,9 @@ EXPORT(SceGxm, 0x06752183, void, sceGxmSetFrontPointLineWidth, SceGxmContext *co
 EXPORT(SceGxm, 0x31FF8ABD, void, sceGxmSetVertexProgram, SceGxmContext *context,
        const SceGxmVertexProgram *vertexProgram)
 {
+    if (gxm_texture_usage_select(&context->state.used_textures,true,
+            vertexProgram ? vertexProgram->texture_mask : UINT16_MAX))
+        context->state.dirty.bit.textures = true;
     context->state.vertex_program = vertexProgram;
     context->state.dirty.bit.vertex_shader = true;
 }
@@ -1546,6 +1571,8 @@ EXPORT(SceGxm, 0xAD2F48D9, void, sceGxmSetFragmentProgram, SceGxmContext *contex
     dkColorStateSetBlendEnable(&context->state.color, 0, fragmentProgram->blend.enabled);
     context->state.dirty.bit.blend = true;
 
+    if (gxm_texture_usage_select(&context->state.used_textures,false,fragmentProgram->texture_mask))
+        context->state.dirty.bit.textures = true;
     context->state.fragment_program = fragmentProgram;
     context->state.dirty.bit.fragment_shader = true;
 }
@@ -1999,6 +2026,9 @@ static int upload_texture_descriptors(SceGxmContext *context)
     } descriptors = {0};
 
     for (int i = 0; i < GXM_TEXTURE_BINDING_COUNT; i++) {
+        /* Skip inactive slots before reading even their address/format. Bound
+         * guest state is retained for a later shader that actually uses it. */
+        if (!gxm_texture_usage_active(context->state.used_textures,(unsigned)i)) continue;
         texture = &context->state.textures[i];
         if (!texture->data_addr)
             continue;

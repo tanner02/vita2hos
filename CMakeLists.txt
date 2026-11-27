@@ -83,6 +83,7 @@ add_executable(vita2hos
     source/gxm_program_ref.c
     source/gxm_texture.c
     source/gxm_texture_layout.c
+    source/gxm_texture_usage.c
     source/gxm_texture_staging.c
     source/deko_utils.c
     source/load.c

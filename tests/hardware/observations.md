@@ -2088,3 +2088,26 @@ work despite successful tap responses; detach returned0x1c24ca. One operator
 recovery reboot was accepted, so this diagnostic run is neither a clean guest
 exit nor an independently observed crash. Source/source-table inspection used
 ordinary Capstone fallback, not REA decompilation or provider evidence.
+
+
+## Shader-specific texture usage candidate (hardware pending)
+
+The uploader previously prepared every nonzero bound slot on each texture
+batch, including slots unused by the active shaders. Patched programs now
+cache conservative per-stage usage from bounded GXP1.4 metadata: named sampler
+parameters, fragment nondependent descriptors and container19 dependent sampler
+records. Vertex register masks are not interpreted as fragment descriptors.
+The parser requires an independent readable span from the containing guest
+allocation; unknown/static spans, malformed metadata, unknown versions and
+texture-buffer conventions retain all16 units. No texture-content cache or
+source-mutation invalidation assumption is introduced.
+
+Changing a stage usage mask dirties descriptors even without texture rebinding.
+The uploader skips inactive slots before reading their texture state, preserving
+bindings for later shaders. Immutable full descriptor tables and existing GPU
+retirement remain unchanged. Focused ASan/UBSan checks cover named/stripped
+metadata, layout remainders, stage selection, malformed/truncated/unaligned input
+and all16 fallback. Seven pinned real GXP fixtures and32 derived named samplers
+across both stages passed actual translator/reflection inclusion checks. Full
+host suite and native compilation are pending at this checkpoint; no hardware
+performance or rendering pass is claimed for this candidate.
