@@ -1,3 +1,35 @@
+## 2026-11-27: graphics batch hardware PASS on8bf8795
+
+Automated visible_cube6 ran through the dedicated HOME title on firmware16.1.0,
+Atmosphere1.8.0. All25 PASS tags were observed, including2x/4x transfer
+preservation and triangle coverage/depth/resolve, restored1x coverage, gamma
+RGB/alpha/reset, depth-only occlusion, stencil replacement, six texture/viewport
+passes, all360 cube frames and interior ring-buffer guards. A screenshot shows
+the textured cube. Runtime8bf8795 logs process result0 and cleanup0; the title
+returned to HOME with Start displayed and no GPU error in the successful log.
+
+Report SHA256: 23783e212bb74bc0f3f796d4602b794f0567eb4ccf884af9881d0328112d6b73.
+Runtime log SHA256: 8d9e166f7a52d4952ee34f182849ad0a4aa5b9eba7c2db992658d14c1a08f63d.
+Private receipts retain the installed package/readback hashes, complete report,
+log and screenshots. No proprietary game assets are included in those graphics
+artifacts. This validates the owned batch, not commercial-game boot, vertex
+array/matrix rendering, exact Vita sample positions, raw sample storage,
+gamma-correct MSAA resolve or forced multisampled depth transfers.
+
+The first hardware attempt on a421853 failed before the first framebuffer pass:
+GPU methodb197:3ef receivedffffffff. The method maps to MultisampleSampleMask;
+[deko3d queue setup](https://github.com/devkitPro/deko3d/blob/master/source/maxwell/gpu_3d_base.cpp)
+initializes those methods toFFFF.8bf8795 restricts the runtime's write toFFFF;
+the rerun above passes. The crash also invalidated the attached virtual input
+handle. Game files were restored before controller-recovery reboot; the user
+brought the console back. Subsequent launches detach the virtual controller
+immediately after input. Recovery across another crash remains unverified.
+
+Original LittleBigPlanet executable/modules/normal mode were restored and
+hash-verified after the successful batch. The real game is now being observed
+on the same installed runtime. No HLE handoff/scanner is merged, and the held
+real-libc TLS probe remains untouched.
+
 ## 2026-11-27: multisample draw/depth batch checks (not deployed)
 
 The existing graphics batch now tests actual draws in2x,4x and restored1x modes,
