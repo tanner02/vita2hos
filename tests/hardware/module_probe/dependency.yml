@@ -1,0 +1,17 @@
+owned_dependency:
+  attributes: 0
+  process_image: false
+  imagemodule: false
+  version:
+    major: 1
+    minor: 0
+  main:
+    start: module_start
+  libraries:
+    OwnedDependency:
+      nid: 0x6F776E64
+      syscall: false
+      functions:
+        - dependency_value: 0xAABB0011
+      variables:
+        - dependency_state: 0xAABB0022

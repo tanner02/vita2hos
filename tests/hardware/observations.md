@@ -1,3 +1,22 @@
+## Owned dependency-start probe (local preparation)
+
+- Added tests/hardware/module_probe with an owned main executable and an owned
+  dependency selected by modules.txt. The dependency exports one function and
+  one variable, records its kernel TLS address/start count, then ExitThread(0).
+  Main verifies separate startup-thread storage, main TLS, function binding and
+  shared writable storage via the imported variable before reporting PASS.
+- The builder compiles both ARM images with warnings as errors, generates the
+  stub library with VitaSDK, audits native imports, validates matching library/
+  symbol tables and export target segments, and binds two reviewed ARM/Thumb TP
+  instructions to the final main executable fingerprint. Dependency module TLS
+  is zero; this does not test module-specific or dynamic TLS.
+- A private host-only replay of the actual loader on these owned payloads passed
+  publication/binding and patched main's variable reference at offset 0x248 to
+  the dependency's simulated writable address. Main TLS metadata was 4/16 bytes.
+  No ARM code ran in that replay; native HLE imports were not executed.
+- Planned hardware runtime is already installed 006d5c4. No newer mutex runtime
+  or commercial module is required. This is preparation, not a hardware result.
+
 ## Offline named mutexes (after 006d5c4 hardware baseline)
 
 - Added SceLibKernel CreateMutex (0xED53334A) and LockMutex (0x1D8D7945),

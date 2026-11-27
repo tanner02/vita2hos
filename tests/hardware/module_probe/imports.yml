@@ -1,0 +1,13 @@
+version: 2
+firmware: 3.60
+modules:
+  owned_dependency:
+    nid: 0x6F776E00
+    libraries:
+      OwnedDependency:
+        kernel: false
+        nid: 0x6F776E64
+        functions:
+          dependency_value: 0xAABB0011
+        variables:
+          dependency_state: 0xAABB0022
