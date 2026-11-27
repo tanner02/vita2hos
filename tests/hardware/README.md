@@ -109,6 +109,21 @@ This relies on Atmosphere's documented [ExeFS replacement and hbloader
 precedence](https://github.com/Atmosphere-NX/Atmosphere/blob/master/docs/components/modules/loader.md).
 The NSP here is an ExeFS container, not an installable game package.
 
+Install or disable this profile over FTP:
+
+```sh
+python3 tools/deploy-title-profile.py title-profile.zip --host SWITCH_IP --port 5000
+python3 tools/deploy-title-profile.py title-profile.zip --host SWITCH_IP --port 5000 --disable
+```
+
+Installation verifies normal R / 39-bit hbmenu configuration and both homebrew
+files before writing. It refuses loose ExeFS mods and unknown replacements.
+To update an existing profile, supply its known SHA-256 using
+`--expected-installed-sha256 HASH`; the old file is backed up locally and on SD.
+Uploads are downloaded and verified before activation. Disable accepts only a
+replacement matching the supplied profile and renames it out of the loader path.
+Neither command changes global homebrew configuration or launches software.
+
 ### Runtime and sample transfer
 
 With the Switch FTP server open, a PC with Python 3 can transfer and verify the

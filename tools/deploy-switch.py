@@ -38,9 +38,14 @@ def ensure_directory(ftp, path):
         ftp.cwd(previous)
 
 
-def replace_verified(ftp, path, data, backup_dir, stamp):
+_UNCHECKED = object()
+
+
+def replace_verified(ftp, path, data, backup_dir, stamp, expected_previous=_UNCHECKED):
     """Verify a temporary upload, save the old file locally, then replace it."""
     previous = read_remote(ftp, path)
+    if expected_previous is not _UNCHECKED and previous != expected_previous:
+        raise ValueError("Remote file changed before replacement: " + path)
     if previous == data:
         print("Unchanged:", path)
         return

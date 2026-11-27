@@ -22,6 +22,8 @@ jobs:
         run: python3 -B tests/host/test_report_imports.py
       - name: Check title-specific launch package validation
         run: python3 -B tests/host/test_title_profile.py
+      - name: Check title-profile FTP installation and rollback
+        run: python3 -B tests/host/test_deploy_title_profile.py
 
   shader-integration:
     runs-on: ubuntu-latest
