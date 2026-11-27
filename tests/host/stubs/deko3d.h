@@ -5,6 +5,7 @@
 typedef void *DkMemBlock;
 typedef void *DkDevice;
 typedef struct { float x, y, width, height, near, far; } DkViewport;
+typedef struct { uint32_t x, y, width, height; } DkScissor;
 typedef enum { DkFace_None = 0, DkFace_Front = 1, DkFace_Back = 2, DkFace_FrontAndBack = 3 } DkFace;
 typedef enum { DkBlendOp_Add = 1, DkBlendOp_Sub, DkBlendOp_RevSub, DkBlendOp_Min, DkBlendOp_Max } DkBlendOp;
 typedef enum {

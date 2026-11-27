@@ -47,6 +47,7 @@ add_executable(vita2hos
     source/gxm_uniform.c
     source/gxm_draw.c
     source/gxm_viewport.c
+    source/gxm_region_clip.c
     source/gxm_blend.c
     source/gxm_shader_code.c
     source/gxm_program_registry.c

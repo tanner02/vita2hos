@@ -21,6 +21,7 @@
 #include "gxm/util.h"
 #include "gxm/draw.h"
 #include "gxm/viewport.h"
+#include "gxm/region_clip.h"
 #include "gxm/blend.h"
 #include "gxm/shader_code.h"
 #include "gxm/program_registry.h"
@@ -59,6 +60,7 @@ typedef struct SceGxmContext {
         bool in_scene;
         bool two_sided_mode;
         GxmViewportState viewport;
+        GxmRegionClip region_clip;
         DkRasterizerState rasterizer;
         DkColorState color;
         DkBlendState blend;
@@ -925,6 +927,29 @@ EXPORT(SceGxm, 0x814F61EB, void, sceGxmSetViewportEnable, SceGxmContext *context
     context->state.dirty.bit.viewport = true;
 }
 
+EXPORT(SceGxm, 0x70C86868, void, sceGxmSetRegionClip, SceGxmContext *context,
+       SceGxmRegionClipMode mode, unsigned int xMin, unsigned int yMin,
+       unsigned int xMax, unsigned int yMax)
+{
+    if (!context)
+        return;
+    if (gxm_region_clip_set(&context->state.region_clip, mode, xMin, yMin, xMax, yMax))
+        LOG("sceGxmSetRegionClip: invalid mode %u", (unsigned)mode);
+}
+
+EXPORT(SceGxm, 0x60CF708E, void, sceGxmSetDefaultRegionClipAndViewport,
+       SceGxmContext *context, unsigned int xMax, unsigned int yMax)
+{
+    if (!context)
+        return;
+    float width = (float)xMax + 1, height = (float)yMax + 1;
+    gxm_viewport_set(&context->state.viewport, width * 0.5f, width * 0.5f,
+                     height * 0.5f, -height * 0.5f, 0.5f, 0.5f);
+    context->state.dirty.bit.viewport = true;
+    gxm_region_clip_set(&context->state.region_clip, SCE_GXM_REGION_CLIP_OUTSIDE,
+                        0, 0, xMax, yMax);
+}
+
 static void set_vita3k_gxm_uniform_blocks(SceGxmContext *context, float width, float height)
 {
     GXMRenderVertUniformBlock vert_unif;
@@ -976,10 +1001,8 @@ EXPORT(SceGxm, 0x8734FF4E, int, sceGxmBeginScene, SceGxmContext *context, unsign
 
     /* BeginScene resets the transform to the default region, while retaining
      * the viewport enable mode. Later setters are replayed at the next draw. */
-    float viewport_width = validRegion ? (float)validRegion->xMax + 1 : rt_width;
-    float viewport_height = validRegion ? (float)validRegion->yMax + 1 : rt_height;
-    gxm_viewport_set(&context->state.viewport, viewport_width * 0.5f, viewport_width * 0.5f,
-                     viewport_height * 0.5f, -viewport_height * 0.5f, 0.5f, 0.5f);
+    sceGxmSetDefaultRegionClipAndViewport(context, validRegion ? validRegion->xMax : rt_width - 1U,
+                                         validRegion ? validRegion->yMax : rt_height - 1U);
 
     if (context->texture_staging) {
         /* The previous scene was submitted by EndScene. Retire its temporary
@@ -1876,7 +1899,14 @@ static int draw_indexed(SceGxmContext *context, SceGxmPrimitiveType primType,
 
     dkCmdBufBindIdxBuffer(context->cmdbuf, gxm_to_dk_idx_format(indexType),
                           dkMemBlockGetGpuAddr(index_block->dk_memblock) + index_offset);
-    dkCmdBufDrawIndexed(context->cmdbuf, primitive, indexCount, instances, 0, 0, 0);
+    DkScissor scissors[4];
+    unsigned scissor_count = gxm_region_clip_scissors(&context->state.region_clip,
+        context->state.render_target->params.width, context->state.render_target->params.height,
+        scissors);
+    for (unsigned i = 0; i < scissor_count; ++i) {
+        dkCmdBufSetScissors(context->cmdbuf, 0, &scissors[i], 1);
+        dkCmdBufDrawIndexed(context->cmdbuf, primitive, indexCount, instances, 0, 0, 0);
+    }
 
     return 0;
 }
