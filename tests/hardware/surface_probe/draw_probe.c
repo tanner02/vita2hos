@@ -139,6 +139,72 @@ int probe_draw(SceGxmContext *context, SceGxmRenderTarget *target,
     CHECK(sceGxmDraw(context, SCE_GXM_PRIMITIVE_TRIANGLES, SCE_GXM_INDEX_FORMAT_U16, indices, 3));
     CHECK(sceGxmEndScene(context, NULL, NULL)); sceGxmFinish(context);
     CHECK(check_pixels(pixels, 0xff00ff00)); hooks->record("PASS stencil_replace\n");
+
+    /* Use actual texture shaders, then change the guest image between scenes.
+     * This covers descriptor setup, UV interpolation, row layout and re-upload. */
+    sceGxmShaderPatcherReleaseFragmentProgram(patcher, fragment); fragment = NULL;
+    sceGxmShaderPatcherReleaseVertexProgram(patcher, vertex); vertex = NULL;
+    sceGxmShaderPatcherUnregisterProgram(patcher, fragment_id); fragment_id = NULL;
+    sceGxmShaderPatcherUnregisterProgram(patcher, vertex_id); vertex_id = NULL;
+    vertex_source = (const SceGxmProgram *)texture_v;
+    fragment_source = (const SceGxmProgram *)texture_f;
+    position = sceGxmProgramFindParameterByName(vertex_source, "aPosition");
+    const SceGxmProgramParameter *uv = sceGxmProgramFindParameterByName(vertex_source, "aTexcoord");
+    matrix = sceGxmProgramFindParameterByName(vertex_source, "wvp");
+    const SceGxmProgramParameter *sampler = sceGxmProgramFindParameterByName(fragment_source, "tex");
+    if (!position || !uv || !matrix || !sampler) {
+        hooks->record("FAIL texture_parameters\n"); ret = -1; goto done;
+    }
+    hooks->record("RUN compile_texture_shaders\n");
+    CHECK(sceGxmShaderPatcherRegisterProgram(patcher, vertex_source, &vertex_id));
+    CHECK(sceGxmShaderPatcherRegisterProgram(patcher, fragment_source, &fragment_id));
+    attributes[0].regIndex = sceGxmProgramParameterGetResourceIndex(position);
+    attributes[1].regIndex = sceGxmProgramParameterGetResourceIndex(uv);
+    CHECK(sceGxmShaderPatcherCreateVertexProgram(patcher, vertex_id, attributes, 2, &stream, 1, &vertex));
+    CHECK(sceGxmShaderPatcherCreateFragmentProgram(patcher, fragment_id, SCE_GXM_OUTPUT_REGISTER_FORMAT_UCHAR4,
+        SCE_GXM_MULTISAMPLE_NONE, NULL, vertex_source, &fragment));
+    uint32_t *texels = hooks->allocate(16 * 16 * 4);
+    if (!texels) { hooks->record("FAIL texture_allocation\n"); ret = -1; goto done; }
+    for (unsigned i = 0; i < 3; ++i) {
+        vertices[i][4] = i == 1 ? 2.0f : 0.0f;
+        vertices[i][5] = i == 2 ? 2.0f : 0.0f;
+    }
+    SceGxmTexture texture;
+    CHECK(sceGxmTextureInitLinear(&texture, texels, SCE_GXM_TEXTURE_FORMAT_U8U8U8U8_ABGR, 16, 16, 1));
+    CHECK(sceGxmTextureSetMinFilter(&texture, SCE_GXM_TEXTURE_FILTER_POINT));
+    CHECK(sceGxmTextureSetMagFilter(&texture, SCE_GXM_TEXTURE_FILTER_POINT));
+    CHECK(sceGxmTextureSetUAddrMode(&texture, SCE_GXM_TEXTURE_ADDR_CLAMP));
+    CHECK(sceGxmTextureSetVAddrMode(&texture, SCE_GXM_TEXTURE_ADDR_CLAMP));
+    sceGxmSetVertexProgram(context, vertex); sceGxmSetFragmentProgram(context, fragment);
+    sceGxmSetFrontStencilFunc(context, SCE_GXM_STENCIL_FUNC_ALWAYS, SCE_GXM_STENCIL_OP_KEEP,
+        SCE_GXM_STENCIL_OP_KEEP, SCE_GXM_STENCIL_OP_KEEP, 0xff, 0);
+    const uint32_t palette[4] = {0xff0000ff, 0xff00ff00, 0xffff0000, 0xffffffff};
+    for (unsigned pass = 0; pass < 2; ++pass) {
+        for (unsigned y = 0; y < 16; ++y)
+            for (unsigned x = 0; x < 16; ++x)
+                texels[y * 16 + x] = palette[((y >= 8) * 2 + (x >= 8) + pass) & 3];
+        CHECK(sceGxmBeginScene(context, 0, target, NULL, NULL, NULL, surface, NULL));
+        CHECK(sceGxmSetVertexStream(context, 0, vertices));
+        CHECK(sceGxmSetFragmentTexture(context, sceGxmProgramParameterGetResourceIndex(sampler), &texture));
+        void *uniform;
+        const float identity[16] = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
+        CHECK(sceGxmReserveVertexDefaultUniformBuffer(context, &uniform));
+        CHECK(sceGxmSetUniformDataF(uniform, matrix, 0, 16, identity));
+        CHECK(sceGxmDraw(context, SCE_GXM_PRIMITIVE_TRIANGLES, SCE_GXM_INDEX_FORMAT_U16, indices, 3));
+        CHECK(sceGxmEndScene(context, NULL, NULL)); sceGxmFinish(context);
+        for (unsigned y = 0; y < 2; ++y) {
+            for (unsigned x = 0; x < 2; ++x) {
+                unsigned index = (16 + y * 32) * 64 + 16 + x * 32;
+                uint32_t expected = palette[(y * 2 + x + pass) & 3];
+                if (pixels[index] != expected) {
+                    hooks->result("FAIL texture_pixel", index);
+                    hooks->result("actual", pixels[index]); hooks->result("expected", expected);
+                    ret = -1; goto done;
+                }
+            }
+        }
+        hooks->record(pass ? "PASS texture_update\n" : "PASS texture_quadrants\n");
+    }
 done:
     if (fragment) sceGxmShaderPatcherReleaseFragmentProgram(patcher, fragment);
     if (vertex) sceGxmShaderPatcherReleaseVertexProgram(patcher, vertex);

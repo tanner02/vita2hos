@@ -15,7 +15,8 @@ set(FIXTURES "${CMAKE_CURRENT_SOURCE_DIR}/../../../external/Vita3K/tools/native-
 add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/draw_shaders.h"
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/embed-shaders.py"
         "${FIXTURES}" "${CMAKE_CURRENT_BINARY_DIR}/draw_shaders.h"
-    DEPENDS embed-shaders.py "${FIXTURES}/color_v.gxp" "${FIXTURES}/clear_f.gxp" VERBATIM)
+    DEPENDS embed-shaders.py "${FIXTURES}/color_v.gxp" "${FIXTURES}/clear_f.gxp"
+        "${FIXTURES}/texture_v.gxp" "${FIXTURES}/texture_f.gxp" VERBATIM)
 foreach(variant surface_probe draw_probe)
     add_executable(${variant} main.c)
     set_target_properties(${variant} PROPERTIES SUFFIX ".elf")

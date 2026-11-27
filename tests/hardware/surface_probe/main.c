@@ -9,9 +9,11 @@
 #ifdef VITA2HOS_DRAW_PROBE
 #include "draw_probe.h"
 #define PROBE_NAME "draw_probe"
+#define PROBE_VERSION "2"
 #define PROBE_REPORT "app0:/draw-probe.txt"
 #else
 #define PROBE_NAME "surface_probe"
+#define PROBE_VERSION "1"
 #define PROBE_REPORT "app0:/surface-probe.txt"
 #endif
 
@@ -80,7 +82,7 @@ int module_start(SceSize args, void *argp)
     (void)args; (void)argp;
     report = sceIoOpen(PROBE_REPORT, SCE_O_WRONLY | SCE_O_CREAT | SCE_O_TRUNC, 0666);
     if (report < 0) { sceKernelExitProcess(1); return 1; }
-    record(PROBE_NAME " v1\nRUNNING - no hardware result until a final PASS line\n");
+    record(PROBE_NAME " v" PROBE_VERSION "\nRUNNING - no hardware result until a final PASS line\n");
     int status = 1, initialized = 0, code;
     SceGxmContext *context = NULL;
     SceGxmRenderTarget *target = NULL;

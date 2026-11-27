@@ -15,7 +15,7 @@
 - The corrected `imagemodule: false` guest passed entry-point/import validation
   and was uploaded by itself. Readback SHA-256:
   `a8898d953e49835e398a1f62d0d5dd4e1e60f0d608f24f367001a6db626f9485`.
-  Its hardware result is pending; the installed runtime was unchanged.
+  Its hardware result is recorded below; the installed runtime was unchanged.
 
 ### Corrected surface probe: PASS
 
@@ -31,6 +31,22 @@
 - This validates standalone title launch, guest loading, surface copies and
   notification handling on this Switch. The probe performs no draw calls, so
   shader, depth/stencil draw behavior and commercial games remain unverified.
+
+### Shader/depth/stencil draw probe: PASS
+
+- USB readback recovered `draw-probe.txt` ending with `PASS draw_probe`, and a
+  matching runtime log identifying the installed `76a9188` build.
+- Guest SHA-256 at deployment:
+  `ec6e61ba4c77a5e72dc8c81cb6dfc168b85791bf0348b26e4547380741b3bd69`;
+  source commit `820c759a734417c8a334359d8255b28ffd48b2ce`.
+- All surface checks passed again, followed by `PASS shader_red`,
+  `PASS depth_only_occlusion`, and `PASS stencil_replace`.
+- The runtime log confirms successful Vita GXP-to-GLSL translation, UAM
+  compilation, indexed draws and color readback. It ends with process exit
+  status zero, runtime shutdown and a successful `jitClose()`.
+- This is direct hardware evidence for the tested shader/uniform/vertex,
+  depth-only, stencil and readback paths. It does not cover textures, every
+  primitive/state combination, or commercial-title compatibility.
 
 ## Runtime f55edbf626acb6ff46d510a55bdd026dd78ac5ad
 
