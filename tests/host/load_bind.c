@@ -138,5 +138,35 @@ int main(void)
     assert(words[1]==arm_encode_movt(0,(uint16_t)(SCE_KERNEL_ERROR_MODULEMGR_NO_FUNC_NID>>16)) && words[2]==arm_encode_ret());
     assert(!load_image_close(&overflow));missing_import_release(&pool_owner);
 
+    /* Standard 16-byte ARM imports can start with MVN/BX followed by NOP/0.
+     * Scanning at +8 finds NOP/0/MVN/BX across neighboring entries; this is
+     * already covered by their declared metadata, not another import pool. */
+    LoadImage adjacent; unsigned char adjacent_memory[256]={0};
+    prepare(&adjacent,adjacent_memory,104,104,0xb001);
+    sce_module_imports_raw adjacent_import;
+    memcpy(&adjacent_import,adjacent_memory,sizeof(adjacent_import));
+    adjacent_import.num_syms_funcs=2;
+    adjacent_import.func_entry_table=0x1048;
+    memcpy(adjacent_memory,&adjacent_import,sizeof(adjacent_import));
+    uint32_t adjacent_nids[]={11,11},adjacent_entries[]={0x1080,0x1090};
+    const uint32_t initial_stubs[]={0xe3e00000,0xe12fff1e,0xe1a00000,0,
+                                    0xe3e00000,0xe12fff1e,0xe1a00000,0};
+    const uint32_t unrelated_pattern[]={0xe1a00000,0,0xe3e00000,0xe12fff1e};
+    memcpy(adjacent_memory+64,adjacent_nids,sizeof(adjacent_nids));
+    memcpy(adjacent_memory+72,adjacent_entries,sizeof(adjacent_entries));
+    memcpy(adjacent_memory+128,initial_stubs,sizeof(initial_stubs));
+    memcpy(adjacent_memory+192,unrelated_pattern,sizeof(unrelated_pattern));
+    assert(!memcmp(adjacent_memory+136,unrelated_pattern,sizeof(unrelated_pattern)));
+    assert(!load_image_publish(&adjacent,&process) && !load_image_bind(&adjacent,&process));
+    for(unsigned i=0;i<2;++i) {
+        memcpy(words,adjacent_memory+128+i*16,sizeof(words));
+        assert(words[0]==arm_encode_movw(12,0xb001));
+        assert(words[1]==arm_encode_movt(12,0) && words[2]==arm_encode_bx(12));
+    }
+    assert(memcmp(adjacent_memory+136,unrelated_pattern,sizeof(unrelated_pattern)));
+    /* Unlisted matching bytes are preserved; binding follows scoped NIDs. */
+    assert(!memcmp(adjacent_memory+192,unrelated_pattern,sizeof(unrelated_pattern)));
+    assert(!load_image_close(&adjacent) && process.libraries==NULL);
+
     puts("Two-phase image binding, dependency publication and teardown checks passed.");
 }

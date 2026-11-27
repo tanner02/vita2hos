@@ -1,3 +1,25 @@
+## 2026-11-27: import-pool handoff audit (offline)
+
+A proposed second-pool scanner is excluded from this branch. Source-bound replay
+of the owned main ELF finds631 declared function imports and630 NOP/zero/MVN/BX
+windows. Each window crosses two standard16-byte import stubs: a stub's trailing
+NOP/zero words and the next stub's leading MVN/BX words. Every window+8 is already
+a declared import entry, so these windows do not establish another unbound pool.
+
+Host ASan/UBSan replay using the production relocation and import-resolution
+functions with synthetic export addresses removes all630 patterns. The addresses
+are test providers, not proof that real services are implemented or that the game
+boots. A new loader regression checks adjacent standard stubs, declared entry
+patching and preservation of unlisted matching bytes. No guest ARM is executed.
+
+The reviewed scanner also emits ARM LDR pc,[pc,#0] while placing its target in the
+adjacent word. ARM's PC+8 addressing loads the wrong word from either proposed
+entry. Its only hook is load_file, whereas the normal app/process route binds
+images directly through load_image_bind. These findings contradict the proposed
+offline crash-fix claim; no scanner or HLE handoff is merged here. Other source
+and service behavior still needs review. The real startup crash remains open.
+No console/probe/payload change or deployment occurred during this audit.
+
 ## 2026-11-27: shader admission failure diagnostics (not deployed)
 
 Private source-bound import/control-flow decoding links a resource-construction
