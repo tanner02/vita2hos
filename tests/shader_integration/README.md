@@ -116,7 +116,13 @@ and total element count, including array elements and C10's packed-byte count.
 Host state checks cover multi-location expansion, offsets, partial final vectors,
 normalization bypass, collisions, capacity/offset limits and output preservation.
 
-The pinned translator can assign overlapping locations for C10 declarations
-whose packed-byte count needs more slots than their logical component count.
-Runtime state creation rejects such collisions. Non-register array/matrix inputs
-remain separate work. No GPU execution or rendered packed geometry is established.
+Four-component C10 derivatives with one, two and four array elements are followed
+by another named input. Tests verify the packed-byte location span, adjacency,
+all reflected locations and the absence of overlap. Both translator and metadata
+analyzer reserve locations using the packed-byte count for register C10 inputs.
+`cmake/Vita3KVertexLocations.cmake` applies this to generated build copies after
+the uniform-shuffle patch, in production and integration builds. Configuration
+fails if either expected upstream allocation statement or source layout changes.
+
+Non-register array/matrix inputs remain separate work. No GPU execution or
+rendered packed geometry is established by these declaration checks.

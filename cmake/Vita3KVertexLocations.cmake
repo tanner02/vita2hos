@@ -1,0 +1,66 @@
+# Reserve native locations for the unsigned bytes emitted for register C10
+# inputs. Compose with the generated uniform-shuffle source; never edit Vita3K.
+function(vita2hos_fix_vertex_locations repo)
+    get_target_property(sources shader SOURCES)
+    foreach(name spirv_recompiler usse_program_analyzer)
+        set(index -1)
+        set(i 0)
+        foreach(path IN LISTS sources)
+            get_filename_component(basename "${path}" NAME)
+            if(basename STREQUAL "${name}.cpp")
+                if(NOT index EQUAL -1)
+                    message(FATAL_ERROR "Duplicate Vita3K ${name} source; review vertex location patch")
+                endif()
+                set(index ${i})
+                set(input "${path}")
+            endif()
+            math(EXPR i "${i} + 1")
+        endforeach()
+        if(index EQUAL -1)
+            message(FATAL_ERROR "Vita3K ${name} source missing; review vertex location patch")
+        endif()
+        if(NOT IS_ABSOLUTE "${input}")
+            set(input "${repo}/external/Vita3K/vita3k/shader/${input}")
+        endif()
+        # The generated shuffle copy is recreated by its configure function.
+        # Only track original dependency files to avoid a regeneration loop.
+        if(name STREQUAL "usse_program_analyzer")
+            set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${input}")
+        endif()
+        file(READ "${input}" source)
+        string(REPLACE "\r\n" "\n" source "${source}")
+        if(name STREQUAL "spirv_recompiler")
+            set(before "                           in_fcount_allocated += ((input.array_size * input.component_count + 3) / 4 * 4);")
+            set(after [==[
+                           const uint64_t logical_components = uint64_t(input.array_size) * input.component_count;
+                           const uint64_t location_components = s.regformat && input.type == DataType::C10 ?
+                               (logical_components * 10 + 7) / 8 : logical_components;
+                           in_fcount_allocated += ((location_components + 3) / 4 * 4);]==])
+        else()
+            set(before "            fcount_allocated += ((parameter.array_size * parameter.component_count + 3) / 4) * 4;")
+            set(after [==[
+            const uint64_t logical_components = uint64_t(parameter.array_size) * parameter.component_count;
+            const uint64_t location_components = regformat && parameter.type == SCE_GXM_PARAMETER_TYPE_C10 ?
+                (logical_components * 10 + 7) / 8 : logical_components;
+            fcount_allocated += ((location_components + 3) / 4) * 4;]==])
+        endif()
+        string(FIND "${source}" "${before}" found)
+        if(found EQUAL -1)
+            message(FATAL_ERROR "Vita3K ${name} vertex allocation changed; review dependency update")
+        endif()
+        string(LENGTH "${before}" statement_length)
+        math(EXPR tail_start "${found} + ${statement_length}")
+        string(SUBSTRING "${source}" ${tail_start} -1 tail)
+        string(FIND "${tail}" "${before}" duplicate)
+        if(NOT duplicate EQUAL -1)
+            message(FATAL_ERROR "Vita3K ${name} allocation statement is not unique; review dependency update")
+        endif()
+        string(REPLACE "${before}" "${after}" patched "${source}")
+        set(output "${CMAKE_CURRENT_BINARY_DIR}/vita2hos-patched/vertex-locations/${name}.cpp")
+        file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/vita2hos-patched/vertex-locations")
+        file(WRITE "${output}" "${patched}")
+        list(REMOVE_AT sources ${index})
+        list(APPEND sources "${output}")
+    endforeach()
+    set_property(TARGET shader PROPERTY SOURCES "${sources}")
+endfunction()

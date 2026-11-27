@@ -1,3 +1,24 @@
+## 2026-11-27: C10 packed-input location allocation (offline, not deployed)
+
+Register C10 declarations now reserve native locations from their packed-byte
+count in both the shader translator and metadata analyzer. Previously a four-
+component C10 input occupied two native locations but reserved only one, so a
+following input overlapped it. Generated build copies carry the correction;
+the pinned Vita3K checkout and submodule revision are unchanged.
+
+Controlled pinned vertex derivatives put one-, two- and four-element C10 arrays
+before another named input. Actual SPIR-V reflection verifies non-overlapping
+spans, adjacency and agreement with runtime metadata; runtime GLSL conversion
+also passes. This regression fails with the original allocation. A private
+configure fixture verifies failure after changing or duplicating the expected
+upstream source statement. A second build reports no work, and native Debug/Release builds pass.
+The patch composes with the earlier uniform-shuffle correction in both builds.
+
+These are shader declaration/translation checks, not GPU execution or proof of
+C10 rendered pixels. Non-register matrix/array support and the guest startup
+NULL+0x158 crash remain open. No commercial 3D boot is established. Probe update
+remains held; no console/SD access, payload changes or deployment occurred.
+
 ## 2026-11-27: packed register vertex fetch (offline, not deployed)
 
 Register-format vertex inputs now fetch unsigned bit patterns at shader-declared

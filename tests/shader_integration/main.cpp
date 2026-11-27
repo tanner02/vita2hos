@@ -171,6 +171,71 @@ static void check_packed_inputs(SceGxmProgram *program)
     require(false, "expected an attribute for packed input checks");
 }
 
+static bool check_c10_locations(SceGxmProgram *program)
+{
+    if (program->is_fragment()) return false;
+    auto *parameters = const_cast<SceGxmProgramParameter *>(program->program_parameters());
+    std::vector<unsigned> attributes;
+    for (unsigned i = 0; i < program->parameter_count; ++i)
+        if (parameters[i].category == SCE_GXM_PARAMETER_CATEGORY_ATTRIBUTE) attributes.push_back(i);
+    if (attributes.size() < 2) return false;
+    auto &first = parameters[attributes[0]];
+    const auto original = first;
+    auto *varyings = const_cast<SceGxmProgramVertexVaryings *>(program->vertex_varyings());
+    const auto original_regs = varyings->untyped_pa_regs;
+    require(first.resource_index < 64, "unexpected C10 fixture register");
+    varyings->untyped_pa_regs |= uint64_t{1} << first.resource_index;
+    first.type = SCE_GXM_PARAMETER_TYPE_C10;
+    first.component_count = 4;
+    for (unsigned arrays : {1U, 2U, 4U}) {
+        first.array_size = arrays;
+        GxmVertexInput a, b;
+        require(gxp_vertex_input_c(program, first.resource_index, 0, &a) &&
+                gxp_vertex_input_c(program, parameters[attributes[1]].resource_index, 1, &b),
+                "C10 adjacent input metadata failed");
+        const unsigned slots = (a.register_components + 3) / 4;
+        require(a.register_components == arrays * 5 && b.location == a.location + slots,
+                "C10 packed bytes must reserve locations before the next input");
+        uint32_t *words = nullptr, count = 0;
+        require(convert_gxp_to_spirv_c(&words, &count, program, "C10-locations", false, false,
+            false, false, nullptr, 0, false, false, nullptr), "C10 location translation failed");
+        std::vector<uint32_t> spirv(words, words + count);
+        free(words);
+        spirv_cross::Compiler reflection(spirv);
+        uint64_t used = 0;
+        bool first_found = false, second_found = false;
+        for (const auto &resource : reflection.get_shader_resources().stage_inputs) {
+            if (!reflection.has_decoration(resource.id, spv::DecorationLocation)) continue;
+            const auto &type = reflection.get_type(resource.type_id);
+            unsigned span = type.columns;
+            for (unsigned size : type.array) span *= size;
+            const unsigned location = reflection.get_decoration(resource.id, spv::DecorationLocation);
+            require(span && location < 64 && span <= 64 - location, "invalid fixture input span");
+            const uint64_t mask = (~uint64_t{0} >> (64 - span)) << location;
+            require(!(used & mask), "translated C10 input overlaps another input location");
+            used |= mask;
+            const auto name = reflection.get_name(resource.id);
+            for (unsigned index : attributes) {
+                const auto &parameter = parameters[index];
+                if (name != reinterpret_cast<const char *>(&parameter) + parameter.name_offset) continue;
+                GxmVertexInput input;
+                require(gxp_vertex_input_c(program, parameter.resource_index, index, &input) &&
+                        input.location == location, "C10 runtime location disagrees with SPIR-V");
+                if (index == attributes[0]) { require(span == slots, "C10 declaration span mismatch"); first_found = true; }
+                if (index == attributes[1]) second_found = true;
+            }
+        }
+        require(first_found && second_found, "C10 adjacency reflection coverage missing");
+        char *glsl = nullptr;
+        require(convert_gxp_to_glsl_c(&glsl, program, "C10-locations", false, false, false,
+            false, nullptr, 0, false, false, nullptr), "C10 runtime GLSL conversion failed");
+        free(glsl);
+    }
+    first = original;
+    varyings->untyped_pa_regs = original_regs;
+    return true;
+}
+
 static bool check_sampler_bindings(SceGxmProgram *program)
 {
     auto *parameters = const_cast<SceGxmProgramParameter *>(program->program_parameters());
@@ -341,6 +406,7 @@ int main(int argc, char **argv)
         unsigned misaligned_checked = 0;
         unsigned vertex_inputs_checked = 0;
         bool stripped_checked = false;
+        bool c10_locations_checked = false;
         bool sampler_checked[2] = {};
         for (const auto &entry : std::filesystem::directory_iterator(argv[1])) {
             if (entry.path().extension() != ".gxp") continue;
@@ -353,6 +419,7 @@ int main(int argc, char **argv)
             // fixture blobs. These validate container declarations, not rendering.
             auto *mutable_program = reinterpret_cast<SceGxmProgram *>(data.data());
             vertex_inputs_checked += check_vertex_inputs(mutable_program);
+            if (!c10_locations_checked) c10_locations_checked = check_c10_locations(mutable_program);
             if (!program->is_fragment() && !stripped_checked) {
                 check_stripped_inputs(mutable_program);
                 check_packed_inputs(mutable_program);
@@ -392,6 +459,7 @@ int main(int argc, char **argv)
         }
         require(checked >= 7, "expected seven pinned real GXP fixtures");
         require(vertex_inputs_checked >= 1, "expected real vertex input metadata coverage");
+        require(c10_locations_checked, "expected C10 input followed by another attribute");
         require(misaligned_checked >= 3, "expected all misaligned uniform lanes");
         require(sampler_checked[0] && sampler_checked[1], "expected both stages' sampler binding coverage");
         require(named_checked >= 2, "expected derived named-buffer coverage");

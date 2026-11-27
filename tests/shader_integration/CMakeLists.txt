@@ -24,6 +24,8 @@ add_subdirectory("${REPO}/external/Vita3K/vita3k/gxm" gxm)
 add_subdirectory("${REPO}/external/Vita3K/vita3k/shader" shader)
 include("${REPO}/cmake/Vita3KUniformShuffle.cmake")
 vita2hos_fix_uniform_shuffle("${REPO}")
+include("${REPO}/cmake/Vita3KVertexLocations.cmake")
+vita2hos_fix_vertex_locations("${REPO}")
 add_executable(shader_integration main.cpp
     "${REPO}/source/vita3k_shader_recompiler_iface_c.cpp" "${REPO}/source/gxm_uniform_layout.c")
 target_include_directories(shader_integration PRIVATE "${REPO}/include"
