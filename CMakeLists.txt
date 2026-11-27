@@ -102,6 +102,7 @@ add_executable(vita2hos
     source/modules/SceLwMutex.c
     source/modules/SceKernelTime.c
     source/modules/SceLibKernel.c
+    source/modules/SceClib.c
     source/modules/SceLibc.c
     source/modules/SceLibm.c
     source/modules/SceSysmem.c

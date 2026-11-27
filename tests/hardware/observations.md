@@ -418,6 +418,30 @@
   behavior and ARM execution remain unverified; forced worker shutdown, thread
   restart, and other callback classes remain unfinished. No Switch files changed.
 
+## Host Clib bootstrap imports after aaf24f8
+
+- Added SceLibKernel exports for Clib Memcmp, Strncmp, Strncpy, Strrchr,
+  ASCII Strncasecmp, Snprintf, and Vsnprintf. Native memory/string interfaces
+  share the ARM32 pointer/size ABI; formatting writes the caller's buffer and
+  exposes no native FILE or allocator objects to guest libc.
+- Formatting returns the would-be length, including zero for empty output,
+  and maps negative backend results to INVALID_ARGUMENT. This avoids the pinned
+  emulator's old zero-success/empty-error behavior, following upstream issue
+  [4401](https://github.com/Vita3K/Vita3K/issues/4401) and the corrected result
+  handling in [4441](https://github.com/Vita3K/Vita3K/pull/4441). Basic Snprintf
+  length/truncation cases are also in the VitaAutotests
+  [recorded format results](https://raw.githubusercontent.com/Vita3K/VitaAutotests/master/tests/clib/format.expected).
+- ASan/UBSan tests cover unsigned byte comparison, padded string copies, ASCII
+  folding, bounded/truncated/empty formatting, zero-capacity buffers, mixed
+  integer/double/string arguments, va_list forwarding, and backend failure.
+  Both installed compilers pass base-PCS/four-byte-va_list/scalar-size checks;
+  their emitted objects specify eight-byte stack alignment. These are host and
+  compile-side checks, not execution of guest ARM calls.
+- Formatting uses native newlib. Firmware-specific exponent/general-float,
+  unknown-conversion, and null-string quirks in the recorded tests are not
+  reproduced. Full formatting parity, Clib mspace heaps, and checked variants
+  remain unfinished. No Switch files were changed.
+
 ## Runtime 15d400f48e5d3a3f5d811e2a67bd30a1388cc102
 
 - Standalone HOME title, owned fixed-address CPU probe SHA-256
