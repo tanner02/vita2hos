@@ -140,6 +140,57 @@ int gxm_texture_get_linear_layout(const SceGxmTextureInner *texture, GxmTextureL
     return 0;
 }
 
+int gxm_texture_get_mip_chain(const SceGxmTextureInner *texture, GxmTextureMipChain *chain)
+{
+    if (!chain) return SCE_GXM_ERROR_INVALID_POINTER;
+    memset(chain, 0, sizeof(*chain));
+    if (!texture) return SCE_GXM_ERROR_INVALID_POINTER;
+    SceGxmTextureInner level = *texture;
+    uint32_t type = (uint32_t)texture->type << 29;
+    /* Strided textures reuse the sampler fields to encode row stride. */
+    if (type != SCE_GXM_TEXTURE_LINEAR_STRIDED) level.mip_filter = 0;
+    GxmTextureMipChain result = {0};
+    int ret = gxm_texture_get_linear_layout(&level, &result.levels[0]);
+    if (ret) return ret;
+    uint32_t width = result.levels[0].width, height = result.levels[0].height;
+    uint32_t count = type == SCE_GXM_TEXTURE_LINEAR_STRIDED ? 1 : (texture->mip_count + 1) & 15;
+    if (!count) count = 1;
+    uint32_t shortest = width < height ? width : height, maximum = 0;
+    while (shortest) { ++maximum; shortest >>= 1; }
+    if (count > maximum) count = maximum;
+    if (count > GXM_TEXTURE_MAX_MIP_LEVELS) return SCE_GXM_ERROR_INVALID_VALUE;
+
+    /* The pinned renderer advances levels using a power-of-two allocation
+     * footprint. Visible dimensions and row pitches can be smaller. */
+    uint32_t storage_width = next_power_of_two(width), storage_height = next_power_of_two(height);
+    uint64_t offset = 0;
+    for (unsigned i = 0; i < count; ++i) {
+        if (i) {
+            if (type == SCE_GXM_TEXTURE_SWIZZLED) {
+                level.width_base2 = texture->width_base2 - i;
+                level.height_base2 = texture->height_base2 - i;
+            } else {
+                level.width = (width >> i) - 1;
+                level.height = (height >> i) - 1;
+            }
+            ret = gxm_texture_get_linear_layout(&level, &result.levels[i]);
+            if (ret) return ret;
+        }
+        uint64_t end = offset + result.levels[i].source_size;
+        if (end > UINT32_MAX) return SCE_GXM_ERROR_INVALID_VALUE;
+        result.offsets[i] = (uint32_t)offset;
+        result.source_size = (uint32_t)end;
+        uint32_t row = storage_width, rows = storage_height;
+        if (type == SCE_GXM_TEXTURE_LINEAR) row = (row + 7) & ~7U;
+        if (type == SCE_GXM_TEXTURE_TILED) { row = (row + 31) & ~31U; rows = (rows + 31) & ~31U; }
+        offset += (uint64_t)row * rows * result.levels[i].bytes_per_pixel;
+        storage_width >>= 1; storage_height >>= 1;
+    }
+    result.count = count;
+    *chain = result;
+    return 0;
+}
+
 static uint32_t spread_bits(uint32_t value)
 {
     value = (value | (value << 8)) & 0x00ff00ffU;

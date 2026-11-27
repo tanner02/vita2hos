@@ -12,6 +12,17 @@ typedef struct {
     uint32_t bytes_per_pixel;
 } GxmTextureLayout;
 
+#define GXM_TEXTURE_MAX_MIP_LEVELS 13
+typedef struct {
+    uint32_t count, source_size;
+    uint32_t offsets[GXM_TEXTURE_MAX_MIP_LEVELS];
+    GxmTextureLayout levels[GXM_TEXTURE_MAX_MIP_LEVELS];
+} GxmTextureMipChain;
+
+/* Source metadata for supported uncompressed 2D layouts. This does not upload
+ * the chain or enable mip filtering in the renderer. */
+int gxm_texture_get_mip_chain(const SceGxmTextureInner *texture, GxmTextureMipChain *chain);
+
 int gxm_texture_get_linear_layout(const SceGxmTextureInner *texture, GxmTextureLayout *layout);
 /* Layout must come from the function above; source and destination must not overlap. */
 int gxm_texture_pack_linear(const GxmTextureLayout *layout, const void *source, size_t source_size,
