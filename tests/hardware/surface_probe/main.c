@@ -10,7 +10,7 @@
 #include "draw_probe.h"
 #ifdef VITA2HOS_VISIBLE_CUBE
 #define PROBE_NAME "visible_cube"
-#define PROBE_VERSION "3"
+#define PROBE_VERSION "4"
 #define PROBE_REPORT "app0:/visible-cube.txt"
 #else
 #define PROBE_NAME "draw_probe"
@@ -27,6 +27,10 @@ enum { WIDTH = 64, HEIGHT = 64, PIXELS = WIDTH * HEIGHT };
 static SceUID allocations[32];
 static unsigned allocation_count;
 static SceUID report = -1;
+#ifdef VITA2HOS_VISIBLE_CUBE
+static unsigned char *ring_guards[4];
+enum { RING_GUARD_SIZE = 4096 };
+#endif
 
 void *memset(void *destination, int value, size_t size)
 {
@@ -105,14 +109,37 @@ int module_start(SceSize args, void *argp)
     params.hostMemSize = SCE_GXM_MINIMUM_CONTEXT_HOST_MEM_SIZE;
     params.hostMem = allocate(params.hostMemSize);
     params.vdmRingBufferMemSize = SCE_GXM_DEFAULT_VDM_RING_BUFFER_SIZE;
+#ifndef VITA2HOS_VISIBLE_CUBE
     params.vdmRingBufferMem = allocate(params.vdmRingBufferMemSize);
+#endif
     params.vertexRingBufferMemSize = SCE_GXM_DEFAULT_VERTEX_RING_BUFFER_SIZE;
+#ifndef VITA2HOS_VISIBLE_CUBE
     params.vertexRingBufferMem = allocate(params.vertexRingBufferMemSize);
+#endif
     params.fragmentRingBufferMemSize = SCE_GXM_DEFAULT_FRAGMENT_RING_BUFFER_SIZE;
+#ifndef VITA2HOS_VISIBLE_CUBE
     params.fragmentRingBufferMem = allocate(params.fragmentRingBufferMemSize);
+#endif
     params.fragmentUsseRingBufferMemSize = SCE_GXM_DEFAULT_FRAGMENT_USSE_RING_BUFFER_SIZE;
     void *usse = allocate(params.fragmentUsseRingBufferMemSize);
     uint32_t *buffers[2] = {allocate(PIXELS * 4), allocate(PIXELS * 4)};
+#ifdef VITA2HOS_VISIBLE_CUBE
+    /* Put all three rings in one allocation, each behind a page-sized guard.
+     * Correct GPU and CPU addressing must retain their distinct offsets. */
+    unsigned slab_size = params.vdmRingBufferMemSize + params.vertexRingBufferMemSize +
+                         params.fragmentRingBufferMemSize + 4 * RING_GUARD_SIZE;
+    unsigned char *slab = allocate(slab_size);
+    if (!slab) { record("FAIL ring_slab_allocation\n"); goto done; }
+    ring_guards[0] = slab;
+    params.vdmRingBufferMem = slab + RING_GUARD_SIZE;
+    ring_guards[1] = (unsigned char *)params.vdmRingBufferMem + params.vdmRingBufferMemSize;
+    params.vertexRingBufferMem = ring_guards[1] + RING_GUARD_SIZE;
+    ring_guards[2] = (unsigned char *)params.vertexRingBufferMem + params.vertexRingBufferMemSize;
+    params.fragmentRingBufferMem = ring_guards[2] + RING_GUARD_SIZE;
+    ring_guards[3] = (unsigned char *)params.fragmentRingBufferMem + params.fragmentRingBufferMemSize;
+    for (unsigned i=0;i<4;++i) memset(ring_guards[i],0xa5,RING_GUARD_SIZE);
+    record("RUN interior_ring_buffers guarded_shared_allocation\n");
+#endif
     if (!params.hostMem || !params.vdmRingBufferMem || !params.vertexRingBufferMem ||
         !params.fragmentRingBufferMem || !usse || !buffers[0] || !buffers[1]) {
         record("FAIL allocation\n"); goto done;
@@ -220,6 +247,18 @@ done:
     if (initialized) sceGxmTerminate();
 #ifndef VITA2HOS_VISIBLE_CUBE
     while (allocation_count) sceKernelFreeMemBlock(allocations[--allocation_count]);
+#endif
+#ifdef VITA2HOS_VISIBLE_CUBE
+    if (!status) {
+        for (unsigned i=0;i<4;++i) for (unsigned j=0;j<RING_GUARD_SIZE;++j) {
+            if (ring_guards[i][j]!=0xa5) {
+                result("FAIL ring_guard_index",i); result("ring_guard_byte",j);
+                status=1; goto ring_guards_done;
+            }
+        }
+        record("PASS interior_ring_buffers_guards\n");
+    }
+ring_guards_done:
 #endif
     record(status ? "FAIL " PROBE_NAME "\n" : "PASS " PROBE_NAME "\n");
     if (report >= 0) sceIoClose(report);
