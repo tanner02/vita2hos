@@ -7,6 +7,8 @@
 #include "load_segment.h"
 #include "load_exports.h"
 #include "guest_tls.h"
+#include <stdatomic.h>
+#include <psp2common/kernel/modulemgr.h>
 
 typedef struct {
     Jit jit;
@@ -28,6 +30,8 @@ typedef struct {
     GuestTlsTemplate tls;
     bool guest_tp_retargeted;
     LoadProcessParameters parameters;
+    SceKernelModuleInfo module_info;
+    atomic_uint module_state;
 } LoadImage;
 
 enum { LOAD_LAYOUT_CONFLICT = -2 };

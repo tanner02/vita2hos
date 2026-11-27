@@ -59,7 +59,7 @@ extern const ModuleNativeVariable __stop_exported_variables[] __attribute__((wea
     extern const void *__stop_##_name##_func_table[];                                              \
     /* Pointer-bearing tables must be writable during loader relocation. */                       \
     static library_t _name##_library                                                               \
-        __attribute__((used, section("exported_libraries"))) = {                                   \
+        __attribute__((used, section("exported_libraries"), aligned(__alignof__(library_t)))) = {   \
             .name                = #_name,                                                         \
             .nid                 = _nid,                                                           \
             .func_nidtable_start = __start_##_name##_func_nidtable,                                \

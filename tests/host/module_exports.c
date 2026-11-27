@@ -16,12 +16,17 @@ EXPORT(TestLibrary, 0x11223344, int, test_export, int value)
 }
 
 DECLARE_LIBRARY(TestLibrary, 0x12345678);
+EXPORT(OtherLibrary, 0x11223344, int, other_export, int value) { return value-1; }
+DECLARE_LIBRARY(OtherLibrary,0x87654321);
 static int native_variable=77;
 EXPORT_VAR(0x12345678, 0x5555, native_variable);
 static int guest_function(int value) { return value + 10; }
 
 int main(void)
 {
+    assert(NUM_EXPORTED_LIBS==2);
+    int (*other)(int)=(int (*)(int))module_get_func_export(0x87654321,0x11223344);
+    assert(other && other(42)==41);
     int (*function)(int) = (int (*)(int))module_get_func_export(0x12345678, 0x11223344);
     assert(function != NULL);
     assert(function(41) == 42);

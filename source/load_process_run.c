@@ -16,16 +16,24 @@ int load_process_run(LoadProcess *process, uint32_t args, void *argp)
     process->run_started = true;
     for (size_t i = 1; i < process->count; ++i) {
         GuestEntry start = (GuestEntry)process->images[i].lifecycle.start;
-        if (!start) continue;
+        if (!start) {
+            atomic_store(&process->images[i].module_state,SCE_KERNEL_MODULE_STATE_STARTED);
+            continue;
+        }
         LOG("Starting guest dependency %zu", i);
         int result = start(0, NULL);
         if (result != SCE_KERNEL_START_SUCCESS) {
+            atomic_store(&process->images[i].module_state,SCE_KERNEL_MODULE_STATE_ENDED);
             /* NO_RESIDENT cannot be accepted while imports still point into
              * the module. Dynamic unloading/rebinding is not implemented. */
             LOG("Guest dependency %zu startup returned 0x%x; main will not run", i, result);
             return (int)SCE_KERNEL_ERROR_MODULEMGR_START_FAILED;
         }
         ++process->modules_started;
+        atomic_store(&process->images[i].module_state,SCE_KERNEL_MODULE_STATE_STARTED);
     }
-    return ((GuestEntry)process->entry)(args, argp);
+    atomic_store(&process->images[0].module_state,SCE_KERNEL_MODULE_STATE_STARTED);
+    int result=((GuestEntry)process->entry)(args,argp);
+    atomic_store(&process->images[0].module_state,SCE_KERNEL_MODULE_STATE_ENDED);
+    return result;
 }

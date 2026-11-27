@@ -12,6 +12,7 @@
 #include "load_retry.h"
 #include "guest_tp_plan.h"
 #include "load_segment.h"
+#include "load_module_info.h"
 #include "log.h"
 #include "module.h"
 #include "sce-elf.h"
@@ -154,6 +155,11 @@ static int load_file_prepare_kind(LoadImage *image, const char *filename, bool m
         } else if (patched) {
             image->guest_tp_retargeted=true;
             LOG("Experimental guest thread-pointer plan applied: %d sites", patched);
+        }
+        if (ret==0) {
+            size_t length=strnlen(filename,sizeof(image->module_info.path)-1);
+            memcpy(image->module_info.path,filename,length);
+            image->module_info.path[length]=0;
         }
     }
     if (ret < 0) LOG("Unsupported file or executable load failed.");
@@ -562,7 +568,7 @@ static int load_segments(LoadImage *image, void **entry, Elf32_Addr e_entry, seg
         LOG("Cannot find module info section.");
         goto err_free_data;
     }
-    LOG("Module name: %s", mod_info->name);
+    LOG("Module name: %.27s", mod_info->name);
     LOG("  export table offset: 0x%" PRIx32, mod_info->export_top);
     LOG("  import table offset: 0x%" PRIx32, mod_info->import_top);
     LOG("  tls start: 0x%" PRIx32, mod_info->tls_start);
@@ -625,6 +631,15 @@ static int load_segments(LoadImage *image, void **entry, Elf32_Addr e_entry, seg
     }
     LOG("Module lifecycle start=%p stop=%p exit=%p", image->lifecycle.start,
         image->lifecycle.stop, image->lifecycle.exit);
+
+    size_t info_offset=(const char *)mod_info-(const char *)segments[mod_info_idx].src_data;
+    const sce_module_info_raw *relocated_info=(const void *)(segments[mod_info_idx].rw_addr+info_offset);
+    if (load_module_info_build(&image->module_info,relocated_info,segments,num_segments,
+            mod_info_idx,&image->lifecycle,read_export_address,&reader)<0) {
+        LOG("Invalid or unrepresentable module information.");
+        goto err_free_data;
+    }
+    atomic_store(&image->module_state,SCE_KERNEL_MODULE_STATE_READY);
 
     image->segments = calloc(num_segments, sizeof(*image->segments));
     if (!image->segments) goto err_free_data;

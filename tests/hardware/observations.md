@@ -370,6 +370,31 @@
   must keep their allocations alive while using them, including queued GPU work.
   No new commercial code or hardware test was executed.
 
+## Host module information after f11b3ae
+
+- Added SceLibKernel GetModuleInfoByAddr and SceModulemgr GetModuleInfo/
+  GetModuleIdByAddr. Runtime registration assigns unique IDs before dependency
+  startup; queries return copied metadata for the original guest segment ranges.
+  The main executable and resident dependencies are included. Dynamic load/unload,
+  module-list enumeration, and module exit callbacks remain unfinished.
+- The loader now retains bounded module name/version/attributes, loaded segment
+  permissions and sizes, source path (bounded to its ABI field), accepted lifecycle
+  entries, TLS source address/sizes, and ARM exception-table addresses. Module
+  state tracks ready/start-success/main-return transitions using atomic values.
+  ARM compilation asserts the 0x1B8 module and 0x18 segment structure sizes.
+- Actual target metadata replay exposed segment-relative EXIDX/EXTAB offsets.
+  Resolving those offsets through the loaded module-info segment passes for all
+  four supplied images and the owned fixed/TLS/surface/draw/cube fixtures. The
+  fixed main's TLS source is 0x81878320 (56 initialized,
+  128 total bytes); its EXIDX range resolves to 0x81780868..0x817BCD50. These are
+  static/replayed addresses, not evidence of commercial code execution or C++
+  exception unwinding support.
+- Host tests cover malformed ranges, RX/RW alias separation, TLS and exception
+  metadata, bounded output sizes, IDs, live state queries during owned dependency
+  startup, and registry teardown. A two-library test caught host compiler padding
+  between native library descriptors; explicit record alignment now preserves
+  the section's array stride. No Switch files were changed.
+
 ## Runtime 15d400f48e5d3a3f5d811e2a67bd30a1388cc102
 
 - Standalone HOME title, owned fixed-address CPU probe SHA-256

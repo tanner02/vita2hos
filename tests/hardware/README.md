@@ -351,6 +351,15 @@ stack sizes fail before native thread creation. Preload flags control the limite
 app-bundled discovery described above. Thread names,
 attributes, and affinity are not configured from these fields.
 
+Loaded module information is available through GetModuleInfoByAddr, GetModuleInfo,
+and GetModuleIdByAddr for the main image and prepared resident dependencies.
+The registry is populated before dependency startup and assigns distinct IDs.
+Queries return guest segment addresses, copied name/path/version data, lifecycle
+entries, TLS source/size fields, and resolved segment-relative exception tables.
+Callers must supply the full ABI information size. Startup state changes are
+tracked separately. This does not execute unwind tables or implement dynamic
+module loading, enumeration, unloading, or exit callbacks.
+
 Native variable exports now have a separate typed descriptor table. Guest
 libraries retain ownership of their entire namespace, so a missing guest
 variable cannot fall back to an unrelated native provider. The ScePerf capture

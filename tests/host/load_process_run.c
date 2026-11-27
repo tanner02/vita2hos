@@ -24,7 +24,10 @@ static int guest_main(uint32_t args, void *argp)
 static void reset(LoadProcess *process, LoadImage *images)
 {
     call_count=failed_module=0; failure_result=0; main_result=123;
-    for (int i=0; i<4; ++i) images[i]=(LoadImage){.bound=true};
+    for (int i=0; i<4; ++i) {
+        images[i]=(LoadImage){.bound=true};
+        atomic_store(&images[i].module_state,SCE_KERNEL_MODULE_STATE_READY);
+    }
     images[1].lifecycle.start=first;
     /* The middle dependency deliberately has no startup function. */
     images[3].lifecycle.start=second;
@@ -37,6 +40,8 @@ int main(void)
     assert(load_process_run(&process, 4, &argument) == 123);
     assert(call_count == 3 && calls[0] == 1 && calls[1] == 2 && calls[2] == 3);
     assert(process.run_started && process.modules_started == 2);
+    assert(atomic_load(&images[0].module_state)==SCE_KERNEL_MODULE_STATE_ENDED);
+    for (int i=1;i<4;++i) assert(atomic_load(&images[i].module_state)==SCE_KERNEL_MODULE_STATE_STARTED);
     assert(load_process_run(&process, 4, &argument) == (int)SCE_KERNEL_ERROR_MODULEMGR_START_FAILED);
     assert(call_count == 3);
     int failures[]={SCE_KERNEL_START_NO_RESIDENT, SCE_KERNEL_START_FAILED, -123};
@@ -45,6 +50,8 @@ int main(void)
         assert(load_process_run(&process, 4, &argument) == (int)SCE_KERNEL_ERROR_MODULEMGR_START_FAILED);
         assert(call_count == module && process.modules_started == (size_t)(module-1));
         assert(process.run_started);
+        assert(atomic_load(&images[0].module_state)==SCE_KERNEL_MODULE_STATE_READY);
+        assert(atomic_load(&images[module==1 ? 1 : 3].module_state)==SCE_KERNEL_MODULE_STATE_ENDED);
     }
     reset(&process, images); images[3].bound=false;
     assert(load_process_run(&process, 4, &argument) < 0 && !call_count && !process.run_started);
