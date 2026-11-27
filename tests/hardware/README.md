@@ -357,6 +357,15 @@ stop; image cleanup releases it. This implements storage initialization only:
 guest thread-pointer reads have not been retargeted, CPU register virtualization
 is not implemented, and dynamic module TLS remains unsupported.
 
+`guest_tp_patch` is an explicit-site ARM/Thumb instruction-retargeting primitive.
+It requires independently established instruction boundaries and matching original
+words, validates executable file-backed ranges and non-overlapping write targets,
+and changes TPIDRURO reads into TPIDRURW reads only after every site validates.
+It preserves supported destination registers and ARM conditions. It neither scans
+images nor changes CPU registers, and is not yet called by the runtime loader.
+Host tests check encodings, transactional failure, overlaps, and address bounds;
+Horizon register preservation still requires a future owned hardware probe.
+
 ### Experimental title-specific launch profile
 
 **Hardware status:** this route failed to start Mario Kart 8 Deluxe on the tested
