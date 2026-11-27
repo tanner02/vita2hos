@@ -8,7 +8,13 @@ static char test_root[]="/tmp/vita2hos-apputil-XXXXXX";
 #include <unistd.h>
 #include "../../source/savedata_identity.c"
 #include "../../source/savedata_slots.c"
+static int fail_payload_write;
+static ssize_t payload_write(int fd,const void *data,size_t size);
+#define write payload_write
 #include "../../source/modules/SceAppUtil.c"
+#undef write
+static ssize_t payload_write(int fd,const void *data,size_t size)
+{if(fail_payload_write){errno=ENOSPC;return -1;}return write(fd,data,size);}
 #include "../../source/module.c"
 _Static_assert(sizeof(SceAppUtilSaveDataSlotParam)==SAVEDATA_SLOT_BYTES,"slot ABI");
 static void put32(unsigned char *p,unsigned value)
@@ -41,6 +47,39 @@ int main(void)
     assert(!sceAppUtilSaveDataSlotGetParam(1,&output,NULL) && output.userParam==7);
     SceAppUtilSaveDataMountPoint mount={0};
     assert(sceAppUtilSaveDataSlotDelete(1,&mount)==(int)SCE_APPUTIL_ERROR_PARAMETER);
+    SceSize required=99;
+    SceAppUtilSaveDataFile files[2]={{.filePath="data",.mode=2},
+        {.filePath="data/save.bin",.buf="abcdef",.bufSize=6}};
+    SceAppUtilSaveDataFileSlot slot={.id=2,.slotParam=&param};
+    assert(!sceAppUtilSaveDataDataSave(&slot,files,2,NULL,&required) && required==0);
+    assert(!sceAppUtilSaveDataSlotGetParam(2,&output,NULL) && output.userParam==7);
+    char payload[1024];assert(!savedata_path("data/save.bin",payload));
+    files[0]=(SceAppUtilSaveDataFile){.filePath="savedata0:/data/save.bin",.buf="XY",.bufSize=2,.offset=2};
+    assert(!sceAppUtilSaveDataDataSave(NULL,files,1,NULL,NULL));
+    required=99;fail_payload_write=1;
+    assert(sceAppUtilSaveDataDataSave(NULL,files,1,NULL,&required)==(int)SCE_APPUTIL_ERROR_SAVEDATA_NO_SPACE_FS && required==99);
+    fail_payload_write=0;
+    char contents[7]={0};file=fopen(payload,"rb");assert(file && fread(contents,1,6,file)==6 && !fclose(file));
+    assert(!memcmp(contents,"abXYef",6));
+    files[1]=(SceAppUtilSaveDataFile){.filePath="../escape",.mode=2};required=99;
+    files[0].buf="ZZ";
+    assert(sceAppUtilSaveDataDataSave(NULL,files,2,NULL,&required)==(int)SCE_APPUTIL_ERROR_PARAMETER && required==99);
+    file=fopen(payload,"rb");assert(file && fread(contents,1,6,file)==6 && !fclose(file));assert(!memcmp(contents,"abXYef",6));
+    files[0].mode=1;files[0].buf="Z";files[0].bufSize=1;
+    assert(!sceAppUtilSaveDataDataSave(NULL,files,1,NULL,NULL));
+    file=fopen(payload,"rb");assert(file && fread(contents,1,7,file)==3 && !fclose(file));assert(!memcmp(contents,"abZ",3));
+    files[0].filePath=".vita2hos-slot-00000001.bin";
+    assert(sceAppUtilSaveDataDataSave(NULL,files,1,NULL,NULL)==(int)SCE_APPUTIL_ERROR_PARAMETER);
+    files[0].filePath=".VITA2HOS-slot-00000001.bin";
+    assert(sceAppUtilSaveDataDataSave(NULL,files,1,NULL,NULL)==(int)SCE_APPUTIL_ERROR_PARAMETER);
+    char alias[1024];assert(!savedata_path("alias",alias));assert(!symlink(sys,alias));
+    files[0].filePath="alias/param.sfo";
+    assert(sceAppUtilSaveDataDataSave(NULL,files,1,NULL,NULL)==(int)SCE_APPUTIL_ERROR_NO_PERMISSION);
+    assert(!unlink(alias));
+    files[0].filePath="data/save.bin";files[0].offset=-1;
+    assert(sceAppUtilSaveDataDataSave(NULL,files,1,NULL,NULL)==(int)SCE_APPUTIL_ERROR_PARAMETER);
+    assert(!unlink(payload));assert(!savedata_path("data",payload));assert(!rmdir(payload));
+    assert(!sceAppUtilSaveDataSlotDelete(2,NULL));
     assert(!sceAppUtilSaveDataSlotDelete(1,NULL));
     assert(module_get_func_export(0x48e01d74,0x93f0d89f)==(void *)sceAppUtilSaveDataSlotGetParam);
     char root[1024];memcpy(root,save_root,sizeof(root));SceAppUtil_finish();

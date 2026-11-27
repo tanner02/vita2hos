@@ -371,3 +371,16 @@ is supported. Tests use a temporary root and owned SFO data, never the Switch.
 File-payload saves, savedata0 file-I/O mounting, quotas, slot search, custom mounts,
 boot-parameter synthesis and sysmodule lifecycle support remain unimplemented.
 Do not infer a complete savedata service or successful game startup from slot tests.
+
+AppUtil DataSave now supports up to 1024 sequential file/directory items, optional
+slot upsert after file success, offset writes and mode-1 truncate/extend. It accepts
+relative paths or savedata0:/ paths inside its root, rejecting traversal, alternate
+devices, symlinks, FAT trailing-dot/space aliases and internal metadata prefixes
+(case insensitive). Callers must retain input buffers and exclusive filesystem
+ownership during calls; host path checks do not eliminate external rename races.
+The whole batch is validated first, but completed writes are not rolled back on
+later failure. Required-size output is zeroed only on success and preserved on
+failure; accurate shortage/quota reporting is not implemented. Tests verify disk
+bytes, truncation, invalid-batch nonmutation, symlink denial and ENOSPC propagation.
+Savedata0 generic file-I/O mounting, removal, quota/search and metadata timestamp
+synthesis remain incomplete; Switch filesystem behavior is still unverified.
