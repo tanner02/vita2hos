@@ -9,6 +9,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 import zipfile
+from test_guest_elf import guest_fixture
 
 source = Path(__file__).resolve().parents[2] / "tools/package-hardware-smoke.py"
 spec = importlib.util.spec_from_file_location("package_smoke", source)
@@ -34,18 +35,16 @@ class PackagingTests(unittest.TestCase):
         sample = archive_bytes({"gxm_cube_sample.velf": self.cube})
         (self.root / "gxm_cube_sample.zip").write_bytes(sample)
         self.expected = hashlib.sha256(sample).hexdigest()
-        self.probe = bytearray(52)
-        self.probe[:6] = b"\x7fELF\x01\x01"
-        struct.pack_into("<HH", self.probe, 16, 0xfe04, 40)
+        self.probe = guest_fixture()
         self.output = self.root / "bundle.zip"
 
-    def package(self, probe=None):
+    def package(self, probe=None, draw=False):
         args = ["package", str(self.artifact), "--commit", "a" * 40, "--build-run", "offline-test",
                 "--output", str(self.output), "--samples-dir", str(self.root)]
         if probe is not None:
             path = self.root / "probe"
             path.write_bytes(probe)
-            args += ["--surface-probe", str(path)]
+            args += ["--draw-probe" if draw else "--surface-probe", str(path)]
         with patch("sys.argv", args), patch.object(package, "SAMPLES", {"gxm_cube_sample": self.expected}):
             package.main()
 
@@ -64,6 +63,12 @@ class PackagingTests(unittest.TestCase):
         self.package()
         with zipfile.ZipFile(self.output) as archive:
             self.assertNotIn("samples/surface_probe/executable", archive.namelist())
+
+    def test_draw_probe_includes_fixture_license(self):
+        self.package(self.probe, draw=True)
+        with zipfile.ZipFile(self.output) as archive:
+            self.assertEqual(archive.read("samples/draw_probe/executable"), self.probe)
+            self.assertIn(b"GNU GENERAL PUBLIC LICENSE", archive.read("DRAW-PROBE-COPYING.txt"))
 
     def test_invalid_probe_architecture_or_container_refused(self):
         cases = [b"", b"PFS0" + bytes(52)]

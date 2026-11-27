@@ -17,6 +17,21 @@
   `a8898d953e49835e398a1f62d0d5dd4e1e60f0d608f24f367001a6db626f9485`.
   Its hardware result is pending; the installed runtime was unchanged.
 
+### Corrected surface probe: PASS
+
+- USB readback subsequently recovered a complete `surface-probe.txt` ending
+  with `PASS surface_probe`, plus the matching `76a9188` runtime log.
+- The report records three successful A/B/A framebuffer pattern comparisons,
+  completed notifications and a successful null-color/null-sync scene.
+- The runtime log confirms module import resolution, guest execution, context
+  and queue setup, color copies, and both guest/display threads returning zero.
+- The app remained open because this freestanding guest returned from its
+  entry rather than calling `sceKernelExitProcess`; the thread manager was
+  still waiting for the process-exit event. Later probes explicitly request exit.
+- This validates standalone title launch, guest loading, surface copies and
+  notification handling on this Switch. The probe performs no draw calls, so
+  shader, depth/stencil draw behavior and commercial games remain unverified.
+
 ## Runtime f55edbf626acb6ff46d510a55bdd026dd78ac5ad
 
 - Experimental route: a retargeted ARM32 ExeFS NSP at

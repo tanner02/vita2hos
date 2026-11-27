@@ -3,11 +3,15 @@
 import argparse
 import hashlib
 import io
+import importlib.util
 import json
-import struct
 from pathlib import Path
 import urllib.request
 import zipfile
+
+spec = importlib.util.spec_from_file_location("guest_elf", Path(__file__).with_name("guest_elf.py"))
+guest_elf = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(guest_elf)
 
 
 SAMPLES = {
@@ -28,6 +32,7 @@ def main():
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--samples-dir", type=Path, help="Optional local pinned sample ZIPs")
     parser.add_argument("--surface-probe", type=Path, help="Optional locally built freestanding Vita probe")
+    parser.add_argument("--draw-probe", type=Path, help="Optional locally built shader/depth/stencil probe")
     args = parser.parse_args()
     if len(args.commit) != 40 or any(c not in "0123456789abcdef" for c in args.commit):
         parser.error("--commit must be a full lowercase Git commit SHA")
@@ -63,14 +68,15 @@ def main():
         samples.append({"name": name, "url": url, "archive_sha256": expected,
                         "executable_sha256": sha256(executable)})
 
-    if args.surface_probe:
-        probe = args.surface_probe.read_bytes()
-        if (len(probe) < 52 or probe[:6] != b"\x7fELF\x01\x01" or
-                struct.unpack_from("<HH", probe, 16) != (0xfe04, 40)):
-            raise ValueError("Surface probe must be an ELF32 ARM Vita relocatable executable")
-        files["samples/surface_probe/executable"] = probe
-        samples.append({"name": "surface_probe", "source": "tests/hardware/surface_probe",
+    for name, path in (("surface_probe", args.surface_probe), ("draw_probe", args.draw_probe)):
+        if not path: continue
+        probe = path.read_bytes()
+        guest_elf.validate_guest(probe)
+        files[f"samples/{name}/executable"] = probe
+        samples.append({"name": name, "source": "tests/hardware/surface_probe",
                         "executable_sha256": sha256(probe)})
+        if name == "draw_probe":
+            files["DRAW-PROBE-COPYING.txt"] = (repository / "tests/hardware/surface_probe/COPYING.txt").read_bytes()
 
     files["tools/capture-netlog.ps1"] = (repository / "tools/capture-netlog.ps1").read_bytes()
     instructions = (repository / "tests/hardware/README.md").read_text(encoding="utf-8")

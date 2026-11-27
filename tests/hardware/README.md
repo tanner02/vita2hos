@@ -154,6 +154,26 @@ depth/stencil draw behavior, or commercial-title compatibility. Retain the match
 runtime log when reporting a failure. The program exits when finished, so a visible
 3D scene is not expected.
 
+The same build also emits `build-surface-probe/draw-probe/executable`. Its
+`draw_probe` variant first performs the surface tests, then renders offscreen
+triangles using the pinned Vita3K `color_v.gxp` and `clear_f.gxp` fixtures. It checks
+red color output, depth-only occlusion, and stencil replacement at nine interior
+pixels. The vertex program uses an identity WVP matrix to preserve varying depth;
+the clear vertex fixture is deliberately not used because it forces depth to one.
+
+Audit it with `verify-imports.py --variant draw_probe` in addition to the existing
+SDK/build-directory arguments. Package with `--draw-probe
+build-surface-probe/draw-probe/executable`, and deploy with `--sample draw_probe`.
+Both probe types are checked for a runnable entry point and nonempty import range
+before packaging. The draw fixture license is included as `DRAW-PROBE-COPYING.txt`;
+fixtures come from the pinned GPL-2.0-or-later Vita3K native-tool sources.
+
+The draw report is `/vita2hos/draw-probe.txt`. Its final `PASS draw_probe` line is
+the completion marker. New probes call `sceKernelExitProcess` after closing the
+report so the runtime can return to HOME. No visible 3D scene is expected: rendered
+pixels are compared directly. A pass establishes these draw cases, not commercial
+game compatibility or a complete GPU conformance result.
+
 ### Experimental title-specific launch profile
 
 **Hardware status:** this route failed to start Mario Kart 8 Deluxe on the tested

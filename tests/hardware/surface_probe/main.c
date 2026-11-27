@@ -3,11 +3,20 @@
 #include <psp2/gxm.h>
 #include <psp2/io/fcntl.h>
 #include <psp2/kernel/sysmem.h>
+#include <psp2/kernel/processmgr.h>
 #include <stdint.h>
 #include <stddef.h>
+#ifdef VITA2HOS_DRAW_PROBE
+#include "draw_probe.h"
+#define PROBE_NAME "draw_probe"
+#define PROBE_REPORT "app0:/draw-probe.txt"
+#else
+#define PROBE_NAME "surface_probe"
+#define PROBE_REPORT "app0:/surface-probe.txt"
+#endif
 
 enum { WIDTH = 64, HEIGHT = 64, PIXELS = WIDTH * HEIGHT };
-static SceUID allocations[8];
+static SceUID allocations[32];
 static unsigned allocation_count;
 static SceUID report = -1;
 
@@ -69,9 +78,9 @@ static void display_callback(const void *data) { (void)data; }
 int module_start(SceSize args, void *argp)
 {
     (void)args; (void)argp;
-    report = sceIoOpen("app0:/surface-probe.txt", SCE_O_WRONLY | SCE_O_CREAT | SCE_O_TRUNC, 0666);
-    if (report < 0) return 1;
-    record("surface_probe v1\nRUNNING - no hardware result until a final PASS line\n");
+    report = sceIoOpen(PROBE_REPORT, SCE_O_WRONLY | SCE_O_CREAT | SCE_O_TRUNC, 0666);
+    if (report < 0) { sceKernelExitProcess(1); return 1; }
+    record(PROBE_NAME " v1\nRUNNING - no hardware result until a final PASS line\n");
     int status = 1, initialized = 0, code;
     SceGxmContext *context = NULL;
     SceGxmRenderTarget *target = NULL;
@@ -164,13 +173,19 @@ int module_start(SceSize args, void *argp)
     if (code) { result("FAIL null_color_scene", code); goto done; }
     sceGxmFinish(context);
     record("PASS null_color_scene\n");
+#ifdef VITA2HOS_DRAW_PROBE
+    const ProbeHooks hooks = {allocate, record, result};
+    code = probe_draw(context, target, &surfaces[0], buffers[0], &hooks);
+    if (code) { result("FAIL draw_tests", code); goto done; }
+#endif
     status = 0;
 done:
     if (context) sceGxmDestroyContext(context);
     if (target) sceGxmDestroyRenderTarget(target);
     if (initialized) sceGxmTerminate();
     while (allocation_count) sceKernelFreeMemBlock(allocations[--allocation_count]);
-    record(status ? "FAIL surface_probe\n" : "PASS surface_probe\n");
+    record(status ? "FAIL " PROBE_NAME "\n" : "PASS " PROBE_NAME "\n");
     if (report >= 0) sceIoClose(report);
+    sceKernelExitProcess(status);
     return status;
 }
