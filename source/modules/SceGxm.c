@@ -634,19 +634,14 @@ EXPORT(SceGxm, 0xB7BBA6D5, int, sceGxmShaderPatcherCreateVertexProgram,
         memcpy(vertex_program->attributes, attributes, attributeCount * sizeof(SceGxmVertexAttribute));
     }
     vertex_program->attributeCount = attributeCount;
-    uint32_t locations[SCE_GXM_MAX_VERTEX_ATTRIBUTES];
-    uint32_t integer_mask = 0;
+    GxmVertexInput inputs[SCE_GXM_MAX_VERTEX_ATTRIBUTES];
     for (unsigned i = 0; i < attributeCount; ++i) {
-        GxmVertexInput input;
-        if (!gxp_vertex_input_c(programId->programHeader, attributes[i].regIndex, i, &input) ||
-            (input.location != UINT32_MAX && input.location >= SCE_GXM_MAX_VERTEX_ATTRIBUTES)) {
+        if (!gxp_vertex_input_c(programId->programHeader, attributes[i].regIndex, i, &inputs[i])) {
             ret = SCE_GXM_ERROR_INVALID_VALUE;
             goto fail;
         }
-        locations[i] = input.location;
-        if (input.integer_input) integer_mask |= 1U << i;
     }
-    ret = gxm_build_vertex_attribute_state(attributes, attributeCount, locations, integer_mask,
+    ret = gxm_build_vertex_attribute_state(attributes, attributeCount, inputs,
                                             vertex_program->dk_attributes);
     if (ret) goto fail;
     for (unsigned i = 0; i < SCE_GXM_MAX_VERTEX_ATTRIBUTES; ++i)

@@ -1,17 +1,13 @@
 #ifndef VITA3K_SHADER_RECOMPILER_IFACE_C_H
 #define VITA3K_SHADER_RECOMPILER_IFACE_C_H
 #include "gxm/uniform_layout.h"
+#include "gxm/vertex_input.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 bool gxp_uniform_layout_c(const SceGxmProgram *program, GxmUniformLayout *layout);
-typedef struct GxmVertexInput {
-    /* UINT32_MAX means an unreferenced attribute in a named shader. */
-    uint32_t location;
-    bool integer_input;
-} GxmVertexInput;
 /* Named inputs use shader declaration locations; stripped shaders use the
  * attribute hint index and float conversion. Failure preserves output. */
 bool gxp_vertex_input_c(const SceGxmProgram *program, uint32_t reg_index,

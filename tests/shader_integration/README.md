@@ -103,5 +103,20 @@ output preservation on failure. Stripped shaders retain hint-list locations.
 The runtime caches the resulting native attribute state at program creation.
 A stripped-symbol derivative with reversed hint order also compares its actual
 SPIR-V input locations and floating types with the runtime fallback metadata.
-Packed attributes and matrix/array expansion remain further compatibility work;
-these checks do not establish GPU fetch or rendered geometry.
+These checks do not establish GPU fetch or rendered geometry.
+
+## Register-format vertex inputs
+
+Controlled vertex derivatives exercise F16, signed-byte and F32 register inputs
+with array elements, plus a three-component C10 input. SPIR-V reflection checks
+unsigned 32-bit input declarations, location, vector width and array length.
+Each derivative must also convert through the runtime's GLSL wrapper.
+Runtime metadata supplies the underlying unsigned byte/halfword/word fetch width
+and total element count, including array elements and C10's packed-byte count.
+Host state checks cover multi-location expansion, offsets, partial final vectors,
+normalization bypass, collisions, capacity/offset limits and output preservation.
+
+The pinned translator can assign overlapping locations for C10 declarations
+whose packed-byte count needs more slots than their logical component count.
+Runtime state creation rejects such collisions. Non-register array/matrix inputs
+remain separate work. No GPU execution or rendered packed geometry is established.

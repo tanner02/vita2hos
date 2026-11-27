@@ -108,6 +108,69 @@ static void check_stripped_inputs(SceGxmProgram *program)
     program->parameter_count = original_count;
 }
 
+static void check_packed_inputs(SceGxmProgram *program)
+{
+    auto *parameters = const_cast<SceGxmProgramParameter *>(program->program_parameters());
+    auto *varyings = const_cast<SceGxmProgramVertexVaryings *>(program->vertex_varyings());
+    for (unsigned i = 0; i < program->parameter_count; ++i) {
+        auto &parameter = parameters[i];
+        if (parameter.category != SCE_GXM_PARAMETER_CATEGORY_ATTRIBUTE) continue;
+        const auto original = parameter;
+        const auto original_regs = varyings->untyped_pa_regs;
+        require(parameter.resource_index < 64, "unexpected packed fixture register");
+        varyings->untyped_pa_regs |= uint64_t{1} << parameter.resource_index;
+        struct Case { SceGxmParameterType type; unsigned bytes, arrays, elements; };
+        for (const Case c : {Case{SCE_GXM_PARAMETER_TYPE_F16,2,2,6},
+                            Case{SCE_GXM_PARAMETER_TYPE_S8,1,2,6},
+                            Case{SCE_GXM_PARAMETER_TYPE_F32,4,2,6},
+                            Case{SCE_GXM_PARAMETER_TYPE_C10,1,1,4}}) {
+            parameter.type = c.type;
+            parameter.component_count = 3;
+            parameter.array_size = c.arrays;
+            GxmVertexInput input;
+            require(gxp_vertex_input_c(program, parameter.resource_index, i, &input) &&
+                    input.register_format && input.integer_input &&
+                    input.register_component_bytes == c.bytes && input.register_components == c.elements,
+                    "packed runtime input metadata disagrees with expected register layout");
+            uint32_t *words = nullptr, count = 0;
+            require(convert_gxp_to_spirv_c(&words, &count, program, "packed-inputs",
+                false, false, false, false, nullptr, 0, false, false, nullptr),
+                "packed input translation failed");
+            std::vector<uint32_t> spirv(words, words + count);
+            free(words);
+            spirv_cross::Compiler reflection(spirv);
+            bool found = false;
+            const auto *name = reinterpret_cast<const char *>(&parameter) + parameter.name_offset;
+            for (const auto &resource : reflection.get_shader_resources().stage_inputs) {
+                if (reflection.get_name(resource.id) != name) continue;
+                const auto &type = reflection.get_type(resource.type_id);
+                const unsigned slots = (c.elements + 3) / 4;
+                require(type.basetype == spirv_cross::SPIRType::UInt && type.width == 32 &&
+                        type.vecsize == (c.elements < 4 ? c.elements : 4),
+                        "packed shader input must contain unsigned register values");
+                require(slots == 1 ? type.array.empty() :
+                        (type.array.size() == 1 && type.array[0] == slots),
+                        "packed shader input array span disagrees with runtime fetch");
+                require(reflection.get_decoration(resource.id, spv::DecorationLocation) == input.location,
+                        "packed input location disagrees with runtime fetch");
+                found = true;
+            }
+            require(found, "packed input missing from translated SPIR-V");
+            char *glsl = nullptr;
+            require(convert_gxp_to_glsl_c(&glsl, program, "packed-inputs", false, false,
+                false, false, nullptr, 0, false, false, nullptr),
+                "packed input runtime GLSL conversion failed");
+            require(glsl && std::string_view(glsl).find("#version") != std::string_view::npos,
+                "packed input GLSL source missing");
+            free(glsl);
+        }
+        parameter = original;
+        varyings->untyped_pa_regs = original_regs;
+        return;
+    }
+    require(false, "expected an attribute for packed input checks");
+}
+
 static bool check_sampler_bindings(SceGxmProgram *program)
 {
     auto *parameters = const_cast<SceGxmProgramParameter *>(program->program_parameters());
@@ -292,6 +355,7 @@ int main(int argc, char **argv)
             vertex_inputs_checked += check_vertex_inputs(mutable_program);
             if (!program->is_fragment() && !stripped_checked) {
                 check_stripped_inputs(mutable_program);
+                check_packed_inputs(mutable_program);
                 stripped_checked = true;
             }
             const unsigned stage = program->is_fragment() ? 0 : 1;

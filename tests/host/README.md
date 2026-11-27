@@ -428,4 +428,8 @@ Input metadata also supplies declaration locations, with hint-list locations for
 stripped shaders and an unused marker for unmatched registers. Native attribute
 state tests cover reordered inputs, sparse locations, unused fixed slots,
 duplicate/out-of-range locations, empty programs and failure output preservation.
-Packed registers and GPU fetch behavior need further checks.
+Register-format checks cover unsigned bit fetch at shader-declared byte/halfword/
+word widths, normalization bypass, array expansion and offsets, partial final
+vectors, overlapping locations, bounded capacity and offset overflow. Metadata
+checks include zero and overflowing array sizes with output preservation.
+Non-register matrix/array inputs and GPU fetch behavior need further checks.

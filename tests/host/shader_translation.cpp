@@ -12,10 +12,20 @@ static void *test_malloc(size_t size) { return fail_allocation ? nullptr : std::
 int main()
 {
     SceGxmProgram program;
-    GxmVertexInput input{99, true};
+    GxmVertexInput input{};
+    input.location = 99;
+    input.integer_input = true;
     assert(gxp_vertex_input_c(&program, 0, 7, &input) && !input.integer_input && input.location == 2);
     assert(gxp_vertex_input_c(&program, 4, 7, &input) && input.integer_input && input.location == 0);
     assert(gxp_vertex_input_c(&program, 8, 7, &input) && input.integer_input && input.location == 5);
+    assert(input.register_format && input.register_component_bytes == 2 && input.register_components == 4);
+    program.parameters[0].array_size = 2;
+    assert(gxp_vertex_input_c(&program, 8, 7, &input) && input.register_components == 8);
+    program.parameters[0].array_size = 0;
+    assert(!gxp_vertex_input_c(&program, 8, 7, &input) && input.register_components == 8);
+    program.parameters[0].array_size = UINT32_MAX;
+    assert(!gxp_vertex_input_c(&program, 8, 7, &input) && input.register_components == 8);
+    program.parameters[0].array_size = 1;
     assert(gxp_vertex_input_c(&program, 99, 7, &input) && input.location == UINT32_MAX);
     shader::test_conversion_mode = 1;
     assert(gxp_vertex_input_c(&program, 0, 7, &input) && !input.integer_input && input.location == 7);

@@ -1,3 +1,24 @@
+## 2026-11-27: packed register vertex fetch (offline, not deployed)
+
+Register-format vertex inputs now fetch unsigned bit patterns at shader-declared
+8/16/32-bit widths, bypassing ordinary signed, normalized and float conversion.
+Shader array elements flatten into bounded native locations with byte offsets;
+partial final vectors select only their remaining elements. State creation rejects
+collisions, slot exhaustion, unsupported widths and offset overflow atomically.
+
+Real pinned fixture derivatives cover F16, signed-byte and F32 register arrays,
+plus three-component C10 packing. SPIR-V reflection checks unsigned input type,
+vector/array shape and location; runtime GLSL conversion is also required. The
+full ASan/UBSan host suite and native Debug/Release builds pass. These are parser,
+translation and state checks, not GPU bit-pattern or geometry validation.
+
+A remaining pinned-translator limitation: C10 packed-byte expansion may occupy
+more locations than its logical component allocation reserves, overlapping a
+following input. The runtime rejects overlapping native states; the translator's
+allocation still needs correction. Non-register arrays/matrices are also open.
+No 3D-title boot is established. User probe hold/ZCode console ownership remain;
+no probe correction, console access, SD changes or deployment occurred.
+
 ## 2026-11-27: declared vertex input locations (offline, not deployed)
 
 Vertex fetch now uses the shader declaration location associated with each guest

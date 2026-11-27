@@ -18,14 +18,45 @@ bool gxp_vertex_input_c(const SceGxmProgram *program, uint32_t reg_index,
         shader::usse::AttributeInformationMap inputs;
         shader::usse::get_attribute_informations(*program, inputs);
         const auto found = inputs.find(reg_index);
-        GxmVertexInput result;
+        GxmVertexInput result{};
         if (inputs.empty()) {
-            result = {hint_index, false};
+            result.location = hint_index;
         } else if (found == inputs.end()) {
-            result = {UINT32_MAX, true};
+            result.location = UINT32_MAX;
+            result.integer_input = true;
         } else {
-            result = {found->second.location,
-                      found->second.is_integer || found->second.regformat};
+            const auto &info = found->second;
+            result.location = info.location;
+            result.integer_input = info.is_integer || info.regformat;
+            result.register_format = info.regformat;
+            if (info.regformat) {
+                switch (info.gxm_type) {
+                case SCE_GXM_PARAMETER_TYPE_U8:
+                case SCE_GXM_PARAMETER_TYPE_S8:
+                case SCE_GXM_PARAMETER_TYPE_C10: result.register_component_bytes = 1; break;
+                case SCE_GXM_PARAMETER_TYPE_U16:
+                case SCE_GXM_PARAMETER_TYPE_S16:
+                case SCE_GXM_PARAMETER_TYPE_F16: result.register_component_bytes = 2; break;
+                case SCE_GXM_PARAMETER_TYPE_F32:
+                case SCE_GXM_PARAMETER_TYPE_U32:
+                case SCE_GXM_PARAMETER_TYPE_S32: result.register_component_bytes = 4; break;
+                default: return false;
+                }
+                // The analyzer records vector width; the translator also folds
+                // array elements into its unsigned register input.
+                for (unsigned i = 0; i < program->parameter_count; ++i) {
+                    const auto &parameter = program->program_parameters()[i];
+                    if (parameter.category != SCE_GXM_PARAMETER_CATEGORY_ATTRIBUTE ||
+                        parameter.resource_index != reg_index) continue;
+                    const uint64_t components = uint64_t(info.component_count) * parameter.array_size;
+                    const uint64_t elements = info.gxm_type == SCE_GXM_PARAMETER_TYPE_C10 ?
+                        (components * 10 + 7) / 8 : components;
+                    if (!elements || elements > 64) return false;
+                    result.register_components = static_cast<uint32_t>(elements);
+                    break;
+                }
+                if (!result.register_components) return false;
+            }
         }
         *input = result;
         return true;

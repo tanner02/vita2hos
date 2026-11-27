@@ -193,9 +193,9 @@ int main(void)
         {.streamIndex=0,.offset=8,.format=SCE_GXM_ATTRIBUTE_FORMAT_F32,.componentCount=2},
         {.streamIndex=0,.offset=16,.format=SCE_GXM_ATTRIBUTE_FORMAT_S16,.componentCount=4}
     };
-    uint32_t locations[3] = {5, UINT32_MAX, 0};
+    GxmVertexInput inputs[3] = {{.location=5}, {.location=UINT32_MAX}, {.location=0,.integer_input=true}};
     DkVtxAttribState state[SCE_GXM_MAX_VERTEX_ATTRIBUTES];
-    assert(!gxm_build_vertex_attribute_state(reordered,3,locations,1U<<2,state));
+    assert(!gxm_build_vertex_attribute_state(reordered,3,inputs,state));
     assert(!state[5].isFixed && state[5].bufferId==1 && state[5].offset==12 &&
            state[5].type==DkVtxAttribType_Uscaled && state[5].size==DkVtxAttribSize_3x8);
     assert(!state[0].isFixed && state[0].type==DkVtxAttribType_Sint &&
@@ -204,21 +204,62 @@ int main(void)
         if (i!=5) assert(state[i].isFixed);
     DkVtxAttribState preserved[SCE_GXM_MAX_VERTEX_ATTRIBUTES];
     memcpy(preserved,state,sizeof(state));
-    locations[2]=5;
-    assert((uint32_t)gxm_build_vertex_attribute_state(reordered,3,locations,0,state)==SCE_GXM_ERROR_INVALID_VALUE);
+    inputs[2].location=5;
+    assert((uint32_t)gxm_build_vertex_attribute_state(reordered,3,inputs,state)==SCE_GXM_ERROR_INVALID_VALUE);
     assert(!memcmp(preserved,state,sizeof(state)));
-    locations[2]=SCE_GXM_MAX_VERTEX_ATTRIBUTES;
-    assert((uint32_t)gxm_build_vertex_attribute_state(reordered,3,locations,0,state)==SCE_GXM_ERROR_INVALID_VALUE);
+    inputs[2].location=SCE_GXM_MAX_VERTEX_ATTRIBUTES;
+    assert((uint32_t)gxm_build_vertex_attribute_state(reordered,3,inputs,state)==SCE_GXM_ERROR_INVALID_VALUE);
     assert(!memcmp(preserved,state,sizeof(state)));
-    assert((uint32_t)gxm_build_vertex_attribute_state(NULL,1,locations,0,state)==SCE_GXM_ERROR_INVALID_POINTER);
+    assert((uint32_t)gxm_build_vertex_attribute_state(NULL,1,inputs,state)==SCE_GXM_ERROR_INVALID_POINTER);
     assert(!memcmp(preserved,state,sizeof(state)));
-    assert((uint32_t)gxm_build_vertex_attribute_state(reordered,3,NULL,0,state)==SCE_GXM_ERROR_INVALID_POINTER);
-    assert((uint32_t)gxm_build_vertex_attribute_state(reordered,3,locations,0,NULL)==SCE_GXM_ERROR_INVALID_POINTER);
-    assert((uint32_t)gxm_build_vertex_attribute_state(reordered,SCE_GXM_MAX_VERTEX_ATTRIBUTES+1,locations,0,state)==SCE_GXM_ERROR_INVALID_VALUE);
+    assert((uint32_t)gxm_build_vertex_attribute_state(reordered,3,NULL,state)==SCE_GXM_ERROR_INVALID_POINTER);
+    assert((uint32_t)gxm_build_vertex_attribute_state(reordered,3,inputs,NULL)==SCE_GXM_ERROR_INVALID_POINTER);
+    assert((uint32_t)gxm_build_vertex_attribute_state(reordered,SCE_GXM_MAX_VERTEX_ATTRIBUTES+1,inputs,state)==SCE_GXM_ERROR_INVALID_VALUE);
     assert(!memcmp(preserved,state,sizeof(state)));
     /* A new program with no supplied attributes must clear every stale fetch. */
-    assert(!gxm_build_vertex_attribute_state(NULL,0,NULL,0,state));
+    assert(!gxm_build_vertex_attribute_state(NULL,0,NULL,state));
     for (unsigned i=0;i<SCE_GXM_MAX_VERTEX_ATTRIBUTES;++i) assert(state[i].isFixed);
+    SceGxmVertexAttribute packed = {
+        .streamIndex=2,.offset=32,.format=SCE_GXM_ATTRIBUTE_FORMAT_F32,.componentCount=1
+    };
+    GxmVertexInput raw = {.location=3,.register_format=true,.register_component_bytes=2,.register_components=4};
+    assert(!gxm_build_vertex_attribute_state(&packed,1,&raw,state));
+    assert(state[3].type==DkVtxAttribType_Uint && state[3].size==DkVtxAttribSize_4x16);
+    /* Signed and half-float register inputs carry unsigned bits. Normalized
+     * guest formats must not normalize them before the translator packs them. */
+    packed.format=SCE_GXM_ATTRIBUTE_FORMAT_S8N;
+    raw.register_component_bytes=1;
+    assert(!gxm_build_vertex_attribute_state(&packed,1,&raw,state));
+    assert(state[3].type==DkVtxAttribType_Uint && state[3].size==DkVtxAttribSize_4x8);
+    raw.register_component_bytes=4; raw.register_components=8;
+    assert(!gxm_build_vertex_attribute_state(&packed,1,&raw,state));
+    assert(state[3].type==DkVtxAttribType_Uint && state[3].size==DkVtxAttribSize_4x32 && state[3].offset==32);
+    assert(state[4].type==DkVtxAttribType_Uint && state[4].size==DkVtxAttribSize_4x32 && state[4].offset==48);
+    /* A five-byte register input reads only the final byte at its second
+     * location; unused vec4 lanes must not extend the memory read. */
+    raw.register_component_bytes=1; raw.register_components=5;
+    assert(!gxm_build_vertex_attribute_state(&packed,1,&raw,state));
+    assert(state[3].size==DkVtxAttribSize_4x8 && state[4].size==DkVtxAttribSize_1x8 && state[4].offset==36);
+    memcpy(preserved,state,sizeof(state));
+    SceGxmVertexAttribute overlap_attributes[2] = {packed, packed};
+    GxmVertexInput overlap_inputs[2] = {raw, {.location=4}};
+    assert((uint32_t)gxm_build_vertex_attribute_state(overlap_attributes,2,overlap_inputs,state)==SCE_GXM_ERROR_INVALID_VALUE);
+    assert(!memcmp(preserved,state,sizeof(state)));
+    raw.location=SCE_GXM_MAX_VERTEX_ATTRIBUTES-1;
+    assert((uint32_t)gxm_build_vertex_attribute_state(&packed,1,&raw,state)==SCE_GXM_ERROR_INVALID_VALUE);
+    assert(!memcmp(preserved,state,sizeof(state)));
+    raw.location=3; packed.offset=0x3ffe;
+    assert((uint32_t)gxm_build_vertex_attribute_state(&packed,1,&raw,state)==SCE_GXM_ERROR_INVALID_VALUE);
+    assert(!memcmp(preserved,state,sizeof(state)));
+    packed.offset=32; raw.register_component_bytes=3;
+    assert((uint32_t)gxm_build_vertex_attribute_state(&packed,1,&raw,state)==SCE_GXM_ERROR_INVALID_VALUE);
+    assert(!memcmp(preserved,state,sizeof(state)));
+    raw.register_component_bytes=4; raw.register_components=0;
+    assert((uint32_t)gxm_build_vertex_attribute_state(&packed,1,&raw,state)==SCE_GXM_ERROR_INVALID_VALUE);
+    assert(!memcmp(preserved,state,sizeof(state)));
+    raw.register_components=UINT32_MAX;
+    assert((uint32_t)gxm_build_vertex_attribute_state(&packed,1,&raw,state)==SCE_GXM_ERROR_INVALID_VALUE);
+    assert(!memcmp(preserved,state,sizeof(state)));
     puts("GXM index range regression checks passed.");
     return 0;
 }

@@ -6,7 +6,20 @@
 #include <string>
 #include <vector>
 
-struct SceGxmProgram { bool fragment = false; bool is_fragment() const { return fragment; } };
+enum SceGxmParameterType {
+    SCE_GXM_PARAMETER_TYPE_F32, SCE_GXM_PARAMETER_TYPE_F16, SCE_GXM_PARAMETER_TYPE_C10,
+    SCE_GXM_PARAMETER_TYPE_U32, SCE_GXM_PARAMETER_TYPE_S32, SCE_GXM_PARAMETER_TYPE_U16,
+    SCE_GXM_PARAMETER_TYPE_S16, SCE_GXM_PARAMETER_TYPE_U8, SCE_GXM_PARAMETER_TYPE_S8
+};
+constexpr int SCE_GXM_PARAMETER_CATEGORY_ATTRIBUTE = 0;
+struct SceGxmProgramParameter { int category; uint32_t resource_index, array_size; };
+struct SceGxmProgram {
+    bool fragment = false;
+    unsigned parameter_count = 1;
+    SceGxmProgramParameter parameters[1] = {{SCE_GXM_PARAMETER_CATEGORY_ATTRIBUTE,8,1}};
+    bool is_fragment() const { return fragment; }
+    const SceGxmProgramParameter *program_parameters() const { return parameters; }
+};
 struct SceGxmVertexAttribute {};
 constexpr unsigned SCE_GXM_MAX_TEXTURE_UNITS = 16;
 constexpr int SCE_GXM_COLOR_FORMAT_U8U8U8U8_ABGR = 0;
