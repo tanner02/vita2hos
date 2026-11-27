@@ -1,3 +1,9 @@
+## 2026-11-27: owned savedata probe first attempt failed before entry
+
+Runtime 60d7966 recognized the owned probe but automatically preloaded game libraries because the staged modules.txt was absent. Import binding then failed before guest entry, and no savedata-probe.txt was produced. This is a staging configuration error, not a savedata operation failure. The first no-dependency staging plan incorrectly treated an absent list as equivalent to an explicit empty list.
+
+A present comment-only modules.txt was uploaded and readback-verified with the paired executable and owned SFO. Original game files remain preserved on SD and locally. No reinstall is needed for this configuration correction. The next launch must produce an actual report before any savedata hardware claim can be made. Private evidence is retained in result-6cc41603dd7447018851959e64cdae78.
+
 ## 2026-11-27: savedata call shape on runtime febb799
 
 The new hardware log identifies runtime febb799 and records the first four argument registers. The observed SaveDataSlotGetParam call selects slot zero and a null mount pointer. SaveDataDataSave supplies one item, a non-null slot descriptor and a null mount pointer. The message-dialog initialization is followed by NetCheckDialogGetStatus with the unsupported error still in r0, consistent with the statically identified retry path. No normal exit or rendering is established by this log.

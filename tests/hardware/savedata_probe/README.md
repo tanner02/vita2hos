@@ -26,6 +26,10 @@ imports and current source exports and produces a checksum manifest. No deployme
 or hardware execution is performed by the builder.
 
 Before deployment, back up the active executable, module list, launch mode and
-sce_sys/param.sfo. Use this guest with its owned SFO, an empty dependency list and
+sce_sys/param.sfo. Use this guest with its owned SFO, a present comment-only modules.txt (explicitly zero dependencies) and
 normal launch mode. Restore every saved file after collecting the result. Never
 install the paired owned SFO over a game without preserving the original.
+
+Do not omit modules.txt: absence enables automatic preloading of libraries found
+in sce_module. A comment-only file disables preloads without relying on an MTP
+implementation to transfer an empty file. A loader failure is not a probe result.
