@@ -1,3 +1,9 @@
+## 2026-11-27: private shader-corpus discovery for LittleBigPlanet
+
+A read-only audit found no raw GXP headers in the private executable. The FARC index contains 21,792 in-range entries, including repeated hashes. Following the public FarcTool2 container layout, 9,504 unique compressed resources decoded with bounded output and verified stored SHA-1; 66 containers remain unsupported. The decoded resources yielded 21,294 unique GXP candidates (19,273,482 bytes total) with bounded program sizes, parameter tables and parameter names. These are structural candidates, not a successful translation or rendering result.
+
+The archive SHA-256 still matches the previously verified private payload. Original files were never modified and no game instructions were executed. The private corpus and source-bound manifest remain outside the repository and outputs; no proprietary shader bytes are published. Reference source: https://github.com/LBPModding/FarcTool2/tree/4736687e221c2d287f92538f4c6f3a413f6792b7 . The next offline investigation is semantic validation and translation of a bounded subset, with per-program failure isolation.
+
 ## 2026-11-27: owned savedata v1 reaches replacement failure on 60d7966
 
 The report passes owned metadata identity and first save/slot creation, then fails the second DataSave with 0x80100640. The runtime explicitly returns process/launch result 1 and image-close zero. The user's clean visual closure therefore is not a successful probe pass. The second operation updates an existing metadata record, matching the non-overwrite rename failure reproduced in the host model. The new replacement fallback is not yet hardware-validated.
