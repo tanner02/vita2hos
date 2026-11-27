@@ -1,3 +1,26 @@
+## Offline VFP exception-mask state (2026-11-27)
+
+- Added SceThreadmgr sceKernelChangeThreadVfpException (0xCC18FBAE), imported
+  by the supplied FIOS library, and SceLibKernel sceKernelGetCurrentThreadVfpException
+  (0xA37A6057). They operate on the calling guest thread's kernel TLS word 4.
+- Only SCE_KERNEL_VFP_EXCP_ALL (0x0800009f) bits are accepted. Overlapping
+  clear/set arguments and reserved bits return INVALID_ARGUMENT without writes;
+  no current guest thread returns UNKNOWN_THREAD_ID. Newly created threads have
+  their own zeroed mask; changing one does not alter another's mask.
+- The setter follows the pinned Vita3K update and returns its previous mask.
+  VitaSDK's prose instead says SCE_OK on success: nonzero return behavior remains
+  a firmware-validation item. Sources:
+  https://github.com/vitasdk/vita-headers/blob/master/include/psp2/kernel/threadmgr/vfp.h
+  and pinned external/Vita3K/vita3k/modules/SceKernelThreadMgr/SceThreadmgr.cpp.
+- This is kernel mask-state groundwork. It does not implement Vita exception
+  delivery/handlers or claim native floating-point trap support on Horizon.
+  The API mask bits must not be blindly written into FPSCR's cumulative status
+  positions. Native FPSCR, arithmetic modes and sticky flags are unchanged.
+- Focused ASan/UBSan tests check NID lookup, flag updates, previous values,
+  invalid/overlapping masks, failure preservation, per-thread isolation and
+  absence of a guest caller. ARM Debug and Release builds passed. No Switch
+  deployment or hardware test occurred.
+
 ## Offline FIOS empty-overlay path resolution (2026-11-27)
 
 - Added _sceFiosKernelOverlayResolveSync (0xE9AE60FB) and

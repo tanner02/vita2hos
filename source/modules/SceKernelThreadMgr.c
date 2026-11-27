@@ -369,6 +369,29 @@ EXPORT(SceLibKernel, 0xC53A9848, int, sceKernelGetThreadCurrentPriority)
     return thread ? thread->priority : (int)SCE_KERNEL_ERROR_UNKNOWN_THREAD_ID;
 }
 
+/* Vita's kernel exception-selection mask is cached in kernel TLS word 4.
+ * These bits name exception classes, not native FPSCR control bits. Do not
+ * write them directly into FPSCR (which would change cumulative status).
+ * Delivering Vita kernel exception callbacks/traps remains unsupported. */
+EXPORT(SceLibKernel, 0xA37A6057, int, sceKernelGetCurrentThreadVfpException, void)
+{
+    VitaThreadInfo *thread=SceKernelThreadMgr_get_thread_info();
+    return thread ? (int)thread->vita_tls[4] : (int)SCE_KERNEL_ERROR_UNKNOWN_THREAD_ID;
+}
+EXPORT(SceThreadmgr, 0xCC18FBAE, int, sceKernelChangeThreadVfpException,
+       SceUInt32 clear,SceUInt32 set)
+{
+    if (((clear|set)&~(uint32_t)SCE_KERNEL_VFP_EXCP_ALL) || (clear&set))
+        return SCE_KERNEL_ERROR_INVALID_ARGUMENT;
+    VitaThreadInfo *thread=SceKernelThreadMgr_get_thread_info();
+    if (!thread) return SCE_KERNEL_ERROR_UNKNOWN_THREAD_ID;
+    uint32_t previous=thread->vita_tls[4];
+    thread->vita_tls[4]=(previous&~clear)|set;
+    /* The pinned implementation returns the previous mask; SDK prose says
+     * SCE_OK, so nonzero return behavior still requires firmware validation. */
+    return previous;
+}
+
 /* Fixed guest ABI: native host pointers must not widen this snapshot. */
 typedef struct {
     uint32_t size;

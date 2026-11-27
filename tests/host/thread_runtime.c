@@ -131,6 +131,22 @@ int main(void)
     priority_result=0;
     assert(change2(uid,SCE_KERNEL_DEFAULT_PRIORITY+3)==65 && raw_priority()==163);
     assert(!change(uid,160));
+    int (*vfp_get)(void)=(void *)module_get_func_export(0xcae9ace6,0xA37A6057);
+    int (*vfp_change)(SceUInt32,SceUInt32)=(void *)module_get_func_export(0x859a24b1,0xCC18FBAE);
+    assert(vfp_get && vfp_change && !vfp_get() && !info->vita_tls[4]);
+    assert(!vfp_change(0,SCE_KERNEL_VFP_EXCP_IOC|SCE_KERNEL_VFP_EXCP_QC));
+    assert(vfp_get()==(SCE_KERNEL_VFP_EXCP_IOC|SCE_KERNEL_VFP_EXCP_QC));
+    assert(vfp_change(0,0)==(SCE_KERNEL_VFP_EXCP_IOC|SCE_KERNEL_VFP_EXCP_QC));
+    assert(vfp_change(SCE_KERNEL_VFP_EXCP_UFC,0)==(SCE_KERNEL_VFP_EXCP_IOC|SCE_KERNEL_VFP_EXCP_QC));
+
+    assert((uint32_t)vfp_change(SCE_KERNEL_VFP_EXCP_IOC,SCE_KERNEL_VFP_EXCP_IOC)==SCE_KERNEL_ERROR_INVALID_ARGUMENT);
+    assert((uint32_t)vfp_change(0,0x100)==SCE_KERNEL_ERROR_INVALID_ARGUMENT);
+    assert(vfp_get()==(SCE_KERNEL_VFP_EXCP_IOC|SCE_KERNEL_VFP_EXCP_QC));
+    tls_value=other_info;assert(!vfp_get());
+    assert(!vfp_change(0,SCE_KERNEL_VFP_EXCP_DZC) && vfp_get()==SCE_KERNEL_VFP_EXCP_DZC);
+    tls_value=info;
+    assert(vfp_change(SCE_KERNEL_VFP_EXCP_ALL,0)==(SCE_KERNEL_VFP_EXCP_IOC|SCE_KERNEL_VFP_EXCP_QC));
+    assert(!vfp_get() && other_info->vita_tls[4]==SCE_KERNEL_VFP_EXCP_DZC);
     GuestThreadSnapshot snapshot;
     memset(&snapshot,0xcc,sizeof(snapshot));snapshot.size=128;
     int (*query)(SceUID,SceKernelThreadInfo *)=(void *)module_get_func_export(0xcae9ace6,0x8D9C5461);
@@ -149,6 +165,9 @@ int main(void)
     assert((uint32_t)query(-1,(void *)&snapshot)==SCE_KERNEL_ERROR_UNKNOWN_THREAD_ID);
     snapshot=saved_snapshot;
     tls_value=NULL;
+    assert((uint32_t)vfp_get()==SCE_KERNEL_ERROR_UNKNOWN_THREAD_ID);
+    assert((uint32_t)vfp_change(0,0)==SCE_KERNEL_ERROR_UNKNOWN_THREAD_ID);
+
 
     assert(*(uint32_t *)get_thread_info_for_uid(other)->vita_user_tls == 0x12345678);
     assert(sceKernelDeleteThread(other) == 0);
