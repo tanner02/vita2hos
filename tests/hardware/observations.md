@@ -70,7 +70,7 @@
   sampling and re-upload of a changed guest allocation on the installed runtime.
 - The positive-Y viewport case read `0xffffffff` at pixel `0x410` instead of
   `0xffff0000`. The complete probe failed and the guest exited 1. This case
-  remains unresolved; version 4 adds coverage/axis diagnostics without changing
+  was unresolved in this run; version 4 adds coverage/axis diagnostics without changing
   the runtime or weakening the expected result.
 
 ### Texture probe version 4: explicit viewport calls produce no coverage
@@ -85,9 +85,33 @@
   branching to the imported stub. The runtime implementation expected base-PCS
   core/stack arguments, so it received the wrong transform. This explains why
   explicit calls fail while the runtime's internal default setter works.
-- A runtime fix now exports VFP adapters for viewport and background depth
-  getter/setter. The matching hardware confirmation is pending; version 5 adds
+- A runtime fix exports VFP adapters for viewport and background depth
+  getter/setter. Version 5 confirmed this fix below and adds
   an explicit background-depth return-value and descriptor check as well.
+
+## Runtime 38972edc42260a53fc141c204e1dc750194a5bb7
+
+- Standalone HOME-menu title reinstalled with the GXM scalar-float VFP adapters;
+  USB readback log identifies `38972ed` and successful process exit/shutdown.
+- Version 5 guest deployed SHA-256:
+  `a8528f1344bea8ec8db3e09776e75dada71dc6f2cf3b89bafc692c0a088a5bdc`.
+- `draw_probe v5` ends with `PASS draw_probe`, with no `FAIL` records.
+- All earlier surface, shader, depth-only and stencil checks passed. The new
+  background-depth getter/setter roundtrip passed. Texture quadrants, changed
+  guest image upload, positive Y, both reversed axes, negative X, and restoring
+  the default viewport all passed their exact pixel comparisons.
+- This is direct hardware confirmation of the VFP export adapters and these
+  rendering cases. Visible cube presentation and commercial-title boot remain
+  separate requirements; neither is established by this offscreen report.
+
+### Visible textured cube: pending
+
+- Guest source `ced41b378e35aff9521c9e4bdaca9c8348da5e4e`, SHA-256
+  `970925b69b4f49c9f0a33ac4a4f203ddf46bcc4419dc1cd7da9e9287e7c29630`.
+- USB deployment verified the previous passing version 5 guest, preserved it
+  under a backup name, then verified the new executable by readback checksum.
+  The installed runtime remains `38972ed`; no NSP reinstall was performed.
+- Hardware report and visible presentation result are pending.
 
 ## Runtime f55edbf626acb6ff46d510a55bdd026dd78ac5ad
 
