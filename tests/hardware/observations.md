@@ -1,3 +1,9 @@
+## 2026-11-27: LittleBigPlanet main entry after module-query fix ee2e65e
+
+Installed runtime ee2e65e passed the earlier TLS-registration gate and created the executable's bringup thread. First-use records identify sceSysmoduleLoadModule, sceNetInit, sceNetCtlInit, sceNetCtlTerm and sceNetTerm, followed by libc termination handlers. The process exits zero and image close returns zero, but the user observes no visuals. This is startup progress, not a game boot. It also confirms that removing the output-size precondition in the address query moved execution past the preceding abort path.
+
+Private static inspection shows the observed first module load requests NET (ID 1) and the network initialization supplies a 64 KiB pool with zero flags. Actual native networking, later module loads and rendering remain unverified. The kernel network/device error paths cannot be replaced by unconditional success. Evidence was collected privately in result-20261127-143443; no proprietary bytes or disassembly are included here.
+
 ## 2026-11-27: LittleBigPlanet first main-entry attempt on adbab65 - controlled abort
 
 All seven private data/font assets were copied to app0 and readback-verified before normal main entry was enabled. User reports automatic closure after about fifteen seconds without a visible error. The collected versioned runtime log shows libc/FIOS startup success, one first-use record for SceProcessmgr/0xeb6e50bb (sceKernelCallAbortHandler) originating from libc offset 0x6fc with the Thumb bit set, then sceKernelExitProcess(1), process/launch result 1 and successful image close. No scene or rendering was observed. This positively exercises first-use logging on hardware, but is not the owned probe's complete ABI/duplicate-call validation.

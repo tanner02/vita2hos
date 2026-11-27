@@ -23,6 +23,7 @@
 #include "netlog.h"
 
 #include "modules/SceCtrl.h"
+#include "modules/SceNet.h"
 #include "modules/SceDisplay.h"
 #include "modules/SceGxm.h"
 #include "modules/SceKernelThreadMgr.h"
@@ -134,6 +135,7 @@ static int launch(LoadProcess *process)
     LOG("Process finished! Returned: %d", ret);
 
 done:
+    SceNet_finish();
     if (processmgr_initialized) SceProcessmgr_finish();
     if (modulemgr_initialized) SceModulemgr_finish();
     return ret;
@@ -169,7 +171,7 @@ int main(int argc, char *argv[])
     LoadRetryPacket previous_retry = read_layout_retry();
 
     /* Initialize the socket library */
-    socketInitializeDefault();
+    SceNet_set_host_ready(R_SUCCEEDED(socketInitializeDefault()));
 
     /* Initialize netlog */
     netlog_init();

@@ -208,3 +208,19 @@ sample even when count offers more room; it has no historical ring. Analog and
 analog-wide currently share the same normalized native stick range. Blocking
 reads, extended modes/ports, rapid fire, and firmware-specific analog response
 curves remain separate work. These host checks do not establish hardware input.
+
+Network lifecycle tests model the bootstrap-owned native socket provider and
+NIFM service acquisition. They cover host-provider failure, Vita init parameters,
+duplicate init, native service failure/retry, single-release ownership, native
+connection-state translation, preserved outputs on failures, explicit unsupported
+sysmodule loads, and process cleanup. NET module load tracks the available HLE
+provider; it does not claim a complete Vita socket/resolver implementation.
+The caller pool is validated but not used as Horizon BSD backing memory; native
+socket buffers remain bootstrap-owned. Guest termination never closes netlog's
+shared native socket device. Only NET is loadable; other public module IDs fail
+with FATAL and remain unloaded. Unload while NET/NetCtl is active is rejected
+rather than invalidating live services; exact firmware unload policy is unverified.
+No callbacks, adhoc mode, Vita sockets/resolvers, network info or native connection
+requests are implemented here. State queries report native NIFM status, mapping
+its connecting states to CONNECTING and preserving output on native failure.
+The host tests do not establish successful networking on the Switch.
