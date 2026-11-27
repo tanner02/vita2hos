@@ -3,6 +3,7 @@
 #include <fcntl.h>
 #include <m-dict.h>
 #include <psp2/kernel/error.h>
+#include <psp2/kernel/processmgr.h>
 #include <psp2common/types.h>
 #include <stdarg.h>
 #include <stdatomic.h>
@@ -27,6 +28,7 @@ typedef struct {
     uint32_t index;
     SceUID uid;
     int native_fd;
+    int standard_stream; /* 0: owned file; 1/2/3: borrowed stdin/out/err. */
     char *file;
     Mutex io_lock; /* Serializes cursor operations, including positional emulation. */
 } VitaOpenedFile;
@@ -225,6 +227,34 @@ EXPORT(SceLibKernel, 0x6C60AC61, SceUID, sceIoOpen, const char *file, int flags,
     return uid;
 }
 
+/* Standard descriptors belong to the native runtime. Each getter publishes a
+ * distinct guest UID; closing it releases only the guest wrapper. No native
+ * FILE object or numeric host descriptor is exposed to the guest. */
+static SceUID open_standard_stream(int stream)
+{
+    VitaOpenedFile *file=calloc(1,sizeof(*file));
+    if (!file) return io_errno(ENOMEM);
+    file->file=strdup("tty0:");
+    if (!file->file) { free(file);return io_errno(ENOMEM); }
+    file->uid=SceSysmem_get_next_uid();
+    file->native_fd=stream-1;
+    file->standard_stream=stream;
+    mutexInit(&file->io_lock);
+    SceUID uid=file->uid;
+    rwlockWriteLock(&g_vita_opened_files_lock);
+    vita_opened_files_dict_set_at(g_vita_opened_files,uid,file);
+    rwlockWriteUnlock(&g_vita_opened_files_lock);
+    return uid;
+}
+
+/* SceProcessmgr's library descriptor is declared in SceProcessmgr.c. */
+EXPORT(SceProcessmgr,0xC1727F59,SceUID,sceKernelGetStdin,void)
+{ return open_standard_stream(1); }
+EXPORT(SceProcessmgr,0xE5AA625C,SceUID,sceKernelGetStdout,void)
+{ return open_standard_stream(2); }
+EXPORT(SceProcessmgr,0xFA5E3ADA,SceUID,sceKernelGetStderr,void)
+{ return open_standard_stream(3); }
+
 EXPORT(SceIofilemgr, 0xC70B8886, int, sceIoClose, SceUID fd)
 {
     rwlockWriteLock(&g_vita_opened_files_lock);
@@ -236,7 +266,7 @@ EXPORT(SceIofilemgr, 0xC70B8886, int, sceIoClose, SceUID fd)
         return SCE_ERROR_ERRNO_EBADF;
     }
 
-    ret = close(vfile->native_fd);
+    ret = vfile->standard_stream ? 0 : close(vfile->native_fd);
     int saved_errno = errno;
     vita_opened_files_dict_erase(g_vita_opened_files, fd);
     free(vfile->file);
@@ -254,7 +284,7 @@ EXPORT(SceIofilemgr, 0xFDB32293, SceSSize, sceIoRead, SceUID fd, void *buf, SceS
     rwlockReadLock(&g_vita_opened_files_lock);
     VitaOpenedFile *vfile = get_opened_file_for_fd_locked(fd);
     ssize_t result;
-    if (!vfile) result = io_errno(EBADF);
+    if (!vfile || vfile->standard_stream>1) result = io_errno(EBADF);
     else if (nbyte && !buf) result = io_errno(EFAULT);
     else {
         mutexLock(&vfile->io_lock);
@@ -271,7 +301,7 @@ EXPORT(SceIofilemgr, 0x34EFD876, SceSSize, sceIoWrite, SceUID fd, const void *bu
     rwlockReadLock(&g_vita_opened_files_lock);
     VitaOpenedFile *vfile = get_opened_file_for_fd_locked(fd);
     ssize_t result;
-    if (!vfile) result = io_errno(EBADF);
+    if (!vfile || vfile->standard_stream==1) result = io_errno(EBADF);
     else if (nbyte && !buf) result = io_errno(EFAULT);
     else {
         mutexLock(&vfile->io_lock);
@@ -298,6 +328,7 @@ static int vita_io_positioned(SceUID fd, void *read_data, const void *write_data
     if (!file) result=io_errno(EBADF);
     else if (size && !(writing ? write_data : read_data)) result=io_errno(EFAULT);
     else if (offset < 0 || size > INT32_MAX) result=io_errno(EINVAL);
+    else if (file->standard_stream) result=io_errno(ESPIPE);
     else {
         mutexLock(&file->io_lock);
         off_t saved=lseek(file->native_fd,0,SEEK_CUR);
@@ -339,6 +370,7 @@ static SceOff vita_io_seek(SceUID fd, SceOff offset, int whence)
         position = io_errno(EBADF);
         goto done;
     }
+    if (vfile->standard_stream) { position=io_errno(ESPIPE);goto done; }
     switch (whence) {
     case SCE_SEEK_SET: whence = SEEK_SET; break;
     case SCE_SEEK_CUR: whence = SEEK_CUR; break;
@@ -467,6 +499,7 @@ static int io_errno(int error)
     case ENAMETOOLONG: return (int)0x8001005b;
     case EBADF: return SCE_ERROR_ERRNO_EBADF;
     case EINVAL: return SCE_ERROR_ERRNO_EINVAL;
+    case ESPIPE: return (int)0x8001001d;
     default: return (int)0x80010005; /* EIO */
     }
 }

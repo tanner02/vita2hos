@@ -487,6 +487,33 @@
   Bundled-libc and commercial-title boot still require hardware validation.
   No Switch files were changed.
 
+## Host standard streams after b7097a1
+
+- Added SceProcessmgr GetStdin/GetStdout/GetStderr NIDs, publishing a fresh guest
+  file UID per call in the existing I/O registry. Handles borrow native standard
+  descriptors; guest close removes only its wrapper and cannot close native
+  stdin/stdout/stderr or invalidate another guest wrapper.
+- Reads and writes use native byte-oriented I/O, retaining short transfers,
+  errors, binary data and EOF. Guest stdin is read-only; output/error handles
+  are write-only. Terminal handles reject normal and positional seeks with
+  ESPIPE. Allocation failures publish no descriptor.
+- Host tests exercise actual pipe I/O through NID-resolved getters, embedded NUL
+  and percent bytes, EOF, mode and pointer errors, multiple output wrappers,
+  protected native descriptor ownership, concurrent getters/writers/close, and
+  allocation failures. Existing file-handle lifetime tests remain applicable.
+  The full ASan/UBSan suite and ARM Debug/Release builds passed.
+- VitaSDK declares these as file UIDs; current Vita3K opens a separate tty handle
+  for each getter. Fresh-handle policy follows that implementation, not a new
+  hardware observation. References:
+  https://docs.vitasdk.org/kernel_2processmgr_8h.html and
+  https://github.com/Vita3K/Vita3K/blob/master/vita3k/modules/SceProcessmgr/SceProcessmgr.cpp
+- Native standard descriptors must remain stable for the lifetime of borrowed
+  guest wrappers. Interactive terminal input, firmware-exact error precedence,
+  and terminal-specific ioctl/stat semantics remain unverified. Output is routed
+  to the native runtime's configured console, which may be silent; this does not
+  add SD/network logging or establish bundled-libc startup or commercial boot.
+  No Switch files were changed.
+
 ## Runtime 15d400f48e5d3a3f5d811e2a67bd30a1388cc102
 
 - Standalone HOME title, owned fixed-address CPU probe SHA-256
