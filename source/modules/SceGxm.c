@@ -827,27 +827,6 @@ EXPORT(SceGxm, 0x0B94C50A, int, sceGxmDestroyRenderTarget, SceGxmRenderTarget *r
     return 0;
 }
 
-EXPORT(SceGxm, 0xED0F6E25, int, sceGxmColorSurfaceInit, SceGxmColorSurface *surface,
-       SceGxmColorFormat colorFormat, SceGxmColorSurfaceType surfaceType,
-       SceGxmColorSurfaceScaleMode scaleMode, SceGxmOutputRegisterSize outputRegisterSize,
-       unsigned int width, unsigned int height, unsigned int strideInPixels, void *data)
-{
-    SceGxmColorSurfaceInner *inner = (SceGxmColorSurfaceInner *)surface;
-
-    memset(inner, 0, sizeof(*inner));
-    inner->disabled = 0;
-    inner->downscale = scaleMode == SCE_GXM_COLOR_SURFACE_SCALE_MSAA_DOWNSCALE;
-    inner->width = width;
-    inner->height = height;
-    inner->strideInPixels = strideInPixels;
-    inner->data = data;
-    inner->colorFormat = colorFormat;
-    inner->surfaceType = surfaceType;
-    inner->outputRegisterSize = outputRegisterSize;
-
-    return 0;
-}
-
 EXPORT(SceGxm, 0x14BD831F, void, sceGxmSetFrontDepthFunc, SceGxmContext *context,
        SceGxmDepthFunc depthFunc)
 {
@@ -1090,7 +1069,7 @@ EXPORT(SceGxm, 0x8734FF4E, int, sceGxmBeginScene, SceGxmContext *context, unsign
         color_surface_inner ? color_surface_inner->width : 0,
         color_surface_inner ? color_surface_inner->height : 0,
         color_surface_inner ? color_surface_inner->strideInPixels : 0,
-        color_surface_inner ? color_surface_inner->data : NULL);
+        gxm_color_surface_data(color_surface_inner));
 
     dkCmdBufClear(context->cmdbuf);
     dkCmdBufBindRenderTarget(context->cmdbuf, &renderTarget->shadow_color_surface.view,
@@ -1109,7 +1088,7 @@ EXPORT(SceGxm, 0x8734FF4E, int, sceGxmBeginScene, SceGxmContext *context, unsign
 
     /* A render target can be reused with different guest color buffers. Load
      * the selected buffer rather than retaining the last shadow image's color. */
-    if (color_surface_inner && !color_surface_inner->disabled) {
+    if (gxm_color_surface_enabled(color_surface_inner)) {
         DkImage source;
         if (dk_image_for_gxm_color_surface(g_dk_device, &source, color_surface_inner)) {
             dkCmdBufBarrier(context->cmdbuf, DkBarrier_Full, DkInvalidateFlags_L2Cache);
@@ -1196,7 +1175,7 @@ EXPORT(SceGxm, 0xFE300E2F, int, sceGxmEndScene, SceGxmContext *context,
     dkCmdBufBarrier(context->cmdbuf, DkBarrier_Fragments, 0);
 
     /* Check whether we need to discard the color and/or depth/stencil surfaces */
-    discard_color = gxm_color_surface == NULL;
+    discard_color = !gxm_color_surface_enabled(gxm_color_surface);
     discard_stencil = !gxm_ds_surface || !sceGxmDepthStencilSurfaceIsEnabled(gxm_ds_surface) ||
                       !(gxm_ds_surface->zlsControl & SCE_GXM_DEPTH_STENCIL_FORCE_STORE_ENABLED);
 
@@ -2036,7 +2015,8 @@ static int context_flush_dirty_state(SceGxmContext *context)
         bool color_enabled;
         gxm_fragment_control_uniform(&context->state.fragment_control,
                                      context->state.two_sided_mode, &color_enabled);
-        if (!color_enabled) dkColorWriteStateSetMask(&effective, 0, 0);
+        if (!color_enabled || !gxm_color_surface_enabled(context->state.color_surface))
+            dkColorWriteStateSetMask(&effective, 0, 0);
         dkCmdBufBindColorWriteState(context->cmdbuf, &effective);
     }
 

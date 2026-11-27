@@ -17,22 +17,6 @@
 
 
 
-typedef struct {
-    // opaque start
-    uint32_t disabled : 1;
-    uint32_t downscale : 1;
-    uint32_t pad : 30;
-    uint32_t width;
-    uint32_t height;
-    uint32_t strideInPixels;
-    void *data;
-    SceGxmColorFormat colorFormat;
-    SceGxmColorSurfaceType surfaceType;
-    // opaque end
-    uint32_t outputRegisterSize;
-    SceGxmTexture backgroundTex;
-} SceGxmColorSurfaceInner;
-static_assert(sizeof(SceGxmColorSurfaceInner) == sizeof(SceGxmColorSurface), "Incorrect size");
 
 
 

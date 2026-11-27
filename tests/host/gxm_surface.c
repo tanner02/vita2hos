@@ -1,6 +1,8 @@
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
+#include "gxm/util.h"
+#include "../../source/gxm_texture.c"
 #include "../../source/gxm_surface.c"
 static SceGxmContext *viewport_context;
 static float viewport_arguments[6];
@@ -26,6 +28,55 @@ int main(void)
     set_viewport(fake_context, 480, -480, 272, 272, 0.25f, -0.75f);
     assert(viewport_context == fake_context);
     assert(memcmp(viewport_arguments, transform, sizeof(transform)) == 0);
+    int (*disable_color)(SceGxmColorSurface *)=(void *)module_get_func_export(0xf76b66bd,0x613639FA);
+    void *(*color_data)(const SceGxmColorSurface *)=(void *)module_get_func_export(0xf76b66bd,0x2DB6026C);
+    unsigned (*color_stride)(const SceGxmColorSurface *)=(void *)module_get_func_export(0xf76b66bd,0xF33D9980);
+    SceBool (*color_enabled)(const SceGxmColorSurface *)=(void *)module_get_func_export(0xf76b66bd,0x0E0EBB57);
+    assert(disable_color && color_data && color_stride && color_enabled);
+    assert(!color_data(NULL) && !color_stride(NULL) && !color_enabled(NULL));
+    struct { uint32_t before;SceGxmColorSurface color;uint32_t after; } guarded_color=
+        {.before=0x12345678,.after=0xabcdef01};
+    SceGxmColorSurface *color=&guarded_color.color;
+    assert(!sceGxmColorSurfaceInit(color,SCE_GXM_COLOR_FORMAT_U8U8U8U8_ABGR,
+        SCE_GXM_COLOR_SURFACE_LINEAR,SCE_GXM_COLOR_SURFACE_SCALE_MSAA_DOWNSCALE,
+        SCE_GXM_OUTPUT_REGISTER_SIZE_32BIT,960,544,1024,(void *)0x81000000));
+    assert(color_enabled(color) && color_data(color)==(void *)0x81000000 && color_stride(color)==1024);
+    assert(color->pbeSidebandWord==2 && color->pbeEmitWords[3]==0x81000000);
+    SceGxmColorSurface copy=*color;
+    assert(color_data(&copy)==color_data(color) && color_stride(&copy)==color_stride(color));
+    const struct { unsigned width,height,stride;uintptr_t data;SceGxmColorSurfaceType type; } bad_color[]={
+        {0,544,1024,0x1000,0},{4097,544,4104,0x1000,0},
+        {960,0,1024,0x1000,0},{960,4097,1024,0x1000,0},
+        {960,544,961,0x1000,0},{960,544,958,0x1000,0},
+        {960,544,1024,0x1001,0},{960,544,1024,0,0},
+        {96,64,96,0x1000,SCE_GXM_COLOR_SURFACE_SWIZZLED}};
+    for (unsigned i=0;i<sizeof(bad_color)/sizeof(bad_color[0]);++i) {
+        assert(sceGxmColorSurfaceInit(color,SCE_GXM_COLOR_FORMAT_U8U8U8U8_ABGR,
+            bad_color[i].type,SCE_GXM_COLOR_SURFACE_SCALE_NONE,SCE_GXM_OUTPUT_REGISTER_SIZE_32BIT,
+            bad_color[i].width,bad_color[i].height,bad_color[i].stride,(void *)bad_color[i].data)!=0);
+        assert(!memcmp(color,&copy,sizeof(copy)));
+    }
+#if UINTPTR_MAX>UINT32_MAX
+    assert((uint32_t)sceGxmColorSurfaceInit(color,SCE_GXM_COLOR_FORMAT_U8U8U8U8_ABGR,0,0,0,
+        960,544,1024,(void *)(uintptr_t)(UINT64_C(1)<<32))==SCE_GXM_ERROR_INVALID_POINTER);
+    assert(!memcmp(color,&copy,sizeof(copy)));
+#endif
+    assert((uint32_t)sceGxmColorSurfaceInit(NULL,0,0,0,0,1,1,2,(void *)0x1000)==SCE_GXM_ERROR_INVALID_POINTER);
+    assert((uint32_t)disable_color(NULL)==SCE_GXM_ERROR_INVALID_POINTER);
+    assert(!disable_color(color) && !color_enabled(color) && !color_data(color) && !color_stride(color));
+    const SceGxmColorSurfaceInner *color_inner=(const void *)color;
+    assert(!color_inner->width && !color_inner->height && !color_inner->outputRegisterSize);
+    const SceGxmTextureInner *background=(const void *)&color->backgroundTex;
+    assert(gxm_texture_get_type(background)==SCE_GXM_TEXTURE_LINEAR);
+    assert(gxm_texture_get_width(background)==1 && gxm_texture_get_height(background)==1);
+    assert(gxm_texture_get_format(background)==SCE_GXM_TEXTURE_FORMAT_U8U8U8U8_BGRA);
+    assert(!gxm_texture_get_data(background) && background->mip_count==15);
+    /* A disabled descriptor stays depth-only even if its stored data is nonzero. */
+    ((SceGxmColorSurfaceInner *)color)->data=0x2000;
+    assert(!gxm_color_surface_enabled((const void *)color) && color_data(color)==(void *)0x2000);
+    assert(!gxm_color_surface_enabled(NULL));
+    assert(guarded_color.before==0x12345678 && guarded_color.after==0xabcdef01);
+    assert(gxm_color_surface_enabled((const void *)&copy));
     uint32_t pitch = 0;
     assert(gxm_color_surface_linear_pitch(960, 544, 960, 960 * 544 * 4, &pitch) == 0);
     assert(pitch == 3840);
@@ -109,7 +160,8 @@ int main(void)
         assert(surface.depthData == before.depthData && surface.stencilData == before.stencilData);
     }
     const uint32_t nids[] = {0x269B56BE, 0x32F280F0, 0xAAFC062B, 0xF5D3F3E8, 0x85D4DEFE,
-                           0xF28A688A, 0xCA9D41D1, 0xA41DB0D6, 0x082200E1};
+                           0xF28A688A, 0xCA9D41D1, 0xA41DB0D6, 0x082200E1, 0xED0F6E25,
+                           0x613639FA, 0x0E0EBB57, 0x2DB6026C, 0xF33D9980};
     for (unsigned i = 0; i < sizeof(nids) / sizeof(nids[0]); ++i)
         assert(module_get_func_export(0xf76b66bd, nids[i]));
     puts("GXM surface clear values and export checks passed.");

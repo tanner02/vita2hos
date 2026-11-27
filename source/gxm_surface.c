@@ -5,6 +5,52 @@
 #include "gxm/surface.h"
 #include "module.h"
 
+EXPORT(SceGxm,0xED0F6E25,int,sceGxmColorSurfaceInit,SceGxmColorSurface *surface,
+       SceGxmColorFormat format,SceGxmColorSurfaceType type,SceGxmColorSurfaceScaleMode scale,
+       SceGxmOutputRegisterSize registers,unsigned width,unsigned height,unsigned stride,void *data)
+{
+    if (!surface || !data) return SCE_GXM_ERROR_INVALID_POINTER;
+#if UINTPTR_MAX>UINT32_MAX
+    if ((uintptr_t)data>UINT32_MAX) return SCE_GXM_ERROR_INVALID_POINTER;
+#endif
+    if (!width || width>4096 || !height || height>4096) return SCE_GXM_ERROR_INVALID_VALUE;
+    if (stride & 1) return SCE_GXM_ERROR_INVALID_ALIGNMENT;
+    if (stride<width || ((uintptr_t)data & 3)) return SCE_GXM_ERROR_INVALID_VALUE;
+    if (type==SCE_GXM_COLOR_SURFACE_SWIZZLED &&
+        ((width & (width-1)) || (height & (height-1)))) return SCE_GXM_ERROR_INVALID_ALIGNMENT;
+    SceGxmColorSurfaceInner value={0};
+    value.downscale=scale==SCE_GXM_COLOR_SURFACE_SCALE_MSAA_DOWNSCALE;
+    value.width=width;value.height=height;value.strideInPixels=stride;
+    value.data=(uint32_t)(uintptr_t)data;
+    value.colorFormat=format;value.surfaceType=type;value.outputRegisterSize=registers;
+    memcpy(surface,&value,sizeof(value));
+    return 0;
+}
+
+EXPORT(SceGxm,0x613639FA,int,sceGxmColorSurfaceInitDisabled,SceGxmColorSurface *surface)
+{
+    if (!surface) return SCE_GXM_ERROR_INVALID_POINTER;
+    SceGxmColorSurfaceInner value={.disabled=1};
+    int result=sceGxmTextureInitLinear(&value.backgroundTex,NULL,
+                                      SCE_GXM_TEXTURE_FORMAT_U8U8U8U8_BGRA,1,1,0);
+    if (result) return result;
+    memcpy(surface,&value,sizeof(value));
+    return 0;
+}
+
+EXPORT(SceGxm,0x0E0EBB57,SceBool,sceGxmColorSurfaceIsEnabled,const SceGxmColorSurface *surface)
+{
+    return gxm_color_surface_enabled((const SceGxmColorSurfaceInner *)surface);
+}
+EXPORT(SceGxm,0x2DB6026C,void *,sceGxmColorSurfaceGetData,const SceGxmColorSurface *surface)
+{
+    return gxm_color_surface_data((const SceGxmColorSurfaceInner *)surface);
+}
+EXPORT(SceGxm,0xF33D9980,unsigned,sceGxmColorSurfaceGetStrideInPixels,const SceGxmColorSurface *surface)
+{
+    return surface ? ((const SceGxmColorSurfaceInner *)surface)->strideInPixels : 0;
+}
+
 int gxm_color_surface_linear_pitch(uint32_t width, uint32_t height, uint32_t stride,
                                     size_t available, uint32_t *pitch)
 {

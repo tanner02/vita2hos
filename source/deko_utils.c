@@ -60,14 +60,14 @@ bool dk_image_for_gxm_color_surface(DkDevice device, DkImage *image,
 {
     DkImageLayoutMaker maker;
     DkImageLayout layout;
-    if (!surface || surface->disabled || !surface->data)
+    if (!gxm_color_surface_enabled(surface) || !surface->data)
         return false;
     /* Vita tiled/swizzled storage is not native NVIDIA block-linear storage.
      * Those layouts require an explicit conversion, not a native image view. */
     if (surface->surfaceType != SCE_GXM_COLOR_SURFACE_LINEAR ||
         surface->colorFormat != SCE_GXM_COLOR_FORMAT_U8U8U8U8_ABGR)
         return false;
-    VitaMemBlockInfo *info = SceSysmem_get_vita_memblock_info_for_addr(surface->data);
+    VitaMemBlockInfo *info = SceSysmem_get_vita_memblock_info_for_addr(gxm_color_surface_data(surface));
     if (!info || !info->dk_memblock) return false;
     DkMemBlock block = info->dk_memblock;
     uintptr_t address = (uintptr_t)surface->data, base = (uintptr_t)info->base;

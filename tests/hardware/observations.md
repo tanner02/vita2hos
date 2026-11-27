@@ -653,6 +653,40 @@
   No Switch files were changed; FIOS startup and commercial 3D boot remain
   unverified by this static analysis and host testing.
 
+## Host disabled color surfaces after f263b31
+
+- The source-export audit found shader-parameter queries already available; the
+  private main still imported missing color-surface queries and disabled init.
+  Added ColorSurfaceInitDisabled (613639fa), IsEnabled (0e0ebb57), GetData
+  (2db6026c), and GetStrideInPixels (f33d9980).
+- Moved the runtime-owned opaque color descriptor into surface.h, replacing its
+  native pointer field with an explicit 32-bit guest address. Its ARM32 layout
+  remains 48 bytes, data at byte 16 and background texture at byte 32; host
+  static assertions now check the same layout. Descriptor copies retain all
+  metadata and require no address-keyed side registry.
+- Disabled init clears dimensions/data and initializes the pinned reference's
+  null 1x1 BGRA linear background texture. Queries return actual descriptor
+  fields. Normal init is now in the tested surface unit, validates pointer,
+  dimensions, even stride, data alignment and swizzled power-of-two dimensions
+  before changing output. It retains the previous normal background-texture
+  behavior; general color-format/background texture population is unfinished.
+- Scene load, native image view, scene export/discard and effective color-write
+  masking all use enabled state. A non-NULL disabled color surface therefore
+  suppresses color loads/writes/export while retaining depth/stencil processing.
+  Fragment-program selection remains independent of color attachment presence.
+- Host tests resolve the added NIDs, exercise enabled/disabled metadata and
+  copied descriptors, check exact size/offsets and output guards, validate
+  background texture fields, and preserve an initialized descriptor on invalid
+  requests. The helper rejects disabled descriptors even with a nonzero stored
+  data address. The full ASan/UBSan suite and ARM Debug/Release builds passed.
+  Scene GPU behavior has not been executed on hardware here.
+- Layout/initialization reference: pinned external/Vita3K SceGxm.cpp around
+  ColorSurfaceInit/InitDisabled and the VitaSDK public ABI:
+  https://docs.vitasdk.org/group__SceGxmUser.html
+  Color-surface clipping, gamma conversion and broader render-target formats
+  remain unfinished. No Switch files were changed; commercial 3D boot remains
+  unverified.
+
 ## Runtime 15d400f48e5d3a3f5d811e2a67bd30a1388cc102
 
 - Standalone HOME title, owned fixed-address CPU probe SHA-256
