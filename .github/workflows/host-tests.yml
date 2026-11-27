@@ -13,7 +13,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Fetch test dependencies
-        run: git submodule update --init external/mlib external/vita-headers
+        run: git submodule update --init external/mlib external/dlmalloc external/vita-headers
       - name: Run I/O tests with sanitizers
         run: sh tests/host/run.sh
       - name: Check deployment backup and rollback behavior

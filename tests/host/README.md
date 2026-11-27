@@ -4,7 +4,7 @@ Run on Linux or WSL with a C compiler that supports AddressSanitizer and
 UndefinedBehaviorSanitizer:
 
 ```sh
-git submodule update --init external/mlib external/vita-headers
+git submodule update --init external/mlib external/dlmalloc external/vita-headers
 sh tests/host/run.sh
 ```
 
@@ -125,3 +125,15 @@ surface/sync objects. Marker calls emit push/set/pop annotations in Debug logs;
 Release builds omit them. There is no Razor capture, GPU timestamp, or marker
 stack query. Heartbeat follows the pinned reference's validated no-op behavior
 and never signals/waits a rendering or display fence.
+
+Mspace checks use the pinned public-domain dlmalloc backend with ONLY_MSPACES
+and no mmap/morecore growth. Four game-required exports create/destroy heaps
+and allocate/free inside the caller-owned pool. A serialized registry retains
+allocation identities, rejects overlapping pools and ignores invalid/double or
+wrong-heap frees. Tests cover bounded capacity, reuse/coalescing, live allocations
+at destruction, pool re-creation, guard bytes and concurrent allocation/free.
+Handles and allocated storage remain guest pool addresses; registry records
+use native metadata allocations. Base alignment currently requires 8 bytes;
+firmware edge cases, ARM execution, stats and additional mspace APIs are unverified
+or unimplemented. Destroying a heap invalidates all its outstanding allocations;
+callers must stop using them before destruction.

@@ -10,3 +10,6 @@
 	path = external/mlib
 	url = https://github.com/P-p-H-d/mlib.git
 	shallow = true
+[submodule "external/dlmalloc"]
+	path = external/dlmalloc
+	url = https://github.com/Vita3K/dlmalloc

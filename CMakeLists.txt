@@ -43,6 +43,11 @@ add_compile_options(
 
 add_subdirectory(external)
 
+# Caller-owned guest heaps must never grow into the native malloc arena.
+add_library(vita_mspace STATIC external/dlmalloc/dlmalloc.cc)
+target_compile_definitions(vita_mspace PRIVATE ONLY_MSPACES=1 USE_LOCKS=0
+    HAVE_MMAP=0 HAVE_MORECORE=0 NO_MALLOC_STATS=1)
+
 add_executable(vita2hos
     source/guest_tls.c
     source/thread_events.c
@@ -111,6 +116,7 @@ add_executable(vita2hos
     source/modules/SceKernelTime.c
     source/modules/SceLibKernel.c
     source/modules/SceClib.c
+    source/modules/SceMspace.c
     source/modules/SceLibc.c
     source/modules/SceLibm.c
     source/modules/SceSysmem.c
@@ -140,6 +146,7 @@ target_compile_definitions(vita2hos PRIVATE
 )
 
 target_link_libraries(vita2hos PRIVATE
+    vita_mspace
     shader
     spirv-cross-core
     fmt
