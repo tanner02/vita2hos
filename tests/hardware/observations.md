@@ -1,3 +1,17 @@
+## 2026-11-27: offline GLSL-to-DKSH pipeline checks
+
+Host UAM 1.1.0 compiles all 32 first-by-hash and 32 largest private fragment GXP
+candidates after production-flag GLSL translation. Seven pinned native-tool
+fixtures also compile, covering vertex and fragment stages. Reports include
+translator/compiler hashes and bounded DKSH header validation. No proprietary
+inputs or generated programs are committed. Controlled negative compiler checks
+prove that nonzero exit or zero exit without DKSH fails the runner.
+
+This establishes host compiler acceptance for the sampled programs, not ARM
+library equivalence, GPU execution, correct rendering or commercial title boot.
+Console and HLE files remain under ZCode's separate active claim; no new Codex
+hardware access or deployment occurred.
+
 ## 2026-11-27: real title initialization and offline uniform-shuffle correction
 
 The four-minute f11a064 run passed fixed-address placement and entered the real

@@ -96,7 +96,7 @@ static GxmUniformLayout check_layout(const SceGxmProgram *program, const std::st
 int main(int argc, char **argv)
 {
     try {
-        if (argc == 3 && std::string_view(argv[1]) == "--single") {
+        if ((argc == 3 || argc == 4) && std::string_view(argv[1]) == "--single") {
             const auto size = std::filesystem::file_size(argv[2]);
             require(size >= sizeof(SceGxmProgram) && size <= 64 * 1024 * 1024,
                     "invalid corpus program size");
@@ -131,12 +131,18 @@ int main(int argc, char **argv)
             require(convert_gxp_to_glsl_c(&glsl, program, "corpus", false, false, false,
                         false, nullptr, 0, false, false, nullptr), "runtime GLSL translation failed");
             require(glsl && *glsl, "empty GLSL translation");
+            if (argc == 4) {
+                std::ofstream output(argv[3], std::ios::binary | std::ios::trunc);
+                output.write(glsl, std::strlen(glsl));
+                output.close();
+                require(bool(output), "GLSL output write failed");
+            }
             std::cout << "TRANSLATED stage=" << (program->is_fragment() ? "fragment" : "vertex")
                       << " uniform_bytes=" << layout.size << " glsl_bytes=" << std::strlen(glsl) << '\n';
             free(glsl);
             return 0;
         }
-        require(argc == 2, "expected fixture directory or --single <program.gxp>");
+        require(argc == 2, "expected fixture directory or --single <program.gxp> [output.glsl]");
         unsigned checked = 0;
         unsigned named_checked = 0;
         unsigned misaligned_checked = 0;

@@ -52,3 +52,21 @@ Both this target and the production shader target include
 pinned recompiler with shuffle components marked as literal operands. The original
 submodule stays unchanged. Configuration fails if the expected upstream block or
 source list changes, requiring review when updating Vita3K.
+
+## Optional host UAM compilation
+
+Add `--uam /path/to/uam` to the corpus runner to compile each translated shader
+as `vert` or `frag`. The runner uses a separate temporary directory per program,
+removes generated GLSL/DKSH after checking it, and records compiler diagnostics,
+compiler executable SHA-256, DKSH SHA-256 and byte size in the private report.
+A compile pass requires both a zero compiler exit and a DKSH file satisfying the
+production wrapper's magic, offset and length checks. Translation-only runs
+retain their original `translated` status; full pipeline checks use `compiled`.
+
+The translator also accepts `--single program.gxp output.glsl` for explicit
+private inspection. Generated GLSL contains proprietary program details when
+using proprietary inputs. Keep it and the reports outside the repository.
+
+This uses the selected host UAM executable. It does not execute GPU code or
+prove identical behavior from the ARM compiler library, vertex binding hints,
+correct pixels, or game boot. DKSH header checks are structural checks only.
