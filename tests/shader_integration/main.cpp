@@ -15,7 +15,7 @@
 static void require(bool value, const char *message)
 { if (!value) throw std::runtime_error(message); }
 
-static GxmUniformLayout check_layout(const SceGxmProgram *program, const std::string &name)
+static GxmUniformLayout check_layout(const SceGxmProgram *program, const std::string &name, unsigned misalignment = 0)
 {
     GxmUniformLayout layout;
     require(gxp_uniform_layout_c(program, &layout), "uniform layout extraction failed");
@@ -24,6 +24,25 @@ static GxmUniformLayout check_layout(const SceGxmProgram *program, const std::st
         false, false, true, false, nullptr, 0, false, false, nullptr), "SPIR-V translation failed");
     std::vector<uint32_t> spirv(words, words + count);
     free(words);
+    if (misalignment) {
+        bool first = false, second = false;
+        for (size_t i = 5; i < spirv.size();) {
+            const unsigned length = spirv[i] >> 16;
+            require(length && length <= spirv.size() - i, "invalid SPIR-V instruction span");
+            if ((spirv[i] & 0xffff) == spv::OpVectorShuffle && length == 9) {
+                bool a = true, b = true;
+                for (unsigned j = 0; j < 4; ++j) {
+                    const unsigned expected_a = j < misalignment ? j : 4 + j - misalignment;
+                    const unsigned expected_b = j < misalignment ? 8 - misalignment + j : j;
+                    a &= spirv[i + 5 + j] == expected_a;
+                    b &= spirv[i + 5 + j] == expected_b;
+                }
+                first |= a; second |= b;
+            }
+            i += length;
+        }
+        require(first && second, "misaligned uniform shuffles missing or incorrect");
+    }
     spirv_cross::Compiler reflection(spirv);
     const auto resources = reflection.get_shader_resources();
     bool found_fragment_control = false;
@@ -120,6 +139,7 @@ int main(int argc, char **argv)
         require(argc == 2, "expected fixture directory or --single <program.gxp>");
         unsigned checked = 0;
         unsigned named_checked = 0;
+        unsigned misaligned_checked = 0;
         for (const auto &entry : std::filesystem::directory_iterator(argv[1])) {
             if (entry.path().extension() != ".gxp") continue;
             std::ifstream input(entry.path(), std::ios::binary);
@@ -143,9 +163,25 @@ int main(int argc, char **argv)
                 parameters[i].container_index = original;
                 break;
             }
+            // Exercise each secondary-register lane using owned pinned fixtures.
+            // Translation/reflection only: derivative shader instructions are not executed.
+            auto *containers = const_cast<SceGxmProgramParameterContainer *>(program->container());
+            for (unsigned i = 0; i < program->container_count; ++i) {
+                if (!containers[i].size_in_f32 || containers[i].container_index >= 15) continue;
+                const auto original = containers[i].base_sa_offset;
+                for (unsigned lane : {1U, 2U, 3U}) {
+                    containers[i].base_sa_offset = (original & ~3U) + lane;
+                    check_layout(program, entry.path().stem().string() + "-lane-" +
+                                 std::to_string(lane), lane);
+                    ++misaligned_checked;
+                }
+                containers[i].base_sa_offset = original;
+                break;
+            }
             ++checked;
         }
         require(checked >= 7, "expected seven pinned real GXP fixtures");
+        require(misaligned_checked >= 3, "expected all misaligned uniform lanes");
         require(named_checked >= 2, "expected derived named-buffer coverage");
     } catch (const std::exception &error) {
         std::cerr << error.what() << '\n'; return 1;

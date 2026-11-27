@@ -27,6 +27,8 @@ target_include_directories(gxm PRIVATE
 
 # Vita3K shader
 add_subdirectory(Vita3K/vita3k/shader)
+include("${PROJECT_SOURCE_DIR}/cmake/Vita3KUniformShuffle.cmake")
+vita2hos_fix_uniform_shuffle("${PROJECT_SOURCE_DIR}")
 target_include_directories(shader PRIVATE
     ${NX_ROOT}/include/spirv_cross
     ${NX_ROOT}/include/glslang

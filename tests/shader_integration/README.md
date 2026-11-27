@@ -38,3 +38,17 @@ than treating process exit alone as success. On POSIX it disables core dumps and
 limits each child to 2 GiB of address space. Keep proprietary corpora and reports
 outside the repository: diagnostics may contain program details. No GPU execution,
 UAM compilation or game rendering is established by a translation result.
+
+## Misaligned secondary registers
+
+Controlled fixture copies also move a uniform container's secondary-register
+start into lanes 1, 2 and 3. Each case verifies the two emitted SPIR-V shuffle
+component lists as well as uniform reflection and GLSL conversion. These copies
+are translation tests; their instruction/register correspondence is not used for
+rendering.
+
+Both this target and the production shader target include
+`cmake/Vita3KUniformShuffle.cmake`. It compiles a build-directory copy of the
+pinned recompiler with shuffle components marked as literal operands. The original
+submodule stays unchanged. Configuration fails if the expected upstream block or
+source list changes, requiring review when updating Vita3K.

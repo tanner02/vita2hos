@@ -1,3 +1,22 @@
+## 2026-11-27: real title initialization and offline uniform-shuffle correction
+
+The four-minute f11a064 run passed fixed-address placement and entered the real
+LBP executable. Logs show guest job workers, SceGxmDisplayQueue, Render Thread,
+and render-target allocations. The user observed no visuals; 32 first-use
+unsupported service calls remain and no clean exit or rendered frame is proved.
+Evidence remains private in `lbp-startup-3dda5cf/result-20261127-173420`.
+No SD payload was changed during this read-only collection.
+
+The shader compiler's misaligned-uniform copy path passed vector shuffle
+component numbers as SPIR-V IDs. Marking those operands as literals removes the
+assertion without changing component selection or disabling assertions. The
+first 32 sorted private GXP candidates now translate to GLSL, including the first
+eight that previously aborted. Pinned fixture reflection tests and controlled
+lane-1/2/3 derivatives pass, with explicit emitted shuffle-component checks.
+This is offline translation evidence only: no GPU execution or title boot proof.
+The dependency source is patched into the build directory; no unpublished
+submodule edit or proprietary shader data is needed to reproduce the build.
+
 ## 2026-11-27: savedata PASS, game layout retries, and offline shader failure
 
 Owned savedata v1 passes every report marker on f11a064, including metadata replacement, reopening, truncation and cleanup. Process/launch/image-close return zero. The original game/dependencies and its real PARAM.SFO were restored and readback-verified. A subsequent game run stops at fixed-address layout retries 24/64 and 25/64, before guest entry; no game startup or rendering was exercised. The user is asked to allow the bounded retry sequence to finish.
