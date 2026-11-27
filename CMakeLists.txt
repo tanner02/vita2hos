@@ -66,6 +66,7 @@ add_executable(vita2hos
     source/load_bind.c
     source/load_process.c
     source/load_process_run.c
+    source/load_module_paths.c
     source/load_exports.c
     source/load_fixed.c
     source/load_fixed_layout.c

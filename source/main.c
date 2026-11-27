@@ -15,6 +15,7 @@
 #include <time.h>
 
 #include "load_process.h"
+#include "load_module_paths.h"
 #include "load_retry.h"
 #include "log.h"
 #include "module.h"
@@ -164,7 +165,13 @@ int main(int argc, char *argv[])
     strftime(timestr, sizeof(timestr), "%c", localtime(&now));
     LOG("Starting at %s", timestr);
 
-    ret = load_process_load(&process, VITA2HOS_EXE_FILE, NULL, 0);
+    LoadModulePaths modules;
+    if (load_module_paths_file(&modules, VITA2HOS_MODULES_FILE, VITA2HOS_APP0_PATH) < 0)
+        fatal_error("Error reading guest module list.",
+                    "Check /vita2hos/modules.txt and /vita2hos/log.txt.");
+    const char *module_paths[LOAD_PROCESS_MAX_MODULES];
+    for (size_t i=0; i<modules.count; ++i) module_paths[i]=modules.paths[i];
+    ret = load_process_load(&process, VITA2HOS_EXE_FILE, module_paths, modules.count);
     if (ret == LOAD_LAYOUT_CONFLICT) {
         u64 program_id = 0;
         LoadRetryPacket next;

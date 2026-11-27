@@ -293,7 +293,8 @@ paths. It prepares all images, publishes every provider into a shared registry,
 and then binds all images. Failure rolls back in reverse image order; failed
 mapping cleanup retains the process owner for a later close attempt. The main
 executable fingerprint survives rollback for address-layout retries. The normal
-runtime launch now uses this process owner with an empty dependency list.
+runtime launch uses this process owner with dependencies from the optional
+module list described below; an absent list supplies no dependencies.
 Automated tests inject failures into preparation, publication, binding, and
 cleanup. This API does not infer module initialization order or call lifecycle
 functions, and no bundled commercial module has been executed on hardware.
@@ -317,6 +318,17 @@ normal process-exit event through the guest-thread wrapper. Host tests verify
 ordering, failure gating, missing entries, repeat-call rejection, and preservation
 of the main result. Automatic module discovery, stop/exit callback orchestration,
 and termination of all guest worker threads remain unfinished.
+
+For explicit dependency loading, `/vita2hos/modules.txt` contains one app-relative
+`.suprx` path per line, in startup order. Blank lines and lines beginning with
+`#` are ignored; CRLF is accepted. Paths resolve under `VITA2HOS_APP0_PATH`
+(normally `/vita2hos`). For example, `sce_module/libc.suprx` selects the bundled
+libc file. Duplicate entries, absolute paths, `.`/`..` segments, backslashes,
+device prefixes, embedded NUL bytes, oversized paths, and more than 32 modules
+are rejected. A missing list preserves the single-executable launch; an invalid
+or unreadable list fails loading. This explicit list does not infer Vita preload
+flags or initialization dependencies. Do not treat its availability as evidence
+that bundled commercial libraries or TLS already work.
 
 ### Experimental title-specific launch profile
 
