@@ -73,6 +73,7 @@ add_executable(vita2hos
     source/load_layout.c
     source/load_format.c
     source/load_relocate.c
+    source/load_var_relocate.c
     source/log.c
     source/log_file.c
     source/main.c

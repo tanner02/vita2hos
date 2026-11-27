@@ -17,5 +17,8 @@ typedef struct {
     bool needs_free;
 } segment_info_t;
 
-int load_relocate(const void *reloc, uint32_t size, segment_info_t *segments, int count);
+int load_relocate(const void *reloc, uint32_t size, const segment_info_t *segments, int count);
+/* Imported-variable formats 1/2 use an explicit symbol, not a symbol segment. */
+int load_variable_relocate(const void *reloc, uint32_t size, const segment_info_t *segments,
+                            int count, uint32_t symbol);
 #endif

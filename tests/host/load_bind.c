@@ -5,6 +5,8 @@
 Result jitTransitionToExecutable(Jit *jit);
 #include "../../source/module.c"
 #include "../../source/load_layout.c"
+#include "../../source/load_relocate.c"
+#include "../../source/load_var_relocate.c"
 #include "../../source/load_bind.c"
 #include "../../source/load_image.c"
 
@@ -33,8 +35,11 @@ static void prepare(LoadImage *image, unsigned char *memory, uint32_t provider,
     memcpy(memory, &import, sizeof(import));
     uint32_t nid=11, stub=0x1080;
     memcpy(memory+64, &nid, 4); memcpy(memory+68, &stub, 4);
-    ModuleGuestSymbol symbol = {11, MODULE_SYMBOL_FUNCTION, (void *)(uintptr_t)target};
-    assert(module_guest_exports_register(&image->exports, image, provider, &symbol, 1) == 0);
+    ModuleGuestSymbol symbols[] = {
+        {11, MODULE_SYMBOL_FUNCTION, (void *)(uintptr_t)target},
+        {12, MODULE_SYMBOL_VARIABLE, (void *)(uintptr_t)(target + 0x100)},
+    };
+    assert(module_guest_exports_register(&image->exports, image, provider, symbols, 2) == 0);
 }
 int main(void)
 {
@@ -43,6 +48,15 @@ int main(void)
     ModuleGuestExports process = {0};
     prepare(&first, a, 100, 101, 0x9001);
     prepare(&second, b, 101, 100, 0xa001);
+    sce_module_imports_raw first_import;
+    memcpy(&first_import, a, sizeof(first_import));
+    first_import.num_syms_vars=1; first_import.var_nid_table=0x1048;
+    first_import.var_entry_table=0x104c;
+    memcpy(a, &first_import, sizeof(first_import));
+    uint32_t var_nid=12, reference_address=0x10c0;
+    memcpy(a+72, &var_nid, 4); memcpy(a+76, &reference_address, 4);
+    uint32_t reference[]={12 << 4, 1 | (R_ARM_ABS32 << 8), 224};
+    memcpy(a+192, reference, sizeof(reference));
     assert(transitions == 0); /* Publication does not finalize guest code. */
     assert(load_image_publish(&first, &process) == 0);
     assert(load_image_publish(&second, &process) == 0);
@@ -54,7 +68,19 @@ int main(void)
     assert(load_image_close(&duplicate) == 0);
     assert(module_guest_exports_find(&process, 100, MODULE_SYMBOL_FUNCTION, 11, NULL) == (void *)0x9001);
     assert(load_image_bind(&first, &first.exports) < 0);
+    var_nid=0xffffffff; memcpy(a+72, &var_nid, 4);
+    assert(load_image_bind(&first, &process) < 0 && !first.bound);
+    var_nid=12; memcpy(a+72, &var_nid, 4);
+    reference_address=0x10fc; memcpy(a+76, &reference_address, 4);
+    memcpy(a+252, reference, 4); /* Header fits; full reference table does not. */
+    assert(load_image_bind(&first, &process) < 0 && !first.bound);
+    reference_address=0x10c0; memcpy(a+76, &reference_address, 4);
+    a[192] |= 1; /* Reserved header bits are not accepted. */
+    assert(load_image_bind(&first, &process) < 0 && !first.bound);
+    a[192] &= ~1;
     assert(load_image_bind(&first, &process) == 0);
+    uint32_t variable_value; memcpy(&variable_value, a+224, 4);
+    assert(variable_value == 0xa101);
     uint32_t words[3]; memcpy(words, a+128, sizeof(words));
     assert(words[0] == arm_encode_movw(12, 0xa001));
     assert(words[1] == arm_encode_movt(12, 0));

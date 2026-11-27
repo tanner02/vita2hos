@@ -255,8 +255,8 @@ Guest-library function/variable export registration is also available for startu
 binding. It copies symbol tables, tracks their owning image, and rejects duplicate
 providers or ambiguous symbols. A guest provider owns its entire library namespace
 so missing functions cannot silently fall back to a different allocator. The
-loader still needs to map/register/init the bundled SUPRX modules and bind their
-variable relocations; the registry alone does not load those modules.
+runtime still needs bundled SUPRX discovery and initialization; the registry
+alone does not load or start those modules.
 
 The export decoder accepts relocated 32-byte public-library records through a
 bounded image-reader callback. It validates function targets as executable,
@@ -297,6 +297,15 @@ runtime launch now uses this process owner with an empty dependency list.
 Automated tests inject failures into preparation, publication, binding, and
 cleanup. This API does not infer module initialization order or call lifecycle
 functions, and no bundled commercial module has been executed on hardware.
+
+Imported-variable reference tables now bind through the typed guest export
+registry. The loader validates the packed table header and supports alternate
+relocation formats 1 and 2 with an explicit symbol address, reusing the checked
+ARM relocation encoder. It copies relocation bytes before applying writes so a
+table cannot alter its own subsequent records. Missing variable providers,
+malformed tables, unsupported records, and out-of-range targets fail binding.
+These paths are covered by host tests, including cross-image variable binding;
+they have not yet been tested with bundled commercial libraries on hardware.
 
 ### Experimental title-specific launch profile
 

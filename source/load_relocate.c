@@ -3,7 +3,7 @@
 #include "sce-elf.h"
 #include "log.h"
 
-int load_relocate(const void *reloc, uint32_t size, segment_info_t *segs, int count)
+int load_relocate(const void *reloc, uint32_t size, const segment_info_t *segs, int count)
 {
     SCE_Rel record;
     SCE_Rel *entry = &record;

@@ -142,19 +142,34 @@ static int resolve_imports(const segment_info_t *segments, int count, sce_module
     }
 
     const uint32_t num_vars = IMP_GET_VARS_COUNT(import);
-    if (num_vars && ((uintptr_t)IMP_GET_VARS_TABLE(import) & 3))
+    if (num_vars && (((uintptr_t)IMP_GET_VARS_TABLE(import) |
+                     (uintptr_t)IMP_GET_VARS_ENTRIES(import)) & 3))
         return -1;
     const uint32_t *var_nids = map_loaded_address(segments, count,
         (uintptr_t)IMP_GET_VARS_TABLE(import), num_vars * sizeof(uint32_t));
-    if (num_vars && !var_nids)
+    const uint32_t *var_entries = map_loaded_address(segments, count,
+        (uintptr_t)IMP_GET_VARS_ENTRIES(import), num_vars * sizeof(uint32_t));
+    if (num_vars && (!var_nids || !var_entries))
         return -1;
     for (uint32_t i = 0; i < num_vars; i++) {
         memcpy(&nid, &var_nids[i], sizeof(nid));
-        LOG("  Trying to resolve variable NID 0x%08" PRIx32, nid);
-        /* TODO */
-        LOG("    Variable NID resolving currently not implemented!");
-        LOG("UNRESOLVED_IMPORT kind=variable library=0x%08" PRIx32 " nid=0x%08" PRIx32,
-            lib_nid, nid);
+        addr = module_get_var_export(lib_nid, nid);
+        if (!addr || (uintptr_t)addr > UINT32_MAX) {
+            LOG("UNRESOLVED_IMPORT kind=variable library=0x%08" PRIx32 " nid=0x%08" PRIx32,
+                lib_nid, nid);
+            return -1;
+        }
+        uint32_t table_address, header;
+        memcpy(&table_address, &var_entries[i], 4);
+        if (table_address & 3) return -1;
+        const void *table = map_loaded_address(segments, count, table_address, 4);
+        if (!table) return -1;
+        memcpy(&header, table, 4);
+        uint32_t bytes = (header >> 4) & 0xffffff;
+        if ((header & 0xf000000f) || bytes < 4) return -1;
+        table = map_loaded_address(segments, count, table_address, bytes);
+        if (!table || load_variable_relocate((const char *)table + 4, bytes - 4,
+                segments, count, (uint32_t)(uintptr_t)addr) < 0) return -1;
     }
 
     return 0;

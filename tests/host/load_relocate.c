@@ -3,6 +3,7 @@
 #include <stdarg.h>
 
 #include "../../source/load_relocate.c"
+#include "../../source/load_var_relocate.c"
 
 void log_printf(const char *format, ...) { (void)format; }
 
@@ -25,6 +26,26 @@ int main(void)
         {.p_type = PT_LOAD, .rx_addr = 0x2000, .p_memsz = 4},
     };
     SCE_Rel r = record(R_ARM_ABS32, 1, 0, 0, 0x123);
+    uint32_t variable1[] = {1 | (R_ARM_ABS32 << 8) | (0x12 << 16), 0};
+    assert(load_variable_relocate(variable1, sizeof(variable1), segments, 2, 0x3000) == 0);
+    assert(memory[0] == 0x3012);
+    uint32_t variable2[] = {2 | (R_ARM_REL32 << 8), 4, 0xfffffff0};
+    assert(load_variable_relocate(variable2, sizeof(variable2), segments, 2, 0x3000) == 0);
+    assert(memory[1] == 0x1fec);
+    assert(load_variable_relocate(variable1, 7, segments, 2, 0x3000) < 0);
+    assert(load_variable_relocate(variable2, 8, segments, 2, 0x3000) < 0);
+    variable2[0] |= 1 << 16;
+    assert(load_variable_relocate(variable2, 12, segments, 2, 0x3000) < 0);
+    variable1[0] = 3;
+    assert(load_variable_relocate(variable1, 8, segments, 2, 0x3000) < 0);
+    variable1[0] = 1 | (R_ARM_ABS32 << 8) | (15 << 4);
+    assert(load_variable_relocate(variable1, 8, segments, 2, 0x3000) < 0);
+    variable1[0] = 1 | (R_ARM_ABS32 << 8); variable1[1] = sizeof(memory);
+    assert(load_variable_relocate(variable1, 8, segments, 2, 0x3000) < 0);
+    uint32_t overlapping[] = {1 | (R_ARM_ABS32 << 8), 12, 1 | (R_ARM_ABS32 << 8), 16};
+    memcpy(memory, overlapping, sizeof(overlapping));
+    assert(load_variable_relocate(memory, sizeof(overlapping), segments, 2, 0x3000) == 0);
+    assert(memory[3] == 0x3000 && memory[4] == 0x3000);
     assert(load_relocate(&r, 12, segments, 2) == 0 && memory[0] == 0x2123);
     r = record(R_ARM_REL32, 1, 0, 4, 0x20);
     assert(load_relocate(&r, 12, segments, 2) == 0 && memory[1] == 0x101c);
