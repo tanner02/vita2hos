@@ -101,3 +101,12 @@ zeroed TLS, startup-failure cleanup and retry, duplicate-start rejection,
 normal return status and timeout error translation. They do not establish real
 thread scheduling or deletion concurrency. Reusing a completed thread requires
 additional lifecycle support; the current wrapper rejects a second start.
+
+Named condition checks use production synchronization code with pthread-backed
+native waits. They cover typed UID lookup, FIFO and priority selection, targeted
+and broadcast wakeups, mutex reacquisition, timeout in both wait phases, mutex
+and condition deletion, recursive counts, and public/raw export NIDs. Named
+waits share the existing lightweight reference policy: release/reacquire one
+count, and return errors without reacquisition. These policies follow the pinned
+Vita3K source and still need firmware comparison. Open/close-by-name, callback
+waits and condition-info queries remain unimplemented.

@@ -7,6 +7,7 @@
 #include <psp2/kernel/threadmgr/lw_mutex.h>
 #include <psp2/kernel/threadmgr/mutex.h>
 #include <psp2/kernel/threadmgr/lw_cond.h>
+#include <psp2/kernel/threadmgr/cond.h>
 
 #include "module.h"
 #include "modules/SceKernelThreadMgr.h"
@@ -364,6 +365,7 @@ typedef struct LwCond {
     SceUID uid;
     unsigned int attr, references;
     LwWaiter *waiters;
+    bool named;
 } LwCond;
 static LwCond *lw_conditions;
 
@@ -376,8 +378,24 @@ static int validate_cond_work(SceKernelLwCondWork *work)
 
 static LwCond *find_lwcond(SceKernelLwCondWork *work)
 {
-    for (LwCond *c=lw_conditions;c;c=c->next) if (c->work==work) return c;
+    for (LwCond *c=lw_conditions;c;c=c->next) if (!c->named && c->work==work) return c;
     return NULL;
+}
+
+static LwCond *find_named_cond(SceUID uid)
+{
+    for (LwCond *c=lw_conditions;c;c=c->next) if (c->named && c->uid==uid) return c;
+    return NULL;
+}
+static int named_cond_result(int result)
+{
+    switch ((uint32_t)result) {
+    case SCE_KERNEL_ERROR_LW_COND_ERROR: return SCE_KERNEL_ERROR_COND_ERROR;
+    case SCE_KERNEL_ERROR_UNKNOWN_LW_COND_ID: return SCE_KERNEL_ERROR_UNKNOWN_COND_ID;
+    case SCE_KERNEL_ERROR_WAIT_DELETE_LW_MUTEX: return SCE_KERNEL_ERROR_WAIT_DELETE_MUTEX;
+    case SCE_KERNEL_ERROR_WAIT_DELETE_LW_COND: return SCE_KERNEL_ERROR_WAIT_DELETE_COND;
+    default: return named_mutex_result(result);
+    }
 }
 
 static void release_lwcond_locked(LwCond *c)
@@ -433,18 +451,18 @@ EXPORT(SceLibKernel, 0x48C7EAE6, int, sceKernelCreateLwCond, SceKernelLwCondWork
     return result;
 }
 
-EXPORT(SceLibKernel, 0x721F6CB3, int, sceKernelDeleteLwCond, SceKernelLwCondWork *work)
+static int delete_cond(SceKernelLwCondWork *work, SceUID uid, bool named)
 {
-    int result=validate_cond_work(work);
+    int result=named ? 0 : validate_cond_work(work);
     if (result) return result;
     mutexLock(&lw_lock);
     LwCond **link=&lw_conditions;
-    while (*link && (*link)->work!=work) link=&(*link)->next;
+    while (*link && ((*link)->named!=named || (named ? (*link)->uid!=uid : (*link)->work!=work))) link=&(*link)->next;
     LwCond *c=*link;
     result=c ? 0 : SCE_KERNEL_ERROR_UNKNOWN_LW_COND_ID;
     if (c) {
         *link=c->next;
-        SceUID deleted=-1;memcpy(work,&deleted,sizeof(deleted));
+        if (!named) { SceUID deleted=-1;memcpy(work,&deleted,sizeof(deleted)); }
         for (LwWaiter *w=c->waiters;w;w=w->next) if (!w->done)
             finish_cond_waiter(w,SCE_KERNEL_ERROR_WAIT_DELETE_LW_COND);
         release_lwcond_locked(c);
@@ -453,12 +471,12 @@ EXPORT(SceLibKernel, 0x721F6CB3, int, sceKernelDeleteLwCond, SceKernelLwCondWork
     return result;
 }
 
-static int signal_lwcond(SceKernelLwCondWork *work, bool all, SceUID target)
+static int signal_cond(SceKernelLwCondWork *work, SceUID uid, bool named, bool all, SceUID target)
 {
-    int result=validate_cond_work(work);
+    int result=named ? 0 : validate_cond_work(work);
     if (result) return result;
     mutexLock(&lw_lock);
-    LwCond *c=find_lwcond(work);
+    LwCond *c=named ? find_named_cond(uid) : find_lwcond(work);
     result=c ? 0 : SCE_KERNEL_ERROR_UNKNOWN_LW_COND_ID;
     if (c) for (LwWaiter *w=c->waiters;w;w=w->next) {
         if (w->done || (target && w->owner!=target)) continue;
@@ -470,27 +488,26 @@ static int signal_lwcond(SceKernelLwCondWork *work, bool all, SceUID target)
 }
 
 EXPORT(SceLibKernel, 0x3AC63B9A, int, sceKernelSignalLwCond, SceKernelLwCondWork *work)
-{ return signal_lwcond(work,false,0); }
+{ return signal_cond(work,0,false,false,0); }
 EXPORT(SceLibKernel, 0xE5241A0C, int, sceKernelSignalLwCondAll, SceKernelLwCondWork *work)
-{ return signal_lwcond(work,true,0); }
+{ return signal_cond(work,0,false,true,0); }
 EXPORT(SceLibKernel, 0xFC1A48EB, int, sceKernelSignalLwCondTo, SceKernelLwCondWork *work,
        SceUID target)
 {
     if (target<=0) return SCE_KERNEL_ERROR_ILLEGAL_THREAD_ID;
-    return signal_lwcond(work,false,target);
+    return signal_cond(work,0,false,false,target);
 }
 
-EXPORT(SceLibKernel, 0xE1878282, int, sceKernelWaitLwCond, SceKernelLwCondWork *work,
-       unsigned int *timeout)
+static int wait_cond(SceKernelLwCondWork *work, SceUID uid, bool named, unsigned int *timeout)
 {
-    int result=validate_cond_work(work);
+    int result=named ? 0 : validate_cond_work(work);
     if (result) return result;
     VitaThreadInfo *thread=SceKernelThreadMgr_get_thread_info();
     if (!thread || thread->uid<=0) return SCE_KERNEL_ERROR_UNKNOWN_THREAD_ID;
     uint64_t start=armGetSystemTick();
     uint64_t duration=timeout ? (uint64_t)*timeout*1000 : UINT64_MAX;
     mutexLock(&lw_lock);
-    LwCond *c=find_lwcond(work);
+    LwCond *c=named ? find_named_cond(uid) : find_lwcond(work);
     if (!c) { result=SCE_KERNEL_ERROR_UNKNOWN_LW_COND_ID;goto done; }
     LwMutex *m=c->mutex;
     if (m->deleted) { result=SCE_KERNEL_ERROR_WAIT_DELETE_LW_MUTEX;goto done; }
@@ -535,4 +552,53 @@ done:
     }
     mutexUnlock(&lw_lock);
     return result;
+}
+
+EXPORT(SceLibKernel,0x721F6CB3,int,sceKernelDeleteLwCond,SceKernelLwCondWork *work)
+{ return delete_cond(work,0,false); }
+EXPORT(SceLibKernel,0xE1878282,int,sceKernelWaitLwCond,SceKernelLwCondWork *work,unsigned int *timeout)
+{ return wait_cond(work,0,false,timeout); }
+
+EXPORT(SceLibKernel,0x50572FDA,SceUID,sceKernelCreateCond,const char *name,SceUInt attr,
+       SceUID mutex_uid,const SceKernelCondOptParam *option)
+{
+    if (!name) return SCE_KERNEL_ERROR_ILLEGAL_ADDR;
+    if (attr & ~SCE_KERNEL_ATTR_THREAD_PRIO) return SCE_KERNEL_ERROR_ILLEGAL_ATTR;
+    if (option && option->size!=sizeof(*option)) return SCE_KERNEL_ERROR_INVALID_ARGUMENT_SIZE;
+    LwCond *c=calloc(1,sizeof(*c));
+    if (!c) return SCE_KERNEL_ERROR_NO_MEMORY;
+    mutexLock(&lw_lock);
+    LwMutex *m=find_named_mutex(mutex_uid);
+    int result=SCE_KERNEL_ERROR_UNKNOWN_MUTEX_ID;
+    if (m) {
+        c->uid=SceSysmem_get_next_uid();
+        if (c->uid<=0) result=SCE_KERNEL_ERROR_NO_MEMORY;
+        else {
+            c->named=true;c->mutex=m;c->attr=attr;c->references=1;
+            ++m->references;
+            c->next=lw_conditions;lw_conditions=c;
+            result=c->uid;
+        }
+    }
+    mutexUnlock(&lw_lock);
+    if (result<0) free(c);
+    return result;
+}
+EXPORT(SceThreadmgr,0xCC14FA59,SceUID,_sceKernelCreateCond,const char *name,SceUInt attr,
+       SceUID mutex_uid,const SceKernelCondOptParam *option)
+{ return sceKernelCreateCond(name,attr,mutex_uid,option); }
+EXPORT(SceLibKernel,0xC88D44AD,int,sceKernelWaitCond,SceUID uid,unsigned int *timeout)
+{ return named_cond_result(wait_cond(NULL,uid,true,timeout)); }
+EXPORT(SceThreadmgr,0x040795C7,int,_sceKernelWaitCond,SceUID uid,unsigned int *timeout)
+{ return sceKernelWaitCond(uid,timeout); }
+EXPORT(SceThreadmgr,0x879E6EBD,int,sceKernelDeleteCond,SceUID uid)
+{ return named_cond_result(delete_cond(NULL,uid,true)); }
+EXPORT(SceThreadmgr,0x6ED2E2DC,int,sceKernelSignalCond,SceUID uid)
+{ return named_cond_result(signal_cond(NULL,uid,true,false,0)); }
+EXPORT(SceThreadmgr,0xC2E7AC22,int,sceKernelSignalCondAll,SceUID uid)
+{ return named_cond_result(signal_cond(NULL,uid,true,true,0)); }
+EXPORT(SceThreadmgr,0x1269F4EC,int,sceKernelSignalCondTo,SceUID uid,SceUID target)
+{
+    if (target<=0) return SCE_KERNEL_ERROR_ILLEGAL_THREAD_ID;
+    return named_cond_result(signal_cond(NULL,uid,true,false,target));
 }
