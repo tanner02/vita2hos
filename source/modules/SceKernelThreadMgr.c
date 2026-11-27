@@ -26,6 +26,7 @@
 
 #define HOS_HIGHEST_PRIORITY 28
 #define HOS_LOWEST_PRIORITY  59
+#define MAIN_EXIT_JOIN_GRACE_NS UINT64_C(100000000)
 
 static s32 g_vita_thread_info_tls_slot_id;
 static GuestTlsTemplate g_main_tls; /* Borrowed from the live process image. */
@@ -384,9 +385,23 @@ int SceKernelThreadMgr_main_entry_configured(SceKernelThreadEntry entry, int arg
         return -1;
     }
 
-    // TODO: Also wait for all threads to finish?
-    sceKernelWaitThreadEnd(thid, NULL, NULL);
-    sceKernelDeleteThread(thid);
+    /* A worker may request ExitProcess while main is still waiting on work.
+     * Give normal main-thread exit a short grace period, never an unbounded
+     * join. Pin its native handle against concurrent DeleteThread while waiting.
+     * The bootstrap checks every thread before any guest/GPU/TLS reclamation;
+     * live threads require whole-process native exit, not forced thread close. */
+    rwlockReadLock(&g_vita_thread_infos_lock);
+    VitaThreadInfo **main_record = vita_thread_info_dict_get(g_vita_thread_infos, thid);
+    res = main_record ? waitSingle(waiterForThread(&(*main_record)->thread), MAIN_EXIT_JOIN_GRACE_NS) : 0;
+    rwlockReadUnlock(&g_vita_thread_infos_lock);
+    if (R_FAILED(res)) {
+        LOG("Process exit: main thread 0x%x not joined: 0x%" PRIx32
+            "; retaining record for bootstrap quiescence", thid, res);
+    } else {
+        int deleted = sceKernelDeleteThread(thid);
+        if (deleted < 0 && (uint32_t)deleted != SCE_KERNEL_ERROR_UNKNOWN_THREAD_ID)
+            LOG("Process exit: main thread 0x%x cleanup deferred: 0x%x", thid, deleted);
+    }
 
     return SceLibKernel_get_process_exit_res();
 }

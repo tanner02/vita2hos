@@ -317,3 +317,11 @@ ticks when no framebuffer is available and presentation-driven ticks otherwise;
 GPU stalls can still delay these ticks. Immediate versus next-frame application
 and clearing the visible output when the framebuffer is disabled remain outside
 this synchronization change.
+
+Process-exit coordination tests retain a live main guest thread while a worker
+signals process exit. The host main-entry wait returns after a bounded native
+join (100 ms grace) or a native join error, preserving the process status and
+thread/TLS ownership. Quiescence still rejects teardown until the test explicitly
+releases and joins the worker and main threads. A normally terminating main is
+also joined and deleted. These host tests exercise the bootstrap precondition;
+they do not simulate Horizon whole-process termination.

@@ -65,7 +65,7 @@ Result waitSingle(Waiter waiter,uint64_t ns)
         }
         return 0;
     }
-    assert(waiter.thread && (ns==UINT64_MAX || ns==0));
+    assert(waiter.thread);
     if(ns==0) {
         Thread *thread=waiter.thread;
         if(thread->joined)return 0;
@@ -73,10 +73,22 @@ Result waitSingle(Waiter waiter,uint64_t ns)
         if(!result){thread->joined=true;atomic_fetch_add(&joins,1);}
         return result ? 0xEA01 : 0;
     }
+    if (ns != UINT64_MAX) assert(ns == MAIN_EXIT_JOIN_GRACE_NS);
     if (atomic_exchange(&fail_wait,0)) return 1;
     Thread *thread=waiter.thread;
     if (!thread->joined) {
-        assert(!pthread_join(thread->native,NULL));thread->joined=true;
+        int result;
+        if (ns == UINT64_MAX) result = pthread_join(thread->native, NULL);
+        else {
+            struct timespec deadline;
+            assert(!clock_gettime(CLOCK_REALTIME, &deadline));
+            uint64_t total = (uint64_t)deadline.tv_nsec + ns;
+            deadline.tv_sec += total / 1000000000;
+            deadline.tv_nsec = total % 1000000000;
+            result = pthread_timedjoin_np(thread->native, NULL, &deadline);
+        }
+        if (result) return result == ETIMEDOUT ? 0xEA01 : (Result)result;
+        thread->joined=true;
         atomic_fetch_add(&joins,1);
     }
     return 0;
@@ -231,6 +243,50 @@ static void shutdown_live_worker(void)
     assert(!SceKernelThreadMgr_quiesce());
     assert(!sceKernelDeleteThread(uid));assert(!sceKernelDeleteThread(dormant));
 }
+
+static atomic_bool exit_main_release;
+static atomic_int exit_main_uid, exit_worker_uid;
+static int process_exit_worker(SceSize args, void *argp)
+{
+    (void)args; (void)argp;
+    atomic_store(&process_exit, true);
+    ueventSignal(&process_event);
+    return 77;
+}
+static int waiting_process_main(SceSize args, void *argp)
+{
+    (void)args; (void)argp;
+    atomic_store(&exit_main_uid, SceKernelThreadMgr_get_thread_info()->uid);
+    SceUID worker = create_thread("exit requester", process_exit_worker, 100, 256*1024);
+    assert(worker > 0);
+    atomic_store(&exit_worker_uid, worker);
+    assert(!start_thread(worker, 0, NULL));
+    while (!atomic_load(&exit_main_release)) sched_yield();
+    return 0;
+}
+static void worker_requests_process_exit(bool fail_join)
+{
+    atomic_store(&process_exit, false);
+    atomic_store(&exit_main_release, false);
+    atomic_store(&fail_wait, fail_join);
+    ueventCreate(&process_event, false);
+    LoadProcessParameters parameters = { .has_main_priority = true, .main_priority = 100 };
+    uint64_t before = armGetSystemTick();
+    assert(SceKernelThreadMgr_main_entry_configured(waiting_process_main, 0, NULL, &parameters) == 77);
+    assert(armTicksToNs(armGetSystemTick()-before) < UINT64_C(5000000000));
+    SceUID main_uid = atomic_load(&exit_main_uid), worker_uid = atomic_load(&exit_worker_uid);
+    VitaThreadInfo *main_record = get_thread_info_for_uid(main_uid);
+    assert(main_record && !atomic_load(&main_record->completed));
+    assert(*(uint32_t *)main_record->vita_user_tls == 0x12345678);
+    assert((uint32_t)sceKernelDeleteThread(main_uid) == SCE_KERNEL_ERROR_NOT_DORMANT);
+    assert((uint32_t)SceKernelThreadMgr_quiesce() == SCE_KERNEL_ERROR_NOT_DORMANT);
+    assert((uint32_t)SceKernelThreadMgr_finish() == SCE_KERNEL_ERROR_NOT_DORMANT);
+    atomic_store(&exit_main_release, true);
+    assert(!sceKernelWaitThreadEnd(main_uid, NULL, NULL));
+    assert(!sceKernelWaitThreadEnd(worker_uid, NULL, NULL));
+    assert(!sceKernelDeleteThread(main_uid)); assert(!sceKernelDeleteThread(worker_uid));
+    assert(!SceKernelThreadMgr_quiesce());
+}
 int main(void)
 {
     GuestTlsTemplate tls={0};uint32_t seed=0x12345678;
@@ -245,6 +301,16 @@ int main(void)
     signal_roundtrips();
     priority_delete_race();
     shutdown_live_worker();
+    assert(!SceKernelThreadMgr_finish());
+    assert(!SceKernelThreadMgr_init(&tls,true));
+    ueventCreate(&process_event, false);
+    LoadProcessParameters exit_parameters = { .has_main_priority = true, .main_priority = 100 };
+    assert(SceKernelThreadMgr_main_entry_configured(process_exit_worker, 0, NULL, &exit_parameters) == 77);
+    assert(!vita_thread_info_dict_size(g_vita_thread_infos));
+    worker_requests_process_exit(false);
+    assert(!SceKernelThreadMgr_finish());
+    assert(!SceKernelThreadMgr_init(&tls,true));
+    worker_requests_process_exit(true);
     assert(!SceKernelThreadMgr_finish());guest_tls_template_clear(&tls);
-    puts("Module startup threads: return/exit status, main continuation, isolated TLS, events, joins and failure gating passed.");
+    puts("Module startup threads: return/exit status, main continuation, isolated TLS, events, joins, failure gating and worker-requested bounded process exit passed.");
 }
