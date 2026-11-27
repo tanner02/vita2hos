@@ -184,3 +184,18 @@ order, failed-dependency gating, one-shot invocation and main remaining READY.
 The frontend holds diagnostic execution for manual closure even after startup
 failure: module-start joins cannot establish that resident workers stopped.
 This mode does not make unresolved imports implemented or prove a title boots.
+
+Missing function imports now branch to a bounded pool of compiled native
+wrappers. Each records UNSUPPORTED_CALL on its first execution, with library/NID,
+import stub and raw caller return address. Missing APIs still return NO_FUNC_NID;
+the wrappers preserve the old r1 high-word result, and do not implement unknown
+float or aggregate return conventions. The pool has 1024 sites across live images;
+exhaustion logs a warning and retains the old immediate error stub. Successful
+image closure releases slots, while failed cleanup retains them. Tests cover
+concurrent first use, site/owner isolation, reuse, exhaustion, binding instruction
+encoding, legacy fallback and cleanup retry. Compiled ARM inspection checks r1
+save/restore; native execution remains a hardware test requirement.
+
+report-imports.py separates binding inventory from runtime first-use records.
+Duplicates are log occurrences, not call counts; only the first caller per
+traced import/lifetime is recorded. Missing records do not prove an API was unused.

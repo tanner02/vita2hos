@@ -34,6 +34,30 @@ class ReportTests(unittest.TestCase):
         rows = module.report(legacy + structured * 2, {}, {})
         self.assertEqual(rows[0]["log_occurrences"], 2)
 
+    def test_first_runtime_uses_are_separate_from_binding_records(self):
+        line = ("UNSUPPORTED_CALL kind=function library=0xCAE9ACE6 nid=0x15E2A45D "
+                "stub=0x81001000 return_address=0x81002001\n")
+        rows = module.called_imports(line * 2, {0xcae9ace6: "SceLibKernel"},
+                                    {(0xcae9ace6, "function", 0x15e2a45d): "sceKernelCallModuleExit"})
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["log_occurrences"], 2)
+        self.assertEqual(rows[0]["first_return_address"], "0x81002001")
+        self.assertEqual(rows[0]["symbol"], "sceKernelCallModuleExit")
+        self.assertEqual(module.report(line, {}, {}), [])
+
+    def test_runtime_site_scope_partial_lines_and_first_address(self):
+        prefix = "UNSUPPORTED_CALL kind=function library=0x12345678 nid=0x11111111 "
+        log = prefix + "stub=0x81001000 return_address=0x81002001\n"
+        log += prefix + "stub=0x81001000 return_address=0x81003001\n"
+        log += prefix + "stub=0x81001010 return_address=0x123456789abcdef0\n"
+        log += prefix + "stub=0x81001020 return_address=0x1234\n"
+        rows = module.called_imports(log, {}, {})
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[0]["first_return_address"], "0x81002001")
+        self.assertIsNone(rows[0]["symbol"])
+        self.assertEqual(rows[1]["first_return_address"], "0x123456789abcdef0")
+        self.assertEqual(module.called_imports("UNRESOLVED_IMPORT kind=function library=0x12345678 nid=0x11111111", {}, {}), [])
+
     def test_pinned_database(self):
         libraries, symbols = module.sdk_symbols(root / "external/vita-headers/db/360")
         self.assertEqual(libraries[0xcae9ace6], "SceLibKernel")

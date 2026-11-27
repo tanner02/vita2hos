@@ -1,6 +1,7 @@
 #include <stdlib.h>
 
 #include "load.h"
+#include "missing_imports.h"
 
 int load_image_publish(LoadImage *image, ModuleGuestExports *exports)
 {
@@ -54,5 +55,6 @@ Result load_image_close(LoadImage *image)
     }
     free(image->data);
     image->data = NULL;
+    missing_import_release(image);
     return 0;
 }

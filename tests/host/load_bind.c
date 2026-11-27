@@ -13,13 +13,13 @@ Result jitTransitionToExecutable(Jit *jit);
 
 EXPORT(TestLibrary, 1, int, test_export, void) { return 0; }
 DECLARE_LIBRARY(TestLibrary, 2);
-static unsigned transitions;
+static unsigned transitions,call_reports;
 static Result transition_result, close_result;
 Result jitTransitionToExecutable(Jit *jit) { (void)jit; ++transitions; return transition_result; }
 Result jitClose(Jit *jit) { (void)jit; return close_result; }
 Result load_fixed_close(LoadFixedMemory *memory) { (void)memory; return 0; }
 void load_fixed_flush(const LoadFixedMemory *memory) { (void)memory; }
-void log_printf(const char *format, ...) { (void)format; }
+void log_printf(const char *format, ...) { if(strstr(format,"UNSUPPORTED_CALL"))++call_reports; }
 
 static void prepare(LoadImage *image, unsigned char *memory, uint32_t provider,
                      uint32_t dependency, uint32_t target)
@@ -114,5 +114,29 @@ int main(void)
     assert(process.libraries == NULL);
     module_guest_exports_clear(&process);
     assert(load_image_bind(&second, &process) < 0);
+    LoadImage missing;unsigned char d[256]={0};
+    prepare(&missing,d,102,999,0x9001);
+    assert(!load_image_publish(&missing,&process));
+    assert(!load_image_bind(&missing,&process));
+    uintptr_t trace=missing_import_bind(&missing,999,11,0x1080);assert(trace);
+    memcpy(words,d+128,sizeof(words));
+    assert(words[0]==arm_encode_movw(12,(uint16_t)trace));
+    assert(words[1]==arm_encode_movt(12,(uint16_t)(trace>>16)) && words[2]==arm_encode_bx(12));
+    typedef uint64_t (*Trace)(uint32_t,uint32_t,uint32_t,uint32_t);
+    close_result=1;assert(load_image_close(&missing)!=0);
+    assert((uint32_t)((Trace)trace)(0,7,0,0)==SCE_KERNEL_ERROR_MODULEMGR_NO_FUNC_NID && call_reports==1);
+    close_result=0;assert(!load_image_close(&missing));
+    trace=missing_import_bind(&missing,999,11,0x1080);
+    assert((uint32_t)((Trace)trace)(0,7,0,0)==SCE_KERNEL_ERROR_MODULEMGR_NO_FUNC_NID && call_reports==2);
+    missing_import_release(&missing);
+    int pool_owner=0;
+    for(unsigned i=0;i<MISSING_IMPORT_SLOTS;i++)assert(missing_import_bind(&pool_owner,1000,i,0x2000+i*12));
+    LoadImage overflow;unsigned char e[256]={0};prepare(&overflow,e,103,999,0x9001);
+    assert(!load_image_publish(&overflow,&process) && !load_image_bind(&overflow,&process));
+    memcpy(words,e+128,sizeof(words));
+    assert(words[0]==arm_encode_movw(0,(uint16_t)SCE_KERNEL_ERROR_MODULEMGR_NO_FUNC_NID));
+    assert(words[1]==arm_encode_movt(0,(uint16_t)(SCE_KERNEL_ERROR_MODULEMGR_NO_FUNC_NID>>16)) && words[2]==arm_encode_ret());
+    assert(!load_image_close(&overflow));missing_import_release(&pool_owner);
+
     puts("Two-phase image binding, dependency publication and teardown checks passed.");
 }

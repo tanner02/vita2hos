@@ -4,6 +4,7 @@
 #include "load.h"
 #include "load_layout.h"
 #include "arm-encode.h"
+#include "missing_imports.h"
 #include "log.h"
 #include "sce-elf.h"
 
@@ -38,7 +39,7 @@
 
 
 
-static int resolve_imports(const segment_info_t *segments, int count, sce_module_imports_u_raw *import);
+static int resolve_imports(const void *owner,const segment_info_t *segments, int count, sce_module_imports_u_raw *import);
 
 static void *map_loaded_address(const segment_info_t *segments, int count, uintptr_t address,
                                  size_t size)
@@ -78,7 +79,7 @@ int load_image_bind(LoadImage *image, ModuleGuestExports *exports)
             goto fail;
         }
         LOG("Resolving imports for library NID 0x%08" PRIx32, IMP_GET_NID(import));
-        if (resolve_imports(segments, num_segments, import) < 0) {
+        if (resolve_imports(image,segments, num_segments, import) < 0) {
             LOG("Failed to resolve imports for library NID 0x%08" PRIx32, IMP_GET_NID(import));
             goto fail;
         }
@@ -101,7 +102,7 @@ fail:
     return -1;
 }
 
-static int resolve_imports(const segment_info_t *segments, int count, sce_module_imports_u_raw *import)
+static int resolve_imports(const void *owner,const segment_info_t *segments, int count, sce_module_imports_u_raw *import)
 {
     const void *addr;
     uint32_t nid;
@@ -139,9 +140,17 @@ static int resolve_imports(const segment_info_t *segments, int count, sce_module
             stub[1] = arm_encode_movt(12, (uint16_t)(((uintptr_t)addr) >> 16));
             stub[2] = arm_encode_bx(12);
         } else {
-            stub[0] = arm_encode_movw(0, (uint16_t)SCE_KERNEL_ERROR_MODULEMGR_NO_FUNC_NID);
-            stub[1] = arm_encode_movt(0, (uint16_t)(SCE_KERNEL_ERROR_MODULEMGR_NO_FUNC_NID >> 16));
-            stub[2] = arm_encode_ret();
+            uintptr_t trace=missing_import_bind(owner,lib_nid,nid,stub_address);
+            if(trace) {
+                stub[0]=arm_encode_movw(12,(uint16_t)trace);
+                stub[1]=arm_encode_movt(12,(uint16_t)(trace>>16));
+                stub[2]=arm_encode_bx(12);
+            } else {
+                stub[0] = arm_encode_movw(0, (uint16_t)SCE_KERNEL_ERROR_MODULEMGR_NO_FUNC_NID);
+                stub[1] = arm_encode_movt(0, (uint16_t)(SCE_KERNEL_ERROR_MODULEMGR_NO_FUNC_NID >> 16));
+                stub[2] = arm_encode_ret();
+                LOG("UNRESOLVED_TRACE_OVERFLOW library=0x%08" PRIx32 " nid=0x%08" PRIx32,lib_nid,nid);
+            }
             LOG("  Could not resolve NID 0x%08" PRIx32 ", export not found!", nid);
             LOG("UNRESOLVED_IMPORT kind=function library=0x%08" PRIx32 " nid=0x%08" PRIx32,
                 lib_nid, nid);

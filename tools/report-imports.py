@@ -68,6 +68,29 @@ def report(log, libraries, symbols):
             for (library, kind, nid), occurrences in sorted(records.items())]
 
 
+CALL = re.compile(
+    r"UNSUPPORTED_CALL kind=function library=(0x[0-9a-fA-F]{8}) "
+    r"nid=(0x[0-9a-fA-F]{8}) stub=(0x[0-9a-fA-F]{8}) "
+    r"return_address=(0x[0-9a-fA-F]{8,16})\b")
+
+
+def called_imports(log, libraries, symbols):
+    """First-use reports per import site; repeated log records are not calls."""
+    sites = {}
+    for match in CALL.finditer(log):
+        library, nid, stub, address = (int(value, 16) for value in match.groups())
+        key = library, nid, stub
+        if key not in sites:
+            sites[key] = {"library_nid": f"0x{library:08x}",
+                          "library": libraries.get(library), "kind": "function",
+                          "nid": f"0x{nid:08x}", "symbol": symbols.get((library, "function", nid)),
+                          "stub_address": f"0x{stub:08x}",
+                          "first_return_address": f"0x{address:08x}",
+                          "evidence": "runtime_first_use", "log_occurrences": 0}
+        sites[key]["log_occurrences"] += 1
+    return [sites[key] for key in sorted(sites)]
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("log", type=Path)
@@ -77,11 +100,15 @@ def main():
     if not args.sdk_db.is_dir():
         parser.error("SDK database missing; initialize external/vita-headers or pass --sdk-db")
     libraries, symbols = sdk_symbols(args.sdk_db)
-    rows = report(args.log.read_text(encoding="utf-8", errors="replace"), libraries, symbols)
+    log = args.log.read_text(encoding="utf-8", errors="replace")
+    rows = report(log, libraries, symbols)
+    calls = called_imports(log, libraries, symbols)
     print(json.dumps({"unresolved_imports": rows, "unique_imports": len(rows),
+                      "first_unsupported_calls": calls,
+                      "first_unsupported_call_sites": len(calls),
                       "note": "Only imports observed in this log; UDP loss or a partial run can "
                               "omit records. Legacy library context depends on log ordering. "
-                              "Occurrences are log records, not function calls."},
+                              "Occurrences are log records, not function calls. Runtime reports record only the first use per traced import site/lifetime; missing records do not prove a function was unused."},
                      indent=2))
 
 
