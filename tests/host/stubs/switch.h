@@ -94,6 +94,8 @@ static inline Waiter waiterForUEvent(UEvent *event) { return (Waiter){.event = e
 Result waitSingle(Waiter, uint64_t);
 void svcSleepThread(s64);
 void __attribute__((noreturn)) threadExit(void);
+#elif defined(TEST_PROCESS_EXIT)
+void __attribute__((noreturn)) threadExit(void);
 #else
 static inline void threadExit(void) { abort(); }
 #endif

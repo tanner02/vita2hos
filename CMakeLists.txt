@@ -45,6 +45,7 @@ add_subdirectory(external)
 
 add_executable(vita2hos
     source/guest_tls.c
+    source/thread_events.c
     source/guest_tp.c
     source/guest_tp_plan.c
     source/guest_tp_arm.c

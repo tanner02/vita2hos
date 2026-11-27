@@ -77,9 +77,10 @@ static void NORETURN thread_entry_wrapper(void *arg)
     uintptr_t previous=0;
     bool retarget=g_retarget_thread_pointer;
     if (retarget) previous=guest_tp_exchange((uintptr_t)ti->vita_user_tls);
+    thread_events_dispatch(VITA_THREAD_EVENT_START,ti->uid,&ti->event_frames);
     ret = ti->entry(ti->arglen, ti->argp);
+    SceKernelThreadMgr_prepare_current_exit(ret);
     if (retarget) guest_tp_exchange(previous);
-    ti->return_status = ret;
 
     LOG("Thread 0x%x returned with: 0x%x", ti->uid, ret);
 
@@ -211,10 +212,38 @@ EXPORT(SceLibKernel, 0xF08DE149, int, sceKernelStartThread, SceUID thid, SceSize
 
 EXPORT(SceThreadmgrCoredumpTime, 0x0C8A38E1, int NORETURN, sceKernelExitThread, int status)
 {
-    VitaThreadInfo *ti = SceKernelThreadMgr_get_thread_info();
-
-    ti->return_status = status;
+    SceKernelThreadMgr_prepare_current_exit(status);
     threadExit();
+}
+
+void SceKernelThreadMgr_prepare_current_exit(int status)
+{
+    VitaThreadInfo *ti=SceKernelThreadMgr_get_thread_info();
+    if (!ti) return;
+    ti->return_status=status;
+    if (!ti->exit_notified) {
+        ti->exit_notified=true;
+        thread_events_dispatch(VITA_THREAD_EVENT_EXIT,ti->uid,&ti->event_frames);
+    }
+    thread_events_abandon(&ti->event_frames);
+}
+
+EXPORT(SceLibKernel, 0x6D8C0F13, SceUID, sceKernelRegisterThreadEventHandler,
+       const char *name,SceUID target,SceInt32 mask,VitaThreadEventHandler handler,void *common)
+{
+    if (target!=VITA_THREAD_EVENT_PROCESS_ALL && !get_thread_info_for_uid(target))
+        return SCE_KERNEL_ERROR_UNKNOWN_THREAD_ID;
+    return thread_events_register(name,target,mask,handler,common);
+}
+
+EXPORT(SceThreadmgr, 0x2C8ED6F0, SceUID, sceKernelUnregisterThreadEventHandler,SceUID uid)
+{ return thread_events_unregister(uid); }
+
+EXPORT(SceThreadmgr, 0xCE6B49D8, SceUID, _sceKernelRegisterThreadEventHandler,
+       const char *name,SceUID target,SceUInt32 mask,const VitaThreadEventOptions *option)
+{
+    if (!option) return SCE_KERNEL_ERROR_ILLEGAL_ADDR;
+    return sceKernelRegisterThreadEventHandler(name,target,(SceInt32)mask,option->handler,option->common);
 }
 
 EXPORT(SceThreadmgr, 0x1D17DECF, int NORETURN, sceKernelExitDeleteThread, int status)
@@ -325,6 +354,7 @@ DECLARE_LIBRARY(SceThreadmgrCoredumpTime, 0x5E8D0E22);
 
 int SceKernelThreadMgr_init(const GuestTlsTemplate *main_tls, bool retarget_thread_pointer)
 {
+    thread_events_init();
     g_main_tls = main_tls ? *main_tls : (GuestTlsTemplate){0};
     if (!guest_tls_template_valid(&g_main_tls)) return SCE_KERNEL_ERROR_ILLEGAL_ADDR;
     g_retarget_thread_pointer=retarget_thread_pointer;
@@ -337,6 +367,7 @@ int SceKernelThreadMgr_init(const GuestTlsTemplate *main_tls, bool retarget_thre
 
 int SceKernelThreadMgr_finish(void)
 {
+    thread_events_finish();
     g_main_tls = (GuestTlsTemplate){0};
     g_retarget_thread_pointer=false;
     threadTlsFree(g_vita_thread_info_tls_slot_id);

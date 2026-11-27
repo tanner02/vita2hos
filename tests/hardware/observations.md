@@ -395,6 +395,29 @@
   between native library descriptors; explicit record alignment now preserves
   the section's array stride. No Switch files were changed.
 
+## Host thread events after cf2bc6d
+
+- Added public/raw thread-event registration and unregistration for START (4)
+  and EXIT (8), with specific-thread and process-all (0x10027) selectors. Runtime
+  object IDs now skip 0x10000..0x100FF to avoid collisions with pseudo-handles.
+- Ordinary Capstone disassembly of the private libc copy located a registration
+  call using selector 0x10027, mask 8, and a Thumb handler. The selector/signature
+  agree with current VitaSDK documentation. REA native providers were unavailable;
+  this is static disassembly evidence, not REA decompilation or code execution.
+- START runs after target TLS/experimental TP setup. EXIT runs once on normal
+  return, explicit ExitThread/ExitDeleteThread, and the ExitProcess path, before
+  thread retirement. Dispatch holds no registry lock while calling guest code.
+- Retained records permit self/concurrent unregistration. Removed callbacks are
+  skipped on future selection; already-selected callbacks may still run. A dispatch
+  snapshot excludes callbacks registered during that dispatch. Native callback
+  frames are released on a nonreturning exit, including recursive EXIT calls.
+- ASan/UBSan tests cover selectors, mutations, two simultaneous callbacks during
+  unregister, allocation failure, TP/TLS context, normal and callback-triggered
+  exit, raw options, and process-exit wiring. Callback argument 3 is zero and
+  nonzero returns are diagnostic, following pinned Vita3K. Exact ordering/error
+  behavior and ARM execution remain unverified; forced worker shutdown, thread
+  restart, and other callback classes remain unfinished. No Switch files changed.
+
 ## Runtime 15d400f48e5d3a3f5d811e2a67bd30a1388cc102
 
 - Standalone HOME title, owned fixed-address CPU probe SHA-256

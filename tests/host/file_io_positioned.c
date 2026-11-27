@@ -2,8 +2,10 @@
 #include <unistd.h>
 #include <pthread.h>
 #include <stdatomic.h>
+#include <setjmp.h>
 #define TEST_THREADED_RWLOCK
 #define TEST_THREADED_MUTEX
+#define TEST_PROCESS_EXIT
 static off_t checked_seek(int,off_t,int);
 #define lseek checked_seek
 #include "../../source/modules/SceLibKernel.c"
@@ -16,6 +18,10 @@ static off_t checked_seek(int fd,off_t offset,int whence)
     return lseek(fd,offset,whence);
 }
 void log_printf(const char *format, ...) { (void)format; }
+static jmp_buf process_exit;
+static int prepared_exit;
+void SceKernelThreadMgr_prepare_current_exit(int status) { prepared_exit=status; }
+void threadExit(void) { assert(prepared_exit==37);longjmp(process_exit,1); }
 SceUID SceSysmem_get_next_uid(void) { static SceUID next=1;return next++; }
 VitaThreadInfo *SceKernelThreadMgr_get_thread_info(void)
 { static _Thread_local VitaThreadInfo info;return &info; }
@@ -42,6 +48,8 @@ int main(void)
 {
     alarm(20);
     assert(!SceLibKernel_init());
+    if (!setjmp(process_exit)) { sceKernelExitProcess(37);assert(0); }
+    assert(SceLibKernel_get_process_exit_res()==37 && g_process_exit_event);
     char path[]="/tmp/vita2hos-positioned-XXXXXX";
     int native=mkstemp(path);assert(native>=0 && !close(native));
     SceUID fd=sceIoOpen(path,SCE_O_RDWR,0600);assert(fd>0);

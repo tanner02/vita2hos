@@ -107,6 +107,10 @@ int main(void)
     assert(SceSysmem_init(NULL) == 0);
     assert(vita_memblock_info_dict_size(g_vita_memblock_infos) == 0);
     SceSysmem_finish();
+    atomic_store(&g_last_uid,0xffff);
+    assert(SceSysmem_get_next_uid()==0xffff);
+    assert(SceSysmem_get_next_uid()==0x10100);
+    assert(SceSysmem_get_next_uid()==0x10101);
     puts("SceSysmem regression checks passed.");
     return 0;
 }

@@ -199,7 +199,12 @@ void SceSysmem_finish(void)
 
 SceUID SceSysmem_get_next_uid(void)
 {
-    return atomic_fetch_add(&g_last_uid, 1);
+    /* Keep generated object IDs clear of the SDK pseudo-handle range, including
+     * the process-wide thread-event selector 0x10027. */
+    for (;;) {
+        SceUID uid=atomic_fetch_add(&g_last_uid,1);
+        if ((uint32_t)uid<0x10000 || (uint32_t)uid>0x100ff) return uid;
+    }
 }
 
 VitaMemBlockInfo *SceSysmem_get_vita_memblock_info_for_addr(const void *addr)

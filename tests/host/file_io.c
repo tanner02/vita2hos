@@ -9,6 +9,7 @@ static char test_app0_path[PATH_MAX];
 #include "../../source/modules/SceLibKernel.c"
 
 void log_printf(const char *format, ...) { (void)format; }
+void SceKernelThreadMgr_prepare_current_exit(int status) { (void)status; }
 SceUID SceSysmem_get_next_uid(void)
 {
     static SceUID next_uid = 1;

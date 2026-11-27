@@ -34,6 +34,7 @@ static int gated_closedir(DIR *);
 #undef closedir
 
 void log_printf(const char *format, ...) { (void)format; }
+void SceKernelThreadMgr_prepare_current_exit(int status) { (void)status; }
 SceUID SceSysmem_get_next_uid(void)
 {
     static atomic_int next_uid = 1;

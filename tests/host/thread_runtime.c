@@ -4,6 +4,7 @@
 #include <stdio.h>
 
 #include "../../source/guest_tls.c"
+#include "../../source/thread_events.c"
 #include "../../source/modules/SceKernelThreadMgr.c"
 
 static jmp_buf thread_return;
@@ -17,6 +18,17 @@ static bool expect_guest_tp;
 static size_t last_stack;
 static int last_priority;
 static unsigned create_calls;
+static int event_calls[8],event_count;
+static bool exit_in_start,exit_in_end;
+static int event_callback(SceInt32 type,SceUID uid,SceInt32 arg,void *common)
+{
+    VitaThreadInfo *info=SceKernelThreadMgr_get_thread_info();
+    assert(info && uid==info->uid && !arg && common==&event_count);
+    assert(writable_tp==(uintptr_t)info->vita_user_tls);
+    event_calls[event_count++]=type;
+    if ((type==4 && exit_in_start) || (type==8 && exit_in_end)) sceKernelExitThread(77);
+    return 0;
+}
 uintptr_t guest_tp_exchange(uintptr_t value)
 {
     uintptr_t previous=writable_tp;writable_tp=value;++tp_exchanges;return previous;
@@ -140,6 +152,27 @@ int main(void)
     assert(tp_exchanges == 2 && writable_tp == 0x12345678);
     assert(sceKernelDeleteThread(uid) == 0);
     assert(SceKernelThreadMgr_finish() == 0);
+    assert(SceKernelThreadMgr_init(&tls,true)==0);
+    SceUID handler=sceKernelRegisterThreadEventHandler("events",VITA_THREAD_EVENT_PROCESS_ALL,12,
+                                                       event_callback,&event_count);
+    assert(handler>0);
+    for (volatile int mode=0;mode<3;++mode) {
+        event_count=0;exit_in_start=mode==1;exit_in_end=mode==2;
+        uid=create_thread("callback TLS",entry,160,4096);assert(uid>0);
+        info=get_thread_info_for_uid(uid);assert(start_thread(uid,4,"test")==0);
+        if (!setjmp(thread_return)) info->thread.entry(info->thread.argument);
+        assert(event_count==2 && event_calls[0]==4 && event_calls[1]==8);
+        assert(info->exit_notified && !info->event_frames && info->return_status==(mode ? 77 : 1234));
+        assert(sceKernelDeleteThread(uid)==0);
+    }
+    assert(sceKernelUnregisterThreadEventHandler(handler)==0);
+    VitaThreadEventOptions options={.handler=event_callback,.common=&event_count};
+    handler=_sceKernelRegisterThreadEventHandler("raw",VITA_THREAD_EVENT_PROCESS_ALL,8,&options);
+    assert(handler>0 && sceKernelUnregisterThreadEventHandler(handler)==0);
+    assert((uint32_t)_sceKernelRegisterThreadEventHandler("raw",VITA_THREAD_EVENT_PROCESS_ALL,8,NULL)==SCE_KERNEL_ERROR_ILLEGAL_ADDR);
+    assert((uint32_t)sceKernelUnregisterThreadEventHandler(handler)==SCE_KERNEL_ERROR_UNKNOWN_THREAD_EVENT_ID);
+    assert((uint32_t)sceKernelRegisterThreadEventHandler("bad target",-1,4,event_callback,NULL)==SCE_KERNEL_ERROR_UNKNOWN_THREAD_ID);
+    assert(SceKernelThreadMgr_finish()==0);
     guest_tls_template_clear(&tls);
     puts("Thread runtime regression checks passed.");
     return 0;

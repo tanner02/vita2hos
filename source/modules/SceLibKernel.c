@@ -92,6 +92,7 @@ EXPORT(SceLibKernel, 0x7595D9AA, int, sceKernelExitProcess, int res)
     atomic_store(&g_process_exit_res, res);
     ueventSignal(&g_process_exit_event);
 
+    SceKernelThreadMgr_prepare_current_exit(res);
     threadExit();
 
     return 0;

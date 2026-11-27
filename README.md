@@ -90,6 +90,16 @@ references protect waits across condition/mutex deletion and work-area reuse.
 Callback-aware waits, condition information queries, and thread cancellation
 remain unfinished.
 
+Thread-event handlers support START/EXIT events for a specific guest thread or
+all threads in the process (`0x10027`). Callbacks run on the target thread with
+its TLS installed. Normal return, explicit thread exit, and process exit dispatch
+EXIT once on the calling thread. Registration/unregistration is safe during
+callbacks; an already-selected callback may run after unregistration. Its code
+and common argument stay caller-owned and must remain live. Nonzero callback
+results are logged.
+Dispatch order, callback return semantics, and hardware behavior need further
+validation. Forced shutdown of other guest threads remains unfinished.
+
 The kernel system clock reports monotonic microseconds. Process-time imports
 report elapsed microseconds from runtime module initialization, before guest
 threads start; the Low variant returns the low 32 bits. These clocks do not
