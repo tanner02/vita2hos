@@ -7,6 +7,12 @@ typedef struct {
     void (*record)(const char *text);
     void (*result)(const char *name, int code);
 } ProbeHooks;
+int probe_vertex_fetch(SceGxmContext *context, SceGxmRenderTarget *target,
+    SceGxmColorSurface *surface, uint32_t *pixels, SceGxmShaderPatcher *patcher,
+    SceGxmShaderPatcherId vertex_id, SceGxmFragmentProgram *fragment,
+    const SceGxmProgramParameter *position, const SceGxmProgramParameter *uv,
+    const SceGxmProgramParameter *matrix, const SceGxmProgramParameter *sampler,
+    const ProbeHooks *hooks);
 int probe_draw(SceGxmContext *context, SceGxmRenderTarget *target,
                SceGxmColorSurface *surface, uint32_t *pixels, const ProbeHooks *hooks);
 int probe_cube(SceGxmContext *context, SceGxmVertexProgram *vertex,

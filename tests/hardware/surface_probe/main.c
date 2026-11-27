@@ -10,11 +10,11 @@
 #include "draw_probe.h"
 #ifdef VITA2HOS_VISIBLE_CUBE
 #define PROBE_NAME "visible_cube"
-#define PROBE_VERSION "6"
+#define PROBE_VERSION "7"
 #define PROBE_REPORT "app0:/visible-cube.txt"
 #else
 #define PROBE_NAME "draw_probe"
-#define PROBE_VERSION "9"
+#define PROBE_VERSION "10"
 #define PROBE_REPORT "app0:/draw-probe.txt"
 #endif
 #else

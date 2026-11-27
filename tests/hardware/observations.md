@@ -1,3 +1,55 @@
+## 2026-11-27: ten numeric vertex formats verified in one hardware batch
+
+Visible cube7 adds actual textured draws for U8, S8, U16, S16, U8N, S8N,
+U16N, S16N, F16 and F32 UV attributes. Each vec2 has a nonzero byte offset,
+poison padding and a stream separate from F32 positions. Signed formats include
+negative values; normalized formats encode unit endpoints; raw integer formats
+encode numeric unit endpoints. A fullscreen indexed quad samples a point/clamp
+quadrant texture at four interior locations. Each case changes the texture
+palette and resets the guest framebuffer to a distinctive untouched value.
+
+On installed runtime8bf8795, all ten new PASS tags appeared, followed by all360
+cube frames, intact interior ring-buffer guards and final PASS visible_cube.
+The complete report contains35 PASS tags, including the existing MSAA, depth,
+stencil, gamma, texture-update and viewport checks. A screenshot shows the
+textured cube; a later screenshot shows HOME with Start and the title closed.
+Report SHA256: 36eecef77472a3931515d78c78750ccfc5d9cd1ebaf6e3453514949947305a0b.
+The captured runtime log identifies8bf8795 but ends during cube rendering; it
+does not include process-result or cleanup-result lines. Closure is established
+by the final report and HOME screenshot, not a captured exit-status value.
+
+Both draw10 and cube7 build with warnings treated as errors; their import audits
+verify60/61 current source exports. No runtime implementation or NSP changed.
+This establishes the tested vec2 numeric fetch paths; it does not establish
+UNTYPED/register inputs, vertex arrays, matrix layout or commercial-game boot.
+Original game files are preserved separately from these owned test artifacts.
+
+## 2026-11-27: startup rollback identified before the cleanup fault
+
+Read-only analysis of the owned main executable and real libc links the latest
+8bf8795 run to the LiveAreaManager initialization stage. Its initialization
+callback returns false when loading LIVEAREA (module0x23) fails; the log records
+that load returning805a10ff. The startup framework calls the stage callback,
+checks its boolean return, clears the startup-success flag on zero and invokes
+the stage finalizer. The bringup result reaches main, which returns0; the CRT
+passes that status to libc exit. This explains the observed NP activity cleanup
+and exit-handler calls without treating their proximity to the crash as cause.
+
+The observed AbortHandler argument0x102 selects libc's exit-status-zero path.
+Both missing AbortHandler and ModuleExit return values are discarded before
+__cxa_finalize(mainDSO). Making those two calls return success alone would not
+remove the preceding LIVEAREA rejection or establish valid teardown state.
+The subsequent null registry-table access remains a separate cleanup defect.
+The saved native thread mapping and TPIDR agreement do not establish TLS/DTV
+contents. Main replaces argc/argv immediately, so zero launch arguments are not
+established as a startup cause. Private source-bound receipts and original
+assets remain outside the repository; no guest ARM code was executed on PC.
+
+The HLE owner received these findings through AGENT-PROGRESS.md. Its proposed
+LIVEAREA support remains unmerged, as does the rejected unbound-stub scanner.
+Codex has not changed HLE files or the held real-libc TLS probe. Commercial-title
+boot remains incomplete.
+
 ## 2026-11-27: real-game startup on the verified graphics runtime
 
 Original LittleBigPlanet PCSF00516 ran on8bf8795 after its owned graphics batch

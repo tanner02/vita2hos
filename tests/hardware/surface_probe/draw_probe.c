@@ -350,7 +350,10 @@ int probe_draw(SceGxmContext *context, SceGxmRenderTarget *target,
             pass == 3 ? "PASS texture_both_axes\n" : pass == 4 ? "PASS texture_negative_x\n" :
             "PASS texture_restore_viewport\n");
     }
-    if (texture_failures) ret = -1;
+    if (texture_failures) { ret = -1; goto done; }
+    CHECK(probe_vertex_fetch(context,target,surface,pixels,patcher,vertex_id,fragment,
+        position,uv,matrix,sampler,hooks));
+    sceGxmSetVertexProgram(context,vertex);
 #ifdef VITA2HOS_VISIBLE_CUBE
     if (!texture_failures) ret = probe_cube(context, vertex, fragment, matrix, sampler, hooks);
 #endif
