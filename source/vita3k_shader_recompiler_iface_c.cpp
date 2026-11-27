@@ -1,4 +1,6 @@
 #include <cstring>
+#include <cstdlib>
+#include <limits>
 #include <shader/spirv_recompiler.h>
 #include <shader/usse_translator_types.h>
 
@@ -53,18 +55,34 @@ bool convert_gxp_to_spirv_c(uint32_t **spirv, uint32_t *num_instr, const SceGxmP
                             uint32_t num_hint_attributes, bool maskupdate, bool force_shader_debug,
                             bool (*dumper)(const char *ext, const char *dump))
 {
-    shader::GeneratedShader shader;
+    if (!spirv || !num_instr)
+        return false;
+    *spirv = nullptr;
+    *num_instr = 0;
+    if (!program || !shader_name || (num_hint_attributes && !hint_attributes))
+        return false;
 
-    shader = convert_gxp_internal(program, shader_name, support_shader_interlock,
-                                  support_texture_barrier, direct_fragcolor, spirv_shader,
-                                  hint_attributes, num_hint_attributes, maskupdate,
-                                  force_shader_debug, dumper, shader::Target::SpirVOpenGL);
+    try {
+        auto shader = convert_gxp_internal(program, shader_name, support_shader_interlock,
+                                      support_texture_barrier, direct_fragcolor, spirv_shader,
+                                      hint_attributes, num_hint_attributes, maskupdate,
+                                      force_shader_debug, dumper, shader::Target::SpirVOpenGL);
 
-    *num_instr = shader.spirv.size();
-    *spirv = (uint32_t *)malloc(sizeof(uint32_t) * shader.spirv.size());
-    memcpy(*spirv, shader.spirv.data(), sizeof(uint32_t) * shader.spirv.size());
+        if (shader.spirv.empty() || shader.spirv.size() > std::numeric_limits<uint32_t>::max() ||
+            shader.spirv.size() > std::numeric_limits<size_t>::max() / sizeof(uint32_t))
+            return false;
+        auto *output = static_cast<uint32_t *>(malloc(sizeof(uint32_t) * shader.spirv.size()));
+        if (!output)
+            return false;
+        memcpy(output, shader.spirv.data(), sizeof(uint32_t) * shader.spirv.size());
+        *spirv = output;
+        *num_instr = static_cast<uint32_t>(shader.spirv.size());
 
-    return true;
+        return true;
+    } catch (...) {
+        // Recompiler exceptions must not cross the C runtime boundary.
+        return false;
+    }
 }
 
 bool convert_gxp_to_glsl_c(char **glsl, const SceGxmProgram *program, const char *shader_name,
@@ -74,16 +92,29 @@ bool convert_gxp_to_glsl_c(char **glsl, const SceGxmProgram *program, const char
                            uint32_t num_hint_attributes, bool maskupdate, bool force_shader_debug,
                            bool (*dumper)(const char *ext, const char *dump))
 {
-    shader::GeneratedShader shader;
+    if (!glsl)
+        return false;
+    *glsl = nullptr;
+    if (!program || !shader_name || (num_hint_attributes && !hint_attributes))
+        return false;
 
-    shader = convert_gxp_internal(program, shader_name, support_shader_interlock,
-                                  support_texture_barrier, direct_fragcolor, spirv_shader,
-                                  hint_attributes, num_hint_attributes, maskupdate,
-                                  force_shader_debug, dumper, shader::Target::GLSLOpenGL);
+    try {
+        auto shader = convert_gxp_internal(program, shader_name, support_shader_interlock,
+                                      support_texture_barrier, direct_fragcolor, spirv_shader,
+                                      hint_attributes, num_hint_attributes, maskupdate,
+                                      force_shader_debug, dumper, shader::Target::GLSLOpenGL);
 
-    *glsl = (char *)malloc(shader.glsl.size() + 1);
-    strcpy(*glsl, shader.glsl.c_str());
+        if (shader.glsl.empty() || shader.glsl.size() == std::numeric_limits<size_t>::max())
+            return false;
+        auto *output = static_cast<char *>(malloc(shader.glsl.size() + 1));
+        if (!output)
+            return false;
+        memcpy(output, shader.glsl.c_str(), shader.glsl.size() + 1);
+        *glsl = output;
 
-    return true;
+        return true;
+    } catch (...) {
+        return false;
+    }
 }
 }
