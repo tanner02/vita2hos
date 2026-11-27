@@ -56,3 +56,21 @@ Close the title manually and reconnect USB to collect logs. Set the file to
 malformed files fail before guest loading. No diagnostic game payload has yet
 been deployed or run. No proprietary code, assets, disassembly or keys are stored
 in this document.
+
+## First preload phase prepared
+
+The first private payload retains the unmodified audited main, libc and FIOS
+plaintext images, the reviewed source-bound libc TP sidecar, an explicit
+libc-then-FIOS module list, and dependencies-only mode. Production parsers accept
+those actual option files; host structural replay binds all three images with
+372/2/23 remaining function error stubs respectively. No ARM execution occurred.
+A two-image main/libc trial instead leaves thirteen libc error stubs: eleven
+libc function imports are provided by FIOS. That incomplete graph was rejected.
+Ult is deferred from this normal-preload phase.
+
+Skipping main entry does not prevent initializer-driven executable callbacks or
+constructors from running. Before activating this payload, verify the new
+startup-capable runtime with an owned kernel probe and its versioned log; an
+older runtime would ignore launch-mode.txt. The prepared game payload remains
+private and has not been transferred. Only the newer runtime NSP was staged;
+the active owned kernel probe was preserved and readback-verified.
