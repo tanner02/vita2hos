@@ -149,3 +149,14 @@ supported; other values are rejected. Nonzero delay is currently interpreted
 as microseconds, bypassed for a pending signal, and counted against the original
 timeout deadline. Delay timing, timeout updates, dormant/completed targets and
 firmware edge cases still need comparison. Callback waits are not implemented.
+
+Reader/writer lock checks cover simultaneous readers, exclusive writers, recursive
+reads and optional recursive writes, FIFO reader batches, priority queues, timeouts
+and deletion with blocked readers/writers. Waiters retain the deleted record until
+removing themselves, and ownership is tracked by Vita UID. Public create/read/write
+and raw/try/unlock/delete NIDs are checked. New readers may join an existing read
+lock even with a queued writer; queued grants batch adjacent readers. Mixed-mode
+upgrade/downgrade requests are rejected with RW_LOCK_RECURSIVE. This policy avoids
+an unsafe ownership conversion; firmware equivalence for those requests and mixed
+reader/writer queue ordering is unverified. Callback waits, cancellation, named
+open/close, info queries, priority inheritance and owner-death handling are pending.
