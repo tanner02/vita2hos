@@ -129,7 +129,8 @@ static int load_file_prepare_kind(LoadImage *image, const char *filename, bool m
     int ret = 0;
     void *entry = NULL;
     if (!image || !filename || image->prepared || image->segments || image->jit_active ||
-        image->data || image->fixed || image->exports.libraries) return -1;
+        image->data || image->fixed || image->exports.libraries ||
+        image->tls.data || image->tls.filesz || image->tls.memsz) return -1;
     image->module = module;
 
     LOG("Opening '%s' for reading.", filename);
@@ -553,6 +554,16 @@ static int load_segments(LoadImage *image, void **entry, Elf32_Addr e_entry, seg
     LOG("  tls start: 0x%" PRIx32, mod_info->tls_start);
     LOG("  tls filesz: 0x%" PRIx32, mod_info->tls_filesz);
     LOG("  tls memsz: 0x%" PRIx32, mod_info->tls_memsz);
+    if (mod_info->tls_filesz > mod_info->tls_memsz ||
+        (mod_info->tls_filesz &&
+         (mod_info->tls_start > segments[mod_info_idx].p_filesz ||
+          mod_info->tls_filesz > segments[mod_info_idx].p_filesz - mod_info->tls_start)) ||
+        guest_tls_template_create(&image->tls,
+            mod_info->tls_filesz ? (const char *)segments[mod_info_idx].rw_addr + mod_info->tls_start : NULL,
+            mod_info->tls_filesz, mod_info->tls_memsz) < 0) {
+        LOG("Invalid or unallocatable TLS initialization template.");
+        goto err_free_data;
+    }
 
     if (mod_info->export_top > mod_info->export_end ||
         mod_info->export_end > segments[mod_info_idx].p_memsz ||

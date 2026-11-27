@@ -3,6 +3,7 @@
 #include <assert.h>
 #include <stdio.h>
 
+#include "../../source/guest_tls.c"
 #include "../../source/modules/SceKernelThreadMgr.c"
 
 static jmp_buf thread_return;
@@ -40,7 +41,10 @@ static int entry(SceSize size, void *argument)
 
 int main(void)
 {
-    assert(SceKernelThreadMgr_init() == 0);
+    GuestTlsTemplate tls={0}; uint32_t seed=0x12345678;
+    assert(guest_tls_template_create(&tls, &seed, 4, 16) == 0);
+    seed=0; /* Threads use the immutable snapshot, not mutable source storage. */
+    assert(SceKernelThreadMgr_init(&tls) == 0);
     assert((uint32_t)sceKernelGetThreadCurrentPriority() == SCE_KERNEL_ERROR_UNKNOWN_THREAD_ID);
     assert(resolve_vita_priority(SCE_KERNEL_DEFAULT_PRIORITY) == 160);
     assert(resolve_vita_priority(SCE_KERNEL_DEFAULT_PRIORITY + 3) == 163);
@@ -56,6 +60,15 @@ int main(void)
     assert(info->priority == 160);
     for (unsigned int i = 0; i < SCE_KERNEL_TLS_SIZE; i++)
         assert(((unsigned char *)info->vita_tls)[i] == 0);
+    assert(info->vita_user_tls == (char *)info->vita_tls + GUEST_KERNEL_TLS_SIZE);
+    assert(*(uint32_t *)info->vita_user_tls == 0x12345678);
+    for (int i=4; i<16; ++i) assert(((unsigned char *)info->vita_user_tls)[i] == 0);
+    assert(sceKernelGetThreadTLSAddr(uid, 0x100) == (char *)info->vita_tls + 0x400);
+    *(uint32_t *)info->vita_user_tls=99;
+    SceUID other=create_thread("independent TLS", entry, 160, 4096);
+    assert(other > 0);
+    assert(*(uint32_t *)get_thread_info_for_uid(other)->vita_user_tls == 0x12345678);
+    assert(sceKernelDeleteThread(other) == 0);
     assert((uint32_t)start_thread(uid, 4, NULL) == SCE_KERNEL_ERROR_ILLEGAL_ADDR);
     start_result = 1;
     assert((uint32_t)start_thread(uid, 4, "test") == SCE_KERNEL_ERROR_THREAD_ERROR);
@@ -87,6 +100,7 @@ int main(void)
     start_result = 1;
     assert((uint32_t)SceKernelThreadMgr_main_entry(entry, 0, NULL) == SCE_KERNEL_ERROR_THREAD_ERROR);
     assert(SceKernelThreadMgr_finish() == 0);
+    guest_tls_template_clear(&tls);
     puts("Thread runtime regression checks passed.");
     return 0;
 }

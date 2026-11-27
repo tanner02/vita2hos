@@ -8,6 +8,7 @@ Result jitTransitionToExecutable(Jit *jit);
 #include "../../source/load_relocate.c"
 #include "../../source/load_var_relocate.c"
 #include "../../source/load_bind.c"
+#include "../../source/guest_tls.c"
 #include "../../source/load_image.c"
 
 EXPORT(TestLibrary, 1, int, test_export, void) { return 0; }

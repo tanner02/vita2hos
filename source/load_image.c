@@ -22,6 +22,7 @@ Result load_image_close(LoadImage *image)
         image->export_registry = NULL;
     }
     module_guest_exports_clear(&image->exports);
+    guest_tls_template_clear(&image->tls);
     free(image->segments);
     image->segments = NULL;
     image->segment_count = 0;

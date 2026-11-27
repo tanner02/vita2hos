@@ -76,7 +76,7 @@ static int launch(LoadProcess *process)
     ret = SceLibKernel_init();
     if (ret != 0)
         goto done;
-    ret = SceKernelThreadMgr_init();
+    ret = SceKernelThreadMgr_init(&process->images[0].tls);
     if (ret != 0)
         goto done;
     ret = SceDisplay_init(dk_device);

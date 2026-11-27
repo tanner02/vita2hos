@@ -208,6 +208,26 @@
   module startup succeeds, TLS works, or the title boots. No target instructions
   were executed and the Switch was not modified.
 
+## Host TLS storage groundwork after a8927c4
+
+- Main metadata declares TLS initialization at module-segment offset `0x878320`,
+  with 56 initialized bytes and 128 total bytes. The initialization ends exactly
+  at that segment's file-backed end, so the runtime's range validation accepts it.
+- A byte inventory found no TPIDRURO-read candidates in main, FIOS2, or Ult, and
+  one Thumb candidate in libc at original VA `0x810056ac`. SDK objdump showed the
+  instruction inside TLS setup code, followed by a store; it is not a standalone
+  read-and-return thunk. This is local static evidence, not execution coverage.
+- The pinned libnx32 `__aeabi_read_tp` reads Horizon TPIDRURO, then loads its
+  native thread pointer from offset `0x1f8`. Disassembly of the current runtime
+  showed no reads/writes using the writable thread-pointer register. That is a
+  candidate mechanism for future virtualization, not proof it is safe or preserved
+  in every runtime path or context switch.
+- Main TLS template snapshots and per-thread storage initialization are now
+  implemented and host-tested, including independent initialized bytes, zero BSS,
+  fixed-width kernel slots, allocation failure, and image cleanup retries.
+  Guest register retargeting and dynamic module TLS are not implemented. No target
+  code was executed, and the Switch was not modified.
+
 ## Runtime 15d400f48e5d3a3f5d811e2a67bd30a1388cc102
 
 - Standalone HOME title, owned fixed-address CPU probe SHA-256

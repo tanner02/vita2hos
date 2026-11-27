@@ -18,12 +18,13 @@
 #define SCE_KERNEL_DEFAULT_PRIORITY_GAME_APP           160
 #define SCE_KERNEL_DEFAULT_PRIORITY_USER               SCE_KERNEL_DEFAULT_PRIORITY
 #define SCE_KERNEL_THREAD_STACK_SIZE_DEFAULT_USER_MAIN (256 * 1024)
-#define SCE_KERNEL_TLS_SIZE                            0x800
+#define SCE_KERNEL_TLS_SIZE                            GUEST_KERNEL_TLS_SIZE
 
 #define HOS_HIGHEST_PRIORITY 28
 #define HOS_LOWEST_PRIORITY  59
 
 static s32 g_vita_thread_info_tls_slot_id;
+static GuestTlsTemplate g_main_tls; /* Borrowed from the live process image. */
 
 DICT_DEF2(vita_thread_info_dict, SceUID, M_DEFAULT_OPLIST, VitaThreadInfo *, M_POD_OPLIST)
 static vita_thread_info_dict_t g_vita_thread_infos;
@@ -103,11 +104,12 @@ static SceUID create_thread(const char *name, SceKernelThreadEntry entry, int in
     strncpy(ti->name, name, sizeof(ti->name) - 1);
     ti->entry = entry;
     ti->priority = resolve_vita_priority(initPriority);
-    ti->vita_tls = calloc(1, SCE_KERNEL_TLS_SIZE);
+    ti->vita_tls = guest_tls_allocate(&g_main_tls);
     if (!ti->vita_tls) {
         free(ti);
         return SCE_KERNEL_ERROR_NO_MEMORY;
     }
+    ti->vita_user_tls = guest_tls_user_area(ti->vita_tls);
 
     res = threadCreate(&ti->thread, thread_entry_wrapper, ti, NULL, stackSize, priority, -2);
     if (R_FAILED(res)) {
@@ -304,8 +306,10 @@ EXPORT(SceThreadmgr, 0xBACA6891, void *, sceKernelGetThreadTLSAddr, SceUID thid,
 DECLARE_LIBRARY(SceThreadmgr, 0x859a24b1);
 DECLARE_LIBRARY(SceThreadmgrCoredumpTime, 0x5E8D0E22);
 
-int SceKernelThreadMgr_init(void)
+int SceKernelThreadMgr_init(const GuestTlsTemplate *main_tls)
 {
+    g_main_tls = main_tls ? *main_tls : (GuestTlsTemplate){0};
+    if (!guest_tls_template_valid(&g_main_tls)) return SCE_KERNEL_ERROR_ILLEGAL_ADDR;
     g_vita_thread_info_tls_slot_id = threadTlsAlloc(NULL);
     vita_thread_info_dict_init(g_vita_thread_infos);
     rwlockInit(&g_vita_thread_infos_lock);
@@ -315,6 +319,7 @@ int SceKernelThreadMgr_init(void)
 
 int SceKernelThreadMgr_finish(void)
 {
+    g_main_tls = (GuestTlsTemplate){0};
     threadTlsFree(g_vita_thread_info_tls_slot_id);
     vita_thread_info_dict_clear(g_vita_thread_infos);
 

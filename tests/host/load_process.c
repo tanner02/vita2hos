@@ -5,6 +5,7 @@
 #include "../../source/module.c"
 #define load_image_close close_image_impl
 #define load_image_publish publish_image_impl
+#include "../../source/guest_tls.c"
 #include "../../source/load_image.c"
 #undef load_image_close
 #undef load_image_publish

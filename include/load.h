@@ -6,6 +6,7 @@
 #include "module.h"
 #include "load_segment.h"
 #include "load_exports.h"
+#include "guest_tls.h"
 
 typedef struct {
     Jit jit;
@@ -24,6 +25,7 @@ typedef struct {
     bool prepared, bound;
     bool module; /* Dependency preparation permits an absent module start. */
     LoadLifecycle lifecycle;
+    GuestTlsTemplate tls;
 } LoadImage;
 
 enum { LOAD_LAYOUT_CONFLICT = -2 };

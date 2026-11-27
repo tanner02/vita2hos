@@ -347,6 +347,16 @@ matching the layout in the bundled Vita3K source. No profiling recorder or
 capture-control API is implemented. The descriptor table remains writable for
 runtime relocation and its retention is checked in the ARM build.
 
+Main-image TLS initialization bytes are validated and copied into an owned
+snapshot during loading. Each guest thread receives a separate zeroed 0x800-byte
+kernel TLS area followed by the main TLS template and zero-filled TLS BSS. Kernel
+TLS slots use 32-bit words on both the host tests and ARM build. Allocation,
+snapshot isolation, initialization, BSS, and cleanup are covered by host tests.
+The thread manager borrows the image's immutable snapshot until guest threads
+stop; image cleanup releases it. This implements storage initialization only:
+guest thread-pointer reads have not been retargeted, CPU register virtualization
+is not implemented, and dynamic module TLS remains unsupported.
+
 ### Experimental title-specific launch profile
 
 **Hardware status:** this route failed to start Mario Kart 8 Deluxe on the tested

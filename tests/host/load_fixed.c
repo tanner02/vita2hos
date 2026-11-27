@@ -43,6 +43,7 @@ static void *clear_alias(void *address, int value, size_t size)
 #include "../../source/module.c"
 EXPORT(TestLibrary, 1, int, test_export, void) { return 0; }
 DECLARE_LIBRARY(TestLibrary, 2);
+#include "../../source/guest_tls.c"
 #include "../../source/load_image.c"
 #include "../../source/load_fixed_layout.c"
 
@@ -175,6 +176,8 @@ int main(void)
         fail_create = fail_alias = fail_allocation = false; fail_operation = -1; clean();
     }
     LoadImage fixed_image = {.fixed=calloc(2, sizeof(LoadFixedMemory)),.fixed_count=2};
+    uint32_t tls_seed=7;
+    assert(guest_tls_template_create(&fixed_image.tls, &tls_seed, 4, 16) == 0);
     assert(load_fixed_reserve(&fixed_image.fixed[0], 0x81000000, 4096, true) == 0);
     assert(load_fixed_reserve(&fixed_image.fixed[1], 0x81879000, 4096, false) == 0);
     require_reservations = 2;
@@ -185,6 +188,7 @@ int main(void)
     assert(module_get_func_export(100, 11) == symbol.address);
     fail_operation = CodeMapOperation_UnmapSlave; failures = 1;
     assert(load_image_close(&fixed_image) != 0 && fixed_image.fixed_count == 2);
+    assert(!fixed_image.tls.data && !fixed_image.tls.memsz);
     assert(fixed_image.exports.libraries == NULL);
     assert(module_get_func_export(100, 11) == NULL);
     assert(fixed_image.fixed[0].backing && !fixed_image.fixed[1].backing);
