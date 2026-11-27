@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <string.h>
 
 #include "gxm/texture_staging.h"
 
@@ -6,6 +7,36 @@ struct GxmTextureStaging {
     DkMemBlock block;
     GxmTextureStaging *next;
 };
+
+int gxm_texture_stage_data(DkDevice device, GxmTextureStaging **list, const void *data,
+                           uint32_t size, DkMemBlock *block)
+{
+    if (!block) return SCE_GXM_ERROR_INVALID_POINTER;
+    *block = NULL;
+    if (!list || !data) return SCE_GXM_ERROR_INVALID_POINTER;
+    if (!size) return SCE_GXM_ERROR_INVALID_VALUE;
+    if (size > UINT32_MAX - (DK_MEMBLOCK_ALIGNMENT - 1U))
+        return SCE_GXM_ERROR_OUT_OF_MEMORY;
+    uint32_t allocation = (size + DK_MEMBLOCK_ALIGNMENT - 1U) & ~(DK_MEMBLOCK_ALIGNMENT - 1U);
+    GxmTextureStaging *entry = malloc(sizeof(*entry));
+    if (!entry) return SCE_GXM_ERROR_OUT_OF_MEMORY;
+    DkMemBlockMaker maker;
+    dkMemBlockMakerDefaults(&maker, device, allocation);
+    maker.flags = DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached;
+    entry->block = dkMemBlockCreate(&maker);
+    if (!entry->block) { free(entry); return SCE_GXM_ERROR_OUT_OF_MEMORY; }
+    void *destination = dkMemBlockGetCpuAddr(entry->block);
+    if (!destination) {
+        dkMemBlockDestroy(entry->block); free(entry);
+        return SCE_GXM_ERROR_INVALID_POINTER;
+    }
+    memcpy(destination, data, size);
+    memset((char *)destination + size, 0, allocation - size);
+    entry->next = *list;
+    *list = entry;
+    *block = entry->block;
+    return 0;
+}
 
 int gxm_texture_stage(DkDevice device, GxmTextureStaging **list, const GxmTextureLayout *layout,
                       const void *source, size_t source_size, DkMemBlock *block)

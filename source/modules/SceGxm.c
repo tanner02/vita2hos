@@ -45,7 +45,6 @@ typedef struct SceGxmContext {
     } vertex_rb, fragment_rb;
     DkMemBlock gxm_vert_unif_block_memblock;
     DkMemBlock gxm_frag_unif_block_memblock;
-    DkMemBlock fragment_tex_descriptor_set_memblock;
     GxmTextureStaging *texture_staging;
     GxmUniformStaging *uniform_staging;
     /* Dynamic state */
@@ -352,12 +351,6 @@ EXPORT(SceGxm, 0xE84CE5B4, int, sceGxmCreateContext, const SceGxmContextParams *
         g_dk_device, ALIGN(sizeof(struct GXMRenderFragUniformBlock), DK_UNIFORM_BUF_ALIGNMENT),
         DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached);
 
-    ctx->fragment_tex_descriptor_set_memblock =
-        dk_alloc_memblock(g_dk_device,
-                          (sizeof(struct DkImageDescriptor) + sizeof(DkSamplerDescriptor)) *
-                              SCE_GXM_MAX_TEXTURE_UNITS,
-                          DkMemBlockFlags_GpuCached);
-
     /* Init default state */
     memset(&ctx->state, 0, sizeof(ctx->state));
 
@@ -403,7 +396,6 @@ EXPORT(SceGxm, 0xEDDC5FB2, int, sceGxmDestroyContext, SceGxmContext *context)
     gxm_uniform_staging_release(&context->uniform_staging);
     dkMemBlockDestroy(context->gxm_vert_unif_block_memblock);
     dkMemBlockDestroy(context->gxm_frag_unif_block_memblock);
-    dkMemBlockDestroy(context->fragment_tex_descriptor_set_memblock);
     dkCmdBufDestroy(context->cmdbuf);
 
     if (context->state.background_ds.memblock)
@@ -1776,11 +1768,16 @@ static int upload_fragment_texture_descriptors(SceGxmContext *context)
         dkCmdBufBindTexture(context->cmdbuf, DkStage_Fragment, i, dkMakeTextureHandle(i, i));
     }
 
-    if (staged)
-        dkCmdBufBarrier(context->cmdbuf, DkBarrier_Full,
-                          DkInvalidateFlags_Image | DkInvalidateFlags_L2Cache);
-    desc_addr = dkMemBlockGetGpuAddr(context->fragment_tex_descriptor_set_memblock);
-    dkCmdBufPushData(context->cmdbuf, desc_addr, &descriptors, sizeof(descriptors));
+    /* Each recorded update owns immutable descriptor storage until scene
+     * retirement. Reusing one table could change pending draws' textures. */
+    DkMemBlock descriptor_block;
+    ret = gxm_texture_stage_data(g_dk_device, &context->texture_staging,
+                                  &descriptors, sizeof(descriptors), &descriptor_block);
+    if (ret) return ret;
+    dkCmdBufBarrier(context->cmdbuf, DkBarrier_Full,
+                      DkInvalidateFlags_Descriptors | DkInvalidateFlags_L2Cache |
+                      (staged ? DkInvalidateFlags_Image : 0));
+    desc_addr = dkMemBlockGetGpuAddr(descriptor_block);
     dkCmdBufBindImageDescriptorSet(context->cmdbuf, desc_addr, SCE_GXM_MAX_TEXTURE_UNITS);
     dkCmdBufBindSamplerDescriptorSet(
         context->cmdbuf, desc_addr + SCE_GXM_MAX_TEXTURE_UNITS * sizeof(DkImageDescriptor),

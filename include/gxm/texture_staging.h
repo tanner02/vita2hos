@@ -4,6 +4,8 @@
 #include "gxm/texture_layout.h"
 
 typedef struct GxmTextureStaging GxmTextureStaging;
+int gxm_texture_stage_data(DkDevice device, GxmTextureStaging **list, const void *data,
+                           uint32_t size, DkMemBlock *block);
 int gxm_texture_stage(DkDevice device, GxmTextureStaging **list, const GxmTextureLayout *layout,
                       const void *source, size_t source_size, DkMemBlock *block);
 /* Caller must finish all GPU commands referencing the list before releasing it. */

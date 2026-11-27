@@ -9,7 +9,7 @@
 
 typedef struct { void *data; } TestBlock;
 static unsigned int live_blocks;
-static bool fail_create;
+static bool fail_create, fail_mapping;
 DkMemBlock dkMemBlockCreate(const DkMemBlockMaker *maker)
 {
     assert(maker->size % DK_MEMBLOCK_ALIGNMENT == 0);
@@ -23,7 +23,8 @@ DkMemBlock dkMemBlockCreate(const DkMemBlockMaker *maker)
     live_blocks++;
     return block;
 }
-void *dkMemBlockGetCpuAddr(DkMemBlock block) { return ((TestBlock *)block)->data; }
+void *dkMemBlockGetCpuAddr(DkMemBlock block)
+{ return fail_mapping ? NULL : ((TestBlock *)block)->data; }
 void dkMemBlockDestroy(DkMemBlock handle)
 {
     TestBlock *block = handle;
@@ -153,6 +154,34 @@ int main(void)
                                              sizeof(destination)) == SCE_GXM_ERROR_INVALID_VALUE);
     assert((uint32_t)gxm_texture_pack_linear(&layout, source, sizeof(source), destination,
                                              layout.size - 1) == SCE_GXM_ERROR_INVALID_VALUE);
-    puts("GXM texture staging regression checks passed.");
+    /* Descriptor changes must not overwrite an earlier recorded snapshot. */
+    DkMemBlock first, second;
+    unsigned char descriptors[17];
+    memset(descriptors, 0x12, sizeof(descriptors));
+    assert(!gxm_texture_stage_data(NULL, &list, descriptors, sizeof(descriptors), &first));
+    memset(descriptors, 0x34, sizeof(descriptors));
+    assert(!gxm_texture_stage_data(NULL, &list, descriptors, sizeof(descriptors), &second));
+    assert(first != second && live_blocks == 2);
+    for (unsigned i = 0; i < sizeof(descriptors); ++i) {
+        assert(((unsigned char *)dkMemBlockGetCpuAddr(first))[i] == 0x12);
+        assert(((unsigned char *)dkMemBlockGetCpuAddr(second))[i] == 0x34);
+    }
+    for (unsigned i = sizeof(descriptors); i < DK_MEMBLOCK_ALIGNMENT; ++i)
+        assert(((unsigned char *)dkMemBlockGetCpuAddr(first))[i] == 0);
+    GxmTextureStaging *saved = list;
+    fail_create = true;
+    assert((uint32_t)gxm_texture_stage_data(NULL, &list, descriptors, sizeof(descriptors), &block)
+            == SCE_GXM_ERROR_OUT_OF_MEMORY && !block && list == saved);
+    fail_create = false; fail_mapping = true;
+    assert((uint32_t)gxm_texture_stage_data(NULL, &list, descriptors, sizeof(descriptors), &block)
+            == SCE_GXM_ERROR_INVALID_POINTER && !block && live_blocks == 2 && list == saved);
+    fail_mapping = false;
+    assert((uint32_t)gxm_texture_stage_data(NULL, &list, descriptors, UINT32_MAX, &block)
+            == SCE_GXM_ERROR_OUT_OF_MEMORY && !block);
+    assert((uint32_t)gxm_texture_stage_data(NULL, &list, descriptors, 0, &block)
+            == SCE_GXM_ERROR_INVALID_VALUE && !block);
+    gxm_texture_staging_release(&list);
+    assert(!list && !live_blocks);
+    puts("GXM texture staging and descriptor snapshot regression checks passed.");
     return 0;
 }
