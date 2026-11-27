@@ -28,6 +28,11 @@ int gxm_depth_transfer_plan(GxmDepthTransfer *plan,SceGxmDepthStencilFormat form
  * unchanged. Destinations must not overlap source spans, plan metadata, or
  * another destination.
  * Stencil values use only their low eight bits. Row padding is untouched. */
+/* Validate a future write without touching destination planes. */
+int gxm_depth_transfer_check_plan(const GxmDepthTransfer *plan);
+int gxm_depth_transfer_check_write(const GxmDepthTransfer *plan,
+    const GxmDepthSample *samples,size_t sample_count,
+    void *depth,size_t depth_size,void *stencil,size_t stencil_size);
 int gxm_depth_transfer_read(const GxmDepthTransfer *plan,
     const void *depth,size_t depth_size,const void *stencil,size_t stencil_size,
     uint32_t background_depth_bits,uint8_t background_stencil,

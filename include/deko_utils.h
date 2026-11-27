@@ -52,8 +52,7 @@ void dk_cmdbuf_copy_image(DkCmdBuf cmdbuf, DkImage const *src_image, uint32_t sr
 
 bool dk_image_for_gxm_color_surface(DkDevice device, DkImage *image,
                                     const SceGxmColorSurfaceInner *surface);
-bool dk_image_for_gxm_ds_surface(DkDevice device, DkImage *image, uint32_t width, uint32_t height,
-                                 const SceGxmDepthStencilSurface *surface);
+
 bool dk_image_for_existing_framebuffer(DkDevice device, DkImage *image, const void *addr,
                                        uint32_t width, uint32_t height, uint32_t stride,
                                        SceDisplayPixelFormat pixelfmt);

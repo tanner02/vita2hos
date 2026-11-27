@@ -159,9 +159,21 @@ int main(void)
         assert(surface.zlsControl == before.zlsControl);
         assert(surface.depthData == before.depthData && surface.stencilData == before.stencilData);
     }
+    SceGxmDepthStencilSurface flags_saved=surface;
+    for (unsigned load=0;load<2;++load) for (unsigned store=0;store<2;++store) {
+        sceGxmDepthStencilSurfaceSetForceLoadMode(&surface,load ? SCE_GXM_DEPTH_STENCIL_FORCE_LOAD_ENABLED : 0);
+        sceGxmDepthStencilSurfaceSetForceStoreMode(&surface,store ? SCE_GXM_DEPTH_STENCIL_FORCE_STORE_ENABLED : 0);
+        assert(sceGxmDepthStencilSurfaceGetForceLoadMode(&surface)==(load ? 2 : 0));
+        assert(sceGxmDepthStencilSurfaceGetForceStoreMode(&surface)==(store ? 4 : 0));
+        assert((surface.zlsControl&~6u)==(flags_saved.zlsControl&~6u));
+        assert(!memcmp((char *)&surface+4,(char *)&flags_saved+4,sizeof(surface)-4));
+    }
+    sceGxmDepthStencilSurfaceSetForceLoadMode(NULL,0);sceGxmDepthStencilSurfaceSetForceStoreMode(NULL,0);
+    assert(!sceGxmDepthStencilSurfaceGetForceLoadMode(NULL) && !sceGxmDepthStencilSurfaceGetForceStoreMode(NULL));
     const uint32_t nids[] = {0x269B56BE, 0x32F280F0, 0xAAFC062B, 0xF5D3F3E8, 0x85D4DEFE,
                            0xF28A688A, 0xCA9D41D1, 0xA41DB0D6, 0x082200E1, 0xED0F6E25,
-                           0x613639FA, 0x0E0EBB57, 0x2DB6026C, 0xF33D9980};
+                           0x613639FA, 0x0E0EBB57, 0x2DB6026C, 0xF33D9980,
+                           0x0C44ACD7, 0x12AAA7AF, 0x2F5CC20C, 0x544AA05A};
     for (unsigned i = 0; i < sizeof(nids) / sizeof(nids[0]); ++i)
         assert(module_get_func_export(0xf76b66bd, nids[i]));
     puts("GXM surface clear values and export checks passed.");

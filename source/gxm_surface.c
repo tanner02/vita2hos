@@ -147,3 +147,26 @@ EXPORT(SceGxm, 0xF28A688A, void, sceGxmDepthStencilSurfaceSetBackgroundMask,
             (surface->backgroundControl & ~SCE_GXM_DEPTH_STENCIL_BG_CTRL_MASK_BIT) |
             (mask ? SCE_GXM_DEPTH_STENCIL_BG_CTRL_MASK_BIT : 0);
 }
+
+EXPORT(SceGxm,0x0C44ACD7,void,sceGxmDepthStencilSurfaceSetForceLoadMode,
+       SceGxmDepthStencilSurface *surface,SceGxmDepthStencilForceLoadMode mode)
+{
+    if (surface) surface->zlsControl=(surface->zlsControl&~SCE_GXM_DEPTH_STENCIL_FORCE_LOAD_ENABLED)|
+        (mode ? SCE_GXM_DEPTH_STENCIL_FORCE_LOAD_ENABLED : 0);
+}
+EXPORT(SceGxm,0x12AAA7AF,void,sceGxmDepthStencilSurfaceSetForceStoreMode,
+       SceGxmDepthStencilSurface *surface,SceGxmDepthStencilForceStoreMode mode)
+{
+    if (surface) surface->zlsControl=(surface->zlsControl&~SCE_GXM_DEPTH_STENCIL_FORCE_STORE_ENABLED)|
+        (mode ? SCE_GXM_DEPTH_STENCIL_FORCE_STORE_ENABLED : 0);
+}
+EXPORT(SceGxm,0x2F5CC20C,SceGxmDepthStencilForceLoadMode,sceGxmDepthStencilSurfaceGetForceLoadMode,
+       const SceGxmDepthStencilSurface *surface)
+{
+    return surface ? surface->zlsControl&SCE_GXM_DEPTH_STENCIL_FORCE_LOAD_ENABLED : 0;
+}
+EXPORT(SceGxm,0x544AA05A,SceGxmDepthStencilForceStoreMode,sceGxmDepthStencilSurfaceGetForceStoreMode,
+       const SceGxmDepthStencilSurface *surface)
+{
+    return surface ? surface->zlsControl&SCE_GXM_DEPTH_STENCIL_FORCE_STORE_ENABLED : 0;
+}

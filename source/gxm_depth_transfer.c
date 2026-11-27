@@ -37,7 +37,7 @@ int gxm_depth_transfer_plan(GxmDepthTransfer *plan,SceGxmDepthStencilFormat form
 
 /* A copied/corrupted plan cannot bypass span validation. Rebuild all derived
  * sizes from its shape before any source read or destination write. */
-static int validate_plan(const GxmDepthTransfer *plan)
+int gxm_depth_transfer_check_plan(const GxmDepthTransfer *plan)
 {
     if (!plan) return SCE_GXM_ERROR_INVALID_POINTER;
     SceGxmDepthStencilFormat format;
@@ -70,7 +70,7 @@ static bool overlap(const void *a,size_t a_size,const void *b,size_t b_size)
 static int validate_buffers(const GxmDepthTransfer *plan,const void *depth,size_t depth_size,
     const void *stencil,size_t stencil_size,const GxmDepthSample *samples,size_t count,bool writing)
 {
-    int result=validate_plan(plan);
+    int result=gxm_depth_transfer_check_plan(plan);
     if (result) return result;
     if (count<plan->sample_count) return SCE_GXM_ERROR_INVALID_VALUE;
     if ((uintptr_t)samples%_Alignof(GxmDepthSample)) return SCE_GXM_ERROR_INVALID_ALIGNMENT;
@@ -89,6 +89,13 @@ static int validate_buffers(const GxmDepthTransfer *plan,const void *depth,size_
         (writing && overlap(depth,plan->depth_bytes,stencil,plan->stencil_bytes)))
         return SCE_GXM_ERROR_INVALID_VALUE;
     return 0;
+}
+
+int gxm_depth_transfer_check_write(const GxmDepthTransfer *plan,
+    const GxmDepthSample *samples,size_t sample_count,
+    void *depth,size_t depth_size,void *stencil,size_t stencil_size)
+{
+    return validate_buffers(plan,depth,depth_size,stencil,stencil_size,samples,sample_count,true);
 }
 
 int gxm_depth_transfer_read(const GxmDepthTransfer *plan,

@@ -31,6 +31,7 @@
 #include "gxm/program_ref.h"
 #include "gxm/texture_layout.h"
 #include "gxm/texture_staging.h"
+#include "gxm/depth_staging.h"
 #include "modules/SceSysmem.h"
 
 #define DUMP_SHADER_SPIRV     0
@@ -48,6 +49,7 @@ typedef struct SceGxmContext {
     DkMemBlock gxm_vert_unif_block_memblock;
     DkMemBlock gxm_frag_unif_block_memblock;
     GxmTextureStaging *texture_staging;
+    GxmDepthStaging *depth_staging;
     GxmUniformStaging *uniform_staging;
     /* Dynamic state */
     struct {
@@ -62,6 +64,7 @@ typedef struct SceGxmContext {
         const SceGxmRenderTarget *render_target;
         const SceGxmColorSurfaceInner *color_surface;
         const SceGxmDepthStencilSurface *ds_surface;
+        SceGxmDepthStencilSurface ds_snapshot;
         SceGxmSyncObject *fragment_sync_object;
         bool in_scene;
         bool two_sided_mode;
@@ -392,6 +395,7 @@ EXPORT(SceGxm, 0xEDDC5FB2, int, sceGxmDestroyContext, SceGxmContext *context)
 {
     dkQueueWaitIdle(g_render_queue);
     gxm_texture_staging_release(&context->texture_staging);
+    gxm_depth_staging_release(&context->depth_staging,g_render_queue);
     gxm_uniform_staging_release(&context->uniform_staging);
     dkMemBlockDestroy(context->gxm_vert_unif_block_memblock);
     dkMemBlockDestroy(context->gxm_frag_unif_block_memblock);
@@ -811,8 +815,7 @@ EXPORT(SceGxm, 0x207AF96B, int, sceGxmCreateRenderTarget, const SceGxmRenderTarg
                           DkImageFlags_HwCompression);
     dk_surface_create(g_dk_device, &render_target->shadow_ds_surface, params->width, params->height,
                       DkImageFormat_ZF32_X24S8,
-                      DkImageFlags_UsageRender | DkImageFlags_Usage2DEngine |
-                          DkImageFlags_HwCompression);
+                      DkImageFlags_UsageRender | DkImageFlags_Usage2DEngine);
 
     *renderTarget = render_target;
 
@@ -1030,6 +1033,47 @@ static void set_vita3k_gxm_uniform_blocks(SceGxmContext *context, float width, f
                               ALIGN(sizeof(frag_unif), DK_UNIFORM_BUF_ALIGNMENT));
 }
 
+static int depth_plane_span(void *address,size_t required,void **data,size_t *available)
+{
+    *data=NULL;*available=0;
+    if (!address || !required) return 0;
+    VitaMemBlockInfo *block=SceSysmem_get_vita_memblock_info_for_addr(address);
+    if (!block) return SCE_GXM_ERROR_INVALID_POINTER;
+    uintptr_t at=(uintptr_t)address,base=(uintptr_t)block->base;
+    if (at<base || at-base>=block->size || required>block->size-(at-base))
+        return SCE_GXM_ERROR_INVALID_VALUE;
+    *data=address;*available=block->size-(at-base);
+    return 0;
+}
+static int prepare_depth_staging(const SceGxmDepthStencilSurface *surface,
+    const SceGxmRenderTargetParams *params,SceGxmSyncObject *dependency,GxmDepthStaging **out)
+{
+    *out=NULL;
+    if (!surface || !sceGxmDepthStencilSurfaceIsEnabled(surface)) return 0;
+    bool load=(surface->zlsControl&SCE_GXM_DEPTH_STENCIL_FORCE_LOAD_ENABLED)!=0;
+    bool store=(surface->zlsControl&SCE_GXM_DEPTH_STENCIL_FORCE_STORE_ENABLED)!=0;
+    if ((!load && !store) || (!surface->depthData && !surface->stencilData)) return 0;
+    if (params->multisampleMode!=SCE_GXM_MULTISAMPLE_NONE) return SCE_GXM_ERROR_UNSUPPORTED;
+    uint32_t width=params->width,height=params->height;
+    GxmDepthTransfer plan;
+    uint32_t stride=(((surface->zlsControl>>3)&255u)+1)*32;
+    int result=gxm_depth_transfer_plan(&plan,gxm_ds_surface_get_format(surface),
+        gxm_ds_surface_get_type(surface),width,height,stride,(width+7)&~7u);
+    if (result) return result;
+    void *depth,*stencil;size_t depth_size,stencil_size;
+    result=depth_plane_span(surface->depthData,plan.depth_bytes,&depth,&depth_size);
+    if (result) return result;
+    result=depth_plane_span(surface->stencilData,plan.stencil_bytes,&stencil,&stencil_size);
+    if (result) return result;
+    /* The GPU-side fence wait recorded below cannot order a CPU snapshot. */
+    if (load && dependency && dkFenceWait(&dependency->fence,-1)!=DkResult_Success)
+        return SCE_GXM_ERROR_DRIVER;
+    uint32_t background;
+    memcpy(&background,&surface->backgroundDepth,sizeof(background));
+    return gxm_depth_staging_prepare(g_dk_device,&plan,depth,depth_size,stencil,stencil_size,
+        background,sceGxmDepthStencilSurfaceGetBackgroundStencil(surface),load,store,out);
+}
+
 EXPORT(SceGxm, 0x8734FF4E, int, sceGxmBeginScene, SceGxmContext *context, unsigned int flags,
        const SceGxmRenderTarget *renderTarget, const SceGxmValidRegion *validRegion,
        SceGxmSyncObject *vertexSyncObject, SceGxmSyncObject *fragmentSyncObject,
@@ -1050,18 +1094,24 @@ EXPORT(SceGxm, 0x8734FF4E, int, sceGxmBeginScene, SceGxmContext *context, unsign
     if (validRegion && (validRegion->xMax >= rt_width || validRegion->yMax >= rt_height))
         return SCE_GXM_ERROR_INVALID_VALUE;
 
+    GxmDepthStaging *next_depth=NULL;
+    int depth_result=prepare_depth_staging(depthStencil,&renderTarget->params,fragmentSyncObject,&next_depth);
+    if (depth_result) return depth_result;
+
     /* BeginScene resets the transform to the default region, while retaining
      * the viewport enable mode. Later setters are replayed at the next draw. */
     sceGxmSetDefaultRegionClipAndViewport(context, validRegion ? validRegion->xMax : rt_width - 1U,
                                          validRegion ? validRegion->yMax : rt_height - 1U);
 
-    if (context->texture_staging || context->uniform_staging) {
+    if (context->texture_staging || context->uniform_staging || context->depth_staging) {
         /* The previous scene was submitted by EndScene. Retire its temporary
          * images and uniform snapshots only after the GPU is finished. */
         dkQueueWaitIdle(g_render_queue);
         gxm_texture_staging_release(&context->texture_staging);
         gxm_uniform_staging_release(&context->uniform_staging);
+        gxm_depth_staging_release(&context->depth_staging,g_render_queue);
     }
+    context->depth_staging=next_depth;
 
     LOG("sceGxmBeginScene to renderTarget %p, fragmentSyncObject: %p, "
         "w: %" PRId32 ", h: %" PRId32 ", stride: %" PRId32 ", CPU addr: %p",
@@ -1101,22 +1151,28 @@ EXPORT(SceGxm, 0x8734FF4E, int, sceGxmBeginScene, SceGxmContext *context, unsign
         }
     }
 
-    if (!depthStencil || !sceGxmDepthStencilSurfaceIsEnabled(depthStencil)) {
-        dkCmdBufClearDepthStencil(context->cmdbuf, true, 1.0f, 0xFF, 0);
-    } else {
-        if (!(depthStencil->zlsControl & SCE_GXM_DEPTH_STENCIL_FORCE_LOAD_ENABLED)) {
-            dkCmdBufClearDepthStencil(context->cmdbuf, true, depthStencil->backgroundDepth, 0xFF,
-                                      sceGxmDepthStencilSurfaceGetBackgroundStencil(depthStencil));
-        } else {
-            /* TODO: Copy GXM DS to shadow? */
+    if (next_depth && (depthStencil->zlsControl&SCE_GXM_DEPTH_STENCIL_FORCE_LOAD_ENABLED)) {
+        DkImageView transfer=renderTarget->shadow_ds_surface.view;
+        transfer.format=DkImageFormat_ZF32_X24S8;
+        depth_result=gxm_depth_staging_upload(next_depth,context->cmdbuf,&transfer);
+        if (depth_result) {
+            dkCmdBufClear(context->cmdbuf);
+            gxm_depth_staging_release(&context->depth_staging,g_render_queue);
+            return depth_result;
         }
+    } else if (!depthStencil || !sceGxmDepthStencilSurfaceIsEnabled(depthStencil)) {
+        dkCmdBufClearDepthStencil(context->cmdbuf,true,1.0f,0xFF,0);
+    } else {
+        dkCmdBufClearDepthStencil(context->cmdbuf,true,depthStencil->backgroundDepth,0xFF,
+                                  sceGxmDepthStencilSurfaceGetBackgroundStencil(depthStencil));
     }
 
     /* Mark all state as dirty to make sure we bind everything before the first draw call */
     context->state.dirty.raw = ~(uint32_t)0;
     context->state.render_target = renderTarget;
     context->state.color_surface = color_surface_inner;
-    context->state.ds_surface = depthStencil;
+    if (depthStencil) context->state.ds_snapshot=*depthStencil;
+    context->state.ds_surface = depthStencil ? &context->state.ds_snapshot : NULL;
     context->state.fragment_sync_object = fragmentSyncObject;
     context->state.in_scene = true;
 
@@ -1135,14 +1191,11 @@ EXPORT(SceGxm, 0xFE300E2F, int, sceGxmEndScene, SceGxmContext *context,
     DkVariable variable;
     uint32_t notification_offsets[2];
     DkImage color_surface_image;
-    DkImage ds_surface_image;
     const SceGxmRenderTarget *const render_target = context->state.render_target;
     const dk_surface_t *const shadow_color_surface = &render_target->shadow_color_surface;
     const dk_surface_t *const shadow_ds_surface = &render_target->shadow_ds_surface;
     const SceGxmColorSurfaceInner *const gxm_color_surface = context->state.color_surface;
     const SceGxmDepthStencilSurface *const gxm_ds_surface = context->state.ds_surface;
-    const uint32_t rt_width = render_target->params.width;
-    const uint32_t rt_height = render_target->params.height;
     bool discard_color;
     bool discard_stencil;
 
@@ -1163,12 +1216,6 @@ EXPORT(SceGxm, 0xFE300E2F, int, sceGxmEndScene, SceGxmContext *context,
         dkVariableInitialize(&variable, g_notification_region_memblock, notification_offsets[0]);
         dkCmdBufSignalVariable(context->cmdbuf, &variable, DkVarOp_Set, vertexNotification->value,
                                DkPipelinePos_Rasterizer);
-    }
-
-    if (fragmentNotification) {
-        dkVariableInitialize(&variable, g_notification_region_memblock, notification_offsets[1]);
-        dkCmdBufSignalVariable(context->cmdbuf, &variable, DkVarOp_Set, fragmentNotification->value,
-                               DkPipelinePos_Bottom);
     }
 
     /* Wait for fragments to be completed before the copy/discard */
@@ -1192,25 +1239,40 @@ EXPORT(SceGxm, 0xFE300E2F, int, sceGxmEndScene, SceGxmContext *context,
         }
     }
 
-    /* Copy from the shadow depth/stencil surface to the GXM depth/stencil surface */
-    if (discard_stencil) {
-        dkCmdBufDiscardDepthStencil(context->cmdbuf);
+    bool depth_store=!discard_stencil && context->depth_staging;
+    if (depth_store) {
+        DkImageView transfer=shadow_ds_surface->view;
+        transfer.format=DkImageFormat_ZF32_X24S8;
+        int result=gxm_depth_staging_download(context->depth_staging,context->cmdbuf,&transfer);
+        if (result) return result;
     } else {
-        if (dk_image_for_gxm_ds_surface(g_dk_device, &ds_surface_image, rt_width, rt_height,
-                                        gxm_ds_surface)) {
-            LOG("Copying depth/stencil surface: shadow -> GXM");
-            dk_cmdbuf_copy_image(context->cmdbuf, &shadow_ds_surface->image,
-                                 shadow_ds_surface->width, shadow_ds_surface->height,
-                                 &ds_surface_image, rt_width, rt_height);
+        dkCmdBufDiscardDepthStencil(context->cmdbuf);
+    }
+    /* Forced stores export CPU planes before completion can become visible. */
+    if (!depth_store && fragmentNotification) {
+        dkVariableInitialize(&variable,g_notification_region_memblock,notification_offsets[1]);
+        dkCmdBufSignalVariable(context->cmdbuf,&variable,DkVarOp_Set,fragmentNotification->value,
+                               DkPipelinePos_Bottom);
+    }
+    cmd_list=dkCmdBufFinishList(context->cmdbuf);
+    dkQueueSubmitCommands(g_render_queue,cmd_list);
+    if (depth_store) {
+        int result=gxm_depth_staging_finish_store(context->depth_staging,g_render_queue);
+        if (result) {
+            context->state.in_scene=false;
+            return result;
+        }
+        if (fragmentNotification) {
+            dkCmdBufClear(context->cmdbuf);
+            dkVariableInitialize(&variable,g_notification_region_memblock,notification_offsets[1]);
+            dkCmdBufSignalVariable(context->cmdbuf,&variable,DkVarOp_Set,fragmentNotification->value,
+                                   DkPipelinePos_Bottom);
+            dkQueueSubmitCommands(g_render_queue,dkCmdBufFinishList(context->cmdbuf));
         }
     }
-
-    /* Signal fence when rendering and copying finishes */
+    /* Queue fences must follow submission of this scene, including CPU export. */
     if (context->state.fragment_sync_object)
-        dkQueueSignalFence(g_render_queue, &context->state.fragment_sync_object->fence, true);
-
-    cmd_list = dkCmdBufFinishList(context->cmdbuf);
-    dkQueueSubmitCommands(g_render_queue, cmd_list);
+        dkQueueSignalFence(g_render_queue,&context->state.fragment_sync_object->fence,true);
     dkQueueFlush(g_render_queue);
 
     context->state.in_scene = false;

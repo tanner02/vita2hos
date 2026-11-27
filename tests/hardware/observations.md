@@ -1,3 +1,29 @@
+## Offline depth-buffer GPU staging (2026-11-27)
+
+- Added force-load/store mode getters and setters, with descriptor-bit preservation
+  and NID dispatch checks. BeginScene snapshots the depth descriptor and stages
+  linear DF32, S8, or separate DF32_S8 planes through an owned GPU buffer;
+  EndScene reads the shadow image back and exports only active guest pixels.
+- Copy-buffer rowLength and imageHeight are byte strides in the deko3d copy
+  implementation. The native ZF32_X24S8 transfer uses eight bytes per sample:
+  float-depth bits followed by a word containing the low-byte stencil value.
+  The shadow depth image is uncompressed. This representation follows source
+  format traits and still requires hardware confirmation.
+- Unsupported tiled/packed formats and forced transfers with multisampling
+  return an error before scene mutation. Guest spans are checked against logical
+  Sysmem allocations; callers must retain those allocations through EndScene.
+  Absent planes use background values on load and are skipped on store.
+- Forced stores currently wait synchronously for GPU completion before CPU
+  export. Fragment notifications and the scene fence follow export; scene
+  submission now precedes fence signaling on all paths. Temporary storage is
+  retained until queued GPU references retire.
+- The ASan/UBSan host model checks byte strides, upload/draw/readback order,
+  untouched row padding, absent stencil, completion timing, allocation failures,
+  and staging ownership. ARM Debug and Release builds passed. These checks do
+  not execute a GPU and do not establish commercial-title compatibility.
+- No Switch files were changed and no hardware test was requested while the
+  user was unavailable. A later owned GPU roundtrip probe is still required.
+
 # Hardware observations
 
 ## Runtime 76a91883c32536f0db3713f05e809d90868b1060

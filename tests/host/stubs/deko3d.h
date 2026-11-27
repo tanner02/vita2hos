@@ -31,7 +31,7 @@ typedef enum {
     DkImageFormat_RGBA16_Unorm, DkImageFormat_RGBA16_Snorm, DkImageFormat_RGBA16_Float,
     DkImageFormat_RGBA_BC1, DkImageFormat_RGBA_BC2, DkImageFormat_RGBA_BC3,
     DkImageFormat_R_BC4_Unorm, DkImageFormat_R_BC4_Snorm,
-    DkImageFormat_RG_BC5_Unorm, DkImageFormat_RG_BC5_Snorm,
+    DkImageFormat_RG_BC5_Unorm, DkImageFormat_RG_BC5_Snorm, DkImageFormat_ZF32_X24S8,
 } DkImageFormat;
 typedef enum {
     DkImageSwizzle_Zero, DkImageSwizzle_One, DkImageSwizzle_Red,
@@ -60,4 +60,21 @@ static inline void dkMemBlockMakerDefaults(DkMemBlockMaker *maker, DkDevice devi
 }
 DkMemBlock dkMemBlockCreate(const DkMemBlockMaker *maker);
 void *dkMemBlockGetCpuAddr(DkMemBlock block);
+
+typedef uint64_t DkGpuAddr;
+#define DK_GPU_ADDR_INVALID UINT64_MAX
+typedef void *DkCmdBuf;
+typedef void *DkQueue;
+typedef struct { unsigned unused; } DkImage;
+typedef struct { const DkImage *pImage;DkImageFormat format; } DkImageView;
+typedef struct { uint32_t x,y,z,width,height,depth; } DkImageRect;
+typedef struct { DkGpuAddr addr;uint32_t rowLength,imageHeight; } DkCopyBuf;
+typedef enum { DkBarrier_Full=4 } DkBarrier;
+enum { DkInvalidateFlags_Image=1,DkInvalidateFlags_Zcull=8,DkInvalidateFlags_L2Cache=16 };
+DkGpuAddr dkMemBlockGetGpuAddr(DkMemBlock);
+void dkCmdBufBarrier(DkCmdBuf,DkBarrier,uint32_t);
+void dkCmdBufCopyBufferToImage(DkCmdBuf,const DkCopyBuf *,const DkImageView *,const DkImageRect *,uint32_t);
+void dkCmdBufCopyImageToBuffer(DkCmdBuf,const DkImageView *,const DkImageRect *,const DkCopyBuf *,uint32_t);
+void dkQueueWaitIdle(DkQueue);
+void dkQueueFlush(DkQueue);
 #endif
