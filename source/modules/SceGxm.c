@@ -49,6 +49,7 @@ typedef struct SceGxmContext {
         } vertex_rb, fragment_rb;
         const SceGxmVertexProgram *vertex_program;
         const SceGxmFragmentProgram *fragment_program;
+        const void *vertex_streams[SCE_GXM_MAX_VERTEX_STREAMS];
         const SceGxmRenderTarget *render_target;
         const SceGxmColorSurfaceInner *color_surface;
         const SceGxmDepthStencilSurface *ds_surface;
@@ -83,6 +84,7 @@ typedef struct SceGxmContext {
                 uint32_t fragment_textures : 1;
                 uint32_t vertex_default_uniform : 1;
                 uint32_t fragment_default_uniform : 1;
+                uint32_t vertex_streams : 1;
             } bit;
             uint32_t raw;
         } dirty;
@@ -1183,18 +1185,12 @@ EXPORT(SceGxm, 0x29C34DF5, int, sceGxmSetFragmentTexture, SceGxmContext *context
 EXPORT(SceGxm, 0x895DF2E9, int, sceGxmSetVertexStream, SceGxmContext *context,
        unsigned int streamIndex, const void *streamData)
 {
-    VitaMemBlockInfo *stream_block;
-    uint32_t stream_offset;
-
-    stream_block = SceSysmem_get_vita_memblock_info_for_addr(streamData);
-    if (!stream_block)
+    if (!context || !streamData)
+        return SCE_GXM_ERROR_INVALID_POINTER;
+    if (streamIndex >= SCE_GXM_MAX_VERTEX_STREAMS)
         return SCE_GXM_ERROR_INVALID_VALUE;
-
-    stream_offset = (uintptr_t)streamData - (uintptr_t)stream_block->base;
-    dkCmdBufBindVtxBuffer(context->cmdbuf, streamIndex,
-                          dkMemBlockGetGpuAddr(stream_block->dk_memblock) + stream_offset,
-                          stream_block->size - stream_offset);
-
+    context->state.vertex_streams[streamIndex] = streamData;
+    context->state.dirty.bit.vertex_streams = true;
     return 0;
 }
 
@@ -1659,6 +1655,26 @@ static int context_flush_dirty_state(SceGxmContext *context)
     DkVtxAttribState vertex_attrib_state[SCE_GXM_MAX_VERTEX_ATTRIBUTES];
     DkVtxBufferState vertex_buffer_state[SCE_GXM_MAX_VERTEX_STREAMS];
     uint32_t i, shader_count = 0, shader_stage_mask = 0;
+
+    if (context->state.dirty.bit.vertex_streams || context->state.dirty.bit.vertex_shader) {
+        uint32_t used_streams = 0;
+        for (i = 0; i < vertex_program->attributeCount; ++i)
+            used_streams |= 1U << attributes[i].streamIndex;
+        for (i = 0; i < vertex_program->streamCount; ++i) {
+            if (!(used_streams & (1U << i)))
+                continue;
+            const void *data = context->state.vertex_streams[i];
+            if (!data)
+                return SCE_GXM_ERROR_INVALID_POINTER;
+            VitaMemBlockInfo *block = SceSysmem_get_vita_memblock_info_for_addr(data);
+            if (!block)
+                return SCE_GXM_ERROR_INVALID_VALUE;
+            uintptr_t offset = (uintptr_t)data - (uintptr_t)block->base;
+            dkCmdBufBindVtxBuffer(context->cmdbuf, i,
+                                  dkMemBlockGetGpuAddr(block->dk_memblock) + offset,
+                                  block->size - offset);
+        }
+    }
 
     if (context->state.dirty.bit.vertex_shader && vertex_program) {
         memset(vertex_attrib_state, 0,
