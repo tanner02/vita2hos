@@ -120,8 +120,18 @@
   had no Sysmem teardown to release their GPU mappings before device destruction.
 - Sysmem teardown now releases outstanding guest mappings after display shutdown.
   Host regression tests cover retained and explicitly freed allocations; hardware
-  confirmation of clean shutdown remains pending. The guest PASS marker by itself
+  confirmation of clean shutdown is recorded below. The guest PASS marker by itself
   does not cover runtime shutdown.
+
+## Runtime 06ded1bed69ab6451cb373198d002451a27f5b35
+
+- USB readback identifies the installed `06ded1b` runtime and the same visible
+  cube guest. Its report reaches all 360 frames and `PASS visible_cube` again.
+- The log ends with guest/process status 0, return from launch, and successful
+  `jitClose()`. There is no deko3d fatal error after the presenter stops.
+- This confirms the retained-memory cleanup fix on this test and provides a
+  complete visible 3D run with clean runtime shutdown. It does not establish
+  commercial-title compatibility.
 
 ## Runtime f55edbf626acb6ff46d510a55bdd026dd78ac5ad
 

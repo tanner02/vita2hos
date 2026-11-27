@@ -2,6 +2,27 @@
 #define MODULE_H
 
 #include <stdint.h>
+#include <stddef.h>
+#include <stdbool.h>
+
+typedef enum { MODULE_SYMBOL_FUNCTION, MODULE_SYMBOL_VARIABLE } ModuleSymbolKind;
+typedef struct {
+    uint32_t nid;
+    ModuleSymbolKind kind;
+    const void *address;
+} ModuleGuestSymbol;
+typedef struct ModuleGuestLibrary ModuleGuestLibrary;
+typedef struct { ModuleGuestLibrary *libraries; } ModuleGuestExports;
+
+/* Startup binding only: populate before guest threads run, clear after they stop.
+ * The registry owns copied symbol tables; their addresses remain image-owned. */
+int module_guest_exports_register(ModuleGuestExports *exports, const void *owner,
+                                  uint32_t library, const ModuleGuestSymbol *symbols, size_t count);
+const void *module_guest_exports_find(const ModuleGuestExports *exports, uint32_t library,
+                                      ModuleSymbolKind kind, uint32_t nid, bool *library_owned);
+void module_guest_exports_remove(ModuleGuestExports *exports, const void *owner);
+void module_guest_exports_clear(ModuleGuestExports *exports);
+void module_set_guest_exports(ModuleGuestExports *exports);
 
 typedef struct {
     const char *name;
@@ -49,5 +70,6 @@ extern const library_t __stop_exported_libraries[];
     (((uintptr_t)lib->func_table_stop - (uintptr_t)lib->func_table_start) / sizeof(void *))
 
 const void *module_get_func_export(uint32_t lib_nid, uint32_t func_nid);
+const void *module_get_var_export(uint32_t lib_nid, uint32_t var_nid);
 
 #endif
