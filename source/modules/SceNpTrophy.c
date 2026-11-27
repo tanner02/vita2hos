@@ -42,6 +42,7 @@ typedef struct {char data[9],term;uint8_t num;char reserved;} TrophyCommunicatio
 _Static_assert(sizeof(TrophyCommunicationId)==12,"Trophy communication ID ABI");
 #define TROPHY_UNLOCK_WORDS (TROPHY_METADATA_MAX_TROPHIES/32u)
 #define TROPHY_ALREADY_UNLOCKED ((int)0x8055160f)
+#define TROPHY_PLATINUM_CANNOT_UNLOCK ((int)0x80551610)
 #define TROPHY_INVALID_TROPHY_ID ((int)0x8055160e)
 typedef struct {
     int32_t uid;
@@ -263,6 +264,10 @@ EXPORT(SceNpTrophy,0xB397AA24,int,sceNpTrophyUnlockTrophy,int32_t context_uid,
             || (unsigned)trophy_id>=context->metadata.trophy_count
             || !context->metadata.trophies[trophy_id].present)
         result=TROPHY_INVALID_TROPHY_ID;
+    /* Platinum unlocks only through the all-non-platinum auto path; direct
+     * requests are rejected per the pinned reference (unlock_trophy). */
+    else if(context->metadata.trophies[trophy_id].grade==1)
+        result=TROPHY_PLATINUM_CANNOT_UNLOCK;
     else if(context->unlocked[trophy_id>>5]&(1u<<(trophy_id&31)))
         result=TROPHY_ALREADY_UNLOCKED;
     else {

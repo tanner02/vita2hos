@@ -69,8 +69,12 @@ int main(void)
     assert(sceNpTrophyUnlockTrophy(context,handle,-1,NULL)==TROPHY_INVALID_TROPHY_ID);
     assert(sceNpTrophyGetTrophyUnlockState(context,handle,NULL,&count)==TROPHY_INVALID_ARGUMENT);
     assert(sceNpTrophyGetTrophyUnlockState(context,handle,flags,NULL)==TROPHY_INVALID_ARGUMENT);
-    /* Bronze 1: unlock, observe the bit, reject a duplicate. */
+    /* Platinum cannot be unlocked directly (rejected before any state or
+     * platinum_id write), per the pinned reference. */
     int32_t platinum=123;
+    assert(sceNpTrophyUnlockTrophy(context,handle,0,&platinum)==TROPHY_PLATINUM_CANNOT_UNLOCK && platinum==123);
+    assert(sceNpTrophyGetTrophyUnlockState(context,handle,flags,&count)==0 && !flags[0] && count==3);
+    /* Bronze 1: unlock, observe the bit, reject a duplicate. */
     assert(!sceNpTrophyUnlockTrophy(context,handle,1,&platinum) && platinum==-1);
     assert(!sceNpTrophyGetTrophyUnlockState(context,handle,flags,&count) && count==3);
     assert(flags[0]==0x2u && !flags[1] && !flags[2] && !flags[3]);
@@ -78,7 +82,8 @@ int main(void)
     /* Bronze 2 completes the set: the platinum auto-unlocks and reports its id. */
     assert(!sceNpTrophyUnlockTrophy(context,handle,2,&platinum) && platinum==0);
     assert(!sceNpTrophyGetTrophyUnlockState(context,handle,flags,&count) && flags[0]==0x7u);
-    assert(sceNpTrophyUnlockTrophy(context,handle,0,NULL)==TROPHY_ALREADY_UNLOCKED);
+    /* Re-requesting the platinum stays rejected (guard precedes state). */
+    assert(sceNpTrophyUnlockTrophy(context,handle,0,NULL)==TROPHY_PLATINUM_CANNOT_UNLOCK);
     /* Aborted handles fail without touching state. */
     assert(!sceNpTrophyAbortHandle(handle));
     assert(sceNpTrophyUnlockTrophy(context,handle,1,NULL)==TROPHY_ABORT);
