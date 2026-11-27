@@ -45,7 +45,7 @@ int main(void)
     }
     char path[1024];assert(!slot_path(path,root,4,true));
     FILE *file=fopen(path,"wb");assert(file && !fclose(file));
-    assert(savedata_slot_put(root,4,output,false)==-EEXIST);
+    assert(savedata_slot_put(root,4,output,false)==-EBUSY);
     assert(!savedata_slot_get(root,4,output) && output[0]==0x92);assert(!unlink(path));
     assert(!slot_path(path,root,4,false));file=fopen(path,"r+b");assert(file);
     assert(!fseek(file,20,SEEK_SET) && fputc(0,file)!=EOF && !fclose(file));

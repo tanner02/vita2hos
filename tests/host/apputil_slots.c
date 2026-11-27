@@ -28,6 +28,11 @@ int main(void)
     FILE *file=fopen(path,"wb");assert(file && fwrite(sfo,1,64,file)==64 && !fclose(file));
     assert(!sceAppUtilInit(&init,&boot));assert(sceAppUtilInit(&init,&boot)==(int)SCE_APPUTIL_ERROR_BUSY);
     assert(sceAppUtilSaveDataSlotGetParam(1,&output,NULL)==(int)SCE_APPUTIL_ERROR_SAVEDATA_SLOT_NOT_FOUND);
+    char staged[1024];assert(!slot_path(staged,save_root,1,true));
+    file=fopen(staged,"wb");assert(file && !fclose(file));
+    assert(sceAppUtilSaveDataSlotCreate(1,&param,NULL)==(int)SCE_APPUTIL_ERROR_BUSY);
+    assert(sceAppUtilSaveDataSlotGetParam(1,&output,NULL)==(int)SCE_APPUTIL_ERROR_SAVEDATA_SLOT_NOT_FOUND);
+    assert(!unlink(staged));
     assert(!sceAppUtilSaveDataSlotCreate(1,&param,NULL));
     assert(sceAppUtilSaveDataSlotCreate(1,&param,NULL)==(int)SCE_APPUTIL_ERROR_SAVEDATA_SLOT_EXISTS);
     assert(!sceAppUtilShutdown());assert(!sceAppUtilInit(&init,&boot));

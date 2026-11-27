@@ -46,7 +46,7 @@ int savedata_slot_put(const char *root,uint32_t id,const void *data,bool create)
     unsigned char record[RECORD_BYTES];memcpy(record,"V2HSS01",8);
     memcpy(record+8,data,SAVEDATA_SLOT_BYTES);digest(record,record+8+SAVEDATA_SLOT_BYTES);
     int fd=open(temporary,O_WRONLY|O_CREAT|O_EXCL,0600);
-    if(fd<0)return -errno;
+    if(fd<0)return errno==EEXIST ? -EBUSY : -errno;
     size_t written=0;
     while(written<sizeof(record)) {
         ssize_t count=write(fd,record+written,sizeof(record)-written);

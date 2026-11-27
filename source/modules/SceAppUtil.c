@@ -21,6 +21,7 @@ static int app_error(int result)
     switch(-result) {
     case 0:return 0;
     case ENOENT:return (int)SCE_APPUTIL_ERROR_SAVEDATA_SLOT_NOT_FOUND;
+    case EBUSY:return (int)SCE_APPUTIL_ERROR_BUSY;
     case EEXIST:return (int)SCE_APPUTIL_ERROR_SAVEDATA_SLOT_EXISTS;
     case ENOSPC:return (int)SCE_APPUTIL_ERROR_SAVEDATA_NO_SPACE_FS;
     case EACCES:case EPERM:return (int)SCE_APPUTIL_ERROR_NO_PERMISSION;

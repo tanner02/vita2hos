@@ -348,7 +348,7 @@ an integrity digest; this is a vita2hos format, not Sony savedata encryption or
 publisher authentication. Reads preserve outputs on malformed/truncated records.
 Writes use exclusive staging, checked writes and fsync before rename. Tests
 reopen records and inject write/flush/rename failures to check preservation.
-A stale staging file returns EEXIST and is retained for explicit recovery.
+A stale staging file returns EBUSY and is retained for explicit recovery.
 Filesystem rename and power-loss guarantees still require Switch validation;
 parent-directory durability is not established. No savedata mount, title identity,
 file payload API, quota calculation, or SDK success is supplied by this backend.
