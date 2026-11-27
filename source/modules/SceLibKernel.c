@@ -1,3 +1,4 @@
+#include "savedata_mount.h"
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -119,6 +120,10 @@ static int vita_io_path(const char *path, char *resolved, size_t capacity)
             return io_errno(ENAMETOOLONG);
         memcpy(resolved, path, length + 1);
         return 0;
+    }
+    if (device-path==9 && !memcmp(path,"savedata0",9)) {
+        int result=savedata_mount_resolve(path,resolved,capacity);
+        return result ? io_errno(-result) : 0;
     }
     if (device - path != 4 || memcmp(path, "app0", 4))
         return SCE_ERROR_ERRNO_ENODEV;
@@ -532,6 +537,7 @@ static int io_errno(int error)
      * POSIX errors. The Vita low word uses SDK libc errno values, not the
      * separate SceNet/BSD error namespace. */
     switch (error) {
+    case ENODEV: return SCE_ERROR_ERRNO_ENODEV;
     case ENOENT: return (int)0x80010002;
     case EACCES: return (int)0x8001000d;
     case EFAULT: return (int)0x8001000e;

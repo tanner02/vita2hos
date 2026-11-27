@@ -13,11 +13,13 @@
 #include "module.h"
 #include "savedata_identity.h"
 #include "savedata_slots.h"
+#include "savedata_mount.h"
 #include "modules/SceAppUtil.h"
 
 _Static_assert(sizeof(SceAppUtilSaveDataSlotParam)==SAVEDATA_SLOT_BYTES,"slot ABI");
 static Mutex app_lock;
 static bool app_ready;
+static int resolve_save_path(const char *path,char *output,size_t capacity);
 static char save_root[1024];
 static int app_error(int result)
 {
@@ -67,7 +69,7 @@ static int prepare_storage(void)
     return ensure_directory(save_root);
 }
 void SceAppUtil_finish(void)
-{mutexLock(&app_lock);app_ready=false;save_root[0]=0;mutexUnlock(&app_lock);}
+{mutexLock(&app_lock);savedata_mount_set(NULL);app_ready=false;save_root[0]=0;mutexUnlock(&app_lock);}
 EXPORT(SceAppUtil,0xDAFFE671,int,sceAppUtilInit,SceAppUtilInitParam *init,SceAppUtilBootParam *boot)
 {
     if(!init || !boot)return (int)SCE_APPUTIL_ERROR_PARAMETER;
@@ -76,7 +78,7 @@ EXPORT(SceAppUtil,0xDAFFE671,int,sceAppUtilInit,SceAppUtilInitParam *init,SceApp
     if(!result) {
         int prepared=prepare_storage();
         result=prepared==-ENOENT || prepared==-ENOTDIR ? (int)SCE_APPUTIL_ERROR_NOT_MOUNTED : app_error(prepared);
-        if(!result)app_ready=true;
+        if(!result){app_ready=true;savedata_mount_set(resolve_save_path);}
         else save_root[0]=0;
     }
     mutexUnlock(&app_lock);return result;
@@ -84,7 +86,7 @@ EXPORT(SceAppUtil,0xDAFFE671,int,sceAppUtilInit,SceAppUtilInitParam *init,SceApp
 EXPORT(SceAppUtil,0xB220B00B,int,sceAppUtilShutdown,void)
 {
     mutexLock(&app_lock);int result=app_ready ? 0 : (int)SCE_APPUTIL_ERROR_NOT_INITIALIZED;
-    app_ready=false;save_root[0]=0;mutexUnlock(&app_lock);return result;
+    savedata_mount_set(NULL);app_ready=false;save_root[0]=0;mutexUnlock(&app_lock);return result;
 }
 static int slot_operation(unsigned id,SceAppUtilSaveDataSlotParam *param,
                           SceAppUtilSaveDataMountPoint *mount,unsigned operation)
@@ -138,6 +140,21 @@ static int savedata_path(const char *input,char path[1024])
         if(*input && !*++input)return -EINVAL;
     }
     return 0;
+}
+static int resolve_save_path(const char *path,char *output,size_t capacity)
+{
+    mutexLock(&app_lock);char resolved[1024];int result=-ENODEV;
+    if(app_ready) {
+        if(path && !strcmp(path,"savedata0:/")) {
+            memcpy(resolved,save_root,strlen(save_root)+1);result=0;
+        } else result=savedata_path(path,resolved);
+        if(!result) {
+            size_t length=strlen(resolved);
+            if(!output || length>=capacity)result=-ENAMETOOLONG;
+            else memcpy(output,resolved,length+1);
+        }
+    }
+    mutexUnlock(&app_lock);return result;
 }
 static int validate_save_file(const SceAppUtilSaveDataFile *file,char path[1024])
 {

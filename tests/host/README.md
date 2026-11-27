@@ -368,7 +368,7 @@ records across shutdown; bootstrap cleanup resets service state after guests sto
 Missing metadata/directories, missing/duplicate slots and unsupported explicit
 mount-point arguments return errors. Only the default single-user storage context
 is supported. Tests use a temporary root and owned SFO data, never the Switch.
-Savedata0 file-I/O mounting, quotas, slot search, custom mounts,
+Quotas, slot search, custom mounts,
 boot-parameter synthesis and sysmodule lifecycle support remain unimplemented.
 Do not infer a complete savedata service or successful game startup from slot tests.
 
@@ -382,5 +382,14 @@ The whole batch is validated first, but completed writes are not rolled back on
 later failure. Required-size output is zeroed only on success and preserved on
 failure; accurate shortage/quota reporting is not implemented. Tests verify disk
 bytes, truncation, invalid-batch nonmutation, symlink denial and ENOSPC propagation.
-Savedata0 generic file-I/O mounting, removal, quota/search and metadata timestamp
+Removal, quota/search and metadata timestamp
 synthesis remain incomplete; Switch filesystem behavior is still unverified.
+
+Generic file I/O now dispatches savedata0: through AppUtil's active resolver.
+The static callback is published/revoked atomically and rechecks readiness under
+AppUtil's mutex, without a registry lock across service calls. Paths are copied
+into the caller's native buffer and use the same validation as DataSave. Root
+access supports directory listing. Shutdown revokes new path resolutions; existing
+file descriptors retain native ownership until closed. The integration test writes
+through AppUtil, reads through sceIoOpen/Read, and checks revocation plus retained
+open-handle access. Filesystem mutation races with external actors are not covered.

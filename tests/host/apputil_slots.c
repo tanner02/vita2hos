@@ -15,13 +15,18 @@ static ssize_t payload_write(int fd,const void *data,size_t size);
 #undef write
 static ssize_t payload_write(int fd,const void *data,size_t size)
 {if(fail_payload_write){errno=ENOSPC;return -1;}return write(fd,data,size);}
+#include "../../source/modules/SceLibKernel.c"
 #include "../../source/module.c"
+void log_printf(const char *format,...) {(void)format;}
+void SceKernelThreadMgr_prepare_current_exit(int status) {(void)status;}
+VitaThreadInfo *SceKernelThreadMgr_get_thread_info(void) {return NULL;}
+SceUID SceSysmem_get_next_uid(void) {static SceUID next=100;return next++;}
 _Static_assert(sizeof(SceAppUtilSaveDataSlotParam)==SAVEDATA_SLOT_BYTES,"slot ABI");
 static void put32(unsigned char *p,unsigned value)
 {for(unsigned i=0;i<4;i++)p[i]=(unsigned char)(value>>(8*i));}
 int main(void)
 {
-    assert(mkdtemp(test_root));
+    assert(mkdtemp(test_root));assert(!SceLibKernel_init());
     SceAppUtilInitParam init={0};SceAppUtilBootParam boot={0};
     SceAppUtilSaveDataSlotParam param={0},output={0};param.userParam=42;param.status=17;
     assert(sceAppUtilSaveDataSlotGetParam(1,&output,NULL)==(int)SCE_APPUTIL_ERROR_NOT_INITIALIZED);
@@ -53,6 +58,13 @@ int main(void)
     SceAppUtilSaveDataFileSlot slot={.id=2,.slotParam=&param};
     assert(!sceAppUtilSaveDataDataSave(&slot,files,2,NULL,&required) && required==0);
     assert(!sceAppUtilSaveDataSlotGetParam(2,&output,NULL) && output.userParam==7);
+    SceUID guest_file=sceIoOpen("savedata0:/data/save.bin",SCE_O_RDONLY,0);assert(guest_file>0);
+    assert(!sceAppUtilShutdown());
+    assert((uint32_t)sceIoOpen("savedata0:/data/save.bin",SCE_O_RDONLY,0)==SCE_ERROR_ERRNO_ENODEV);
+    char reopened[6];assert(sceIoRead(guest_file,reopened,6)==6 && !memcmp(reopened,"abcdef",6));
+    assert(!sceIoClose(guest_file));assert(!sceAppUtilInit(&init,&boot));
+    assert((uint32_t)sceIoOpen("savedata0:/../escape",SCE_O_RDONLY,0)==SCE_ERROR_ERRNO_EINVAL);
+    assert((uint32_t)sceIoOpen("savedata0:/.VITA2HOS-slot-00000002.bin",SCE_O_RDONLY,0)==SCE_ERROR_ERRNO_EINVAL);
     char payload[1024];assert(!savedata_path("data/save.bin",payload));
     files[0]=(SceAppUtilSaveDataFile){.filePath="savedata0:/data/save.bin",.buf="XY",.bufSize=2,.offset=2};
     assert(!sceAppUtilSaveDataDataSave(NULL,files,1,NULL,NULL));

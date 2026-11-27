@@ -50,6 +50,7 @@ target_compile_definitions(vita_mspace PRIVATE ONLY_MSPACES=1 USE_LOCKS=0
 
 add_executable(vita2hos
     source/savedata_identity.c
+    source/savedata_mount.c
     source/savedata_slots.c
     source/vita_sha1.c
     source/trophy_archive.c
