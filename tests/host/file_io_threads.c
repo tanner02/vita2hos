@@ -6,6 +6,7 @@
 #include <unistd.h>
 
 #define TEST_THREADED_RWLOCK
+#define TEST_THREADED_MUTEX
 static ssize_t gated_read(int, void *, size_t);
 static ssize_t gated_write(int, const void *, size_t);
 static off_t gated_lseek(int, off_t, int);
@@ -44,7 +45,7 @@ VitaThreadInfo *SceKernelThreadMgr_get_thread_info(void)
     return &info;
 }
 
-enum Operation { READ, WRITE, SEEK, SYNC, STAT, DREAD, CLOSE, DCLOSE };
+enum Operation { READ, WRITE, PREAD, PWRITE, SEEK, SYNC, STAT, DREAD, CLOSE, DCLOSE };
 static enum Operation operation;
 static _Thread_local int intercept;
 static pthread_mutex_t gate_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -55,7 +56,9 @@ static SceUID handle;
 
 static void gate(enum Operation native_operation)
 {
-    if (!intercept || operation != native_operation) return;
+    if (!intercept || (operation != native_operation &&
+        !(operation==PREAD && native_operation==READ) &&
+        !(operation==PWRITE && native_operation==WRITE))) return;
     assert(pthread_mutex_lock(&gate_lock) == 0);
     entered = 1;
     assert(pthread_cond_broadcast(&gate_changed) == 0);
@@ -90,6 +93,8 @@ static void *perform_operation(void *argument)
     switch (operation) {
     case READ: assert(sceIoRead(handle, &byte, 1) == 1); break;
     case WRITE: assert(sceIoWrite(handle, "x", 1) == 1); break;
+    case PREAD: assert(sceIoPread(handle, &byte, 1, 0) == 1); break;
+    case PWRITE: assert(sceIoPwrite(handle, "x", 1, 0) == 1); break;
     case SEEK: assert(sceIoLseek(handle, 0, SCE_SEEK_SET) == 0); break;
     case SYNC: assert(sceIoSyncByFd(handle, 0) == 0); break;
     case STAT: assert(sceIoGetstatByFd(handle, &info) == 0); break;
@@ -143,6 +148,12 @@ int main(void)
          * rather than depending on a scheduler delay to expose the race. */
         RwLock *table_lock = directory ? &g_vita_opened_dirs_lock : &g_vita_opened_files_lock;
         assert(pthread_rwlock_trywrlock(table_lock) == EBUSY);
+        if (operation<=SEEK) {
+            rwlockReadLock(table_lock);
+            VitaOpenedFile *file=get_opened_file_for_fd_locked(handle);assert(file);
+            assert(pthread_mutex_trylock(&file->io_lock)==EBUSY);
+            rwlockReadUnlock(table_lock);
+        }
         assert(pthread_create(&closer, NULL, perform_close, NULL) == 0);
         while (!atomic_load(&closer_started)) sched_yield();
         released = 1;

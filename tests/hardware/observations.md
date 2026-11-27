@@ -320,6 +320,20 @@
   and staging helpers, including padding removal/clearing and resized dimensions.
   This is host evidence; no new scene or commercial title was run on the Switch.
 
+## Host positional file I/O after 3526c51
+
+- Added SceLibKernel Pread/Pwrite with signed 64-bit offsets. The pinned native
+  library lacks positional I/O symbols, so a per-handle lock serializes cursor
+  save/seek/transfer/restore against normal Read/Write/Lseek. The handle-table
+  lock also prevents concurrent Close from reclaiming an active operation.
+- Tests cover partial reads/EOF, sparse offsets beyond 4 GiB, invalid inputs,
+  read-only write errors, each seek failure phase, and restoration after transfer
+  failure. A restore failure returns an error; successful I/O is not claimed in
+  that case. Append-mode writes retain the native append behavior.
+- Threaded checks verify locks at blocked native calls and interleave normal
+  sequential reads with positioned reads/writes on the same handle. Async
+  Pread/Pwrite remain unimplemented. No FIOS or game execution is established.
+
 ## Runtime 15d400f48e5d3a3f5d811e2a67bd30a1388cc102
 
 - Standalone HOME title, owned fixed-address CPU probe SHA-256

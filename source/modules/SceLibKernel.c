@@ -28,6 +28,7 @@ typedef struct {
     SceUID uid;
     int native_fd;
     char *file;
+    Mutex io_lock; /* Serializes cursor operations, including positional emulation. */
 } VitaOpenedFile;
 
 typedef struct {
@@ -205,6 +206,7 @@ EXPORT(SceLibKernel, 0x6C60AC61, SceUID, sceIoOpen, const char *file, int flags,
     memset(vfile, 0, sizeof(*vfile));
     vfile->uid = SceSysmem_get_next_uid();
     vfile->native_fd = native_fd;
+    mutexInit(&vfile->io_lock);
     vfile->file = strdup(file);
     if (!vfile->file) {
         close(native_fd);
@@ -252,8 +254,10 @@ EXPORT(SceIofilemgr, 0xFDB32293, SceSSize, sceIoRead, SceUID fd, void *buf, SceS
     if (!vfile) result = io_errno(EBADF);
     else if (nbyte && !buf) result = io_errno(EFAULT);
     else {
+        mutexLock(&vfile->io_lock);
         result = read(vfile->native_fd, buf, nbyte);
         if (result < 0) result = io_errno(errno);
+        mutexUnlock(&vfile->io_lock);
     }
     rwlockReadUnlock(&g_vita_opened_files_lock);
     return result;
@@ -267,8 +271,10 @@ EXPORT(SceIofilemgr, 0x34EFD876, SceSSize, sceIoWrite, SceUID fd, const void *bu
     if (!vfile) result = io_errno(EBADF);
     else if (nbyte && !buf) result = io_errno(EFAULT);
     else {
+        mutexLock(&vfile->io_lock);
         result = write(vfile->native_fd, buf, nbyte);
         if (result < 0) result = io_errno(errno);
+        mutexUnlock(&vfile->io_lock);
     }
     rwlockReadUnlock(&g_vita_opened_files_lock);
     return result;
@@ -276,6 +282,49 @@ EXPORT(SceIofilemgr, 0x34EFD876, SceSSize, sceIoWrite, SceUID fd, const void *bu
 
 _Static_assert(sizeof(off_t) >= sizeof(SceOff), "Vita seeks require 64-bit native offsets");
 _Static_assert((off_t)-1 < 0, "Vita seeks require signed native offsets");
+
+/* This pinned native C library has no pread/pwrite entry points. Hold the
+ * per-handle cursor lock across save/seek/transfer/restore, while the table's
+ * read lock prevents close from reclaiming the descriptor. */
+static int vita_io_positioned(SceUID fd, void *read_data, const void *write_data,
+                              SceSize size, SceOff offset, bool writing)
+{
+    rwlockReadLock(&g_vita_opened_files_lock);
+    VitaOpenedFile *file=get_opened_file_for_fd_locked(fd);
+    int result;
+    if (!file) result=io_errno(EBADF);
+    else if (size && !(writing ? write_data : read_data)) result=io_errno(EFAULT);
+    else if (offset < 0 || size > INT32_MAX) result=io_errno(EINVAL);
+    else {
+        mutexLock(&file->io_lock);
+        off_t saved=lseek(file->native_fd,0,SEEK_CUR);
+        if (saved < 0) result=io_errno(errno);
+        else {
+            if (lseek(file->native_fd,offset,SEEK_SET) < 0) result=io_errno(errno);
+            else {
+                ssize_t transferred=writing ? write(file->native_fd,write_data,size)
+                                           : read(file->native_fd,read_data,size);
+                result=transferred < 0 ? io_errno(errno) : (int)transferred;
+            }
+            if (lseek(file->native_fd,saved,SEEK_SET) < 0) result=io_errno(errno);
+        }
+        mutexUnlock(&file->io_lock);
+    }
+    rwlockReadUnlock(&g_vita_opened_files_lock);
+    return result;
+}
+
+EXPORT(SceLibKernel, 0x52315AD7, int, sceIoPread, SceUID fd, void *data,
+       SceSize size, SceOff offset)
+{
+    return vita_io_positioned(fd,data,NULL,size,offset,false);
+}
+
+EXPORT(SceLibKernel, 0x8FFFF5A8, int, sceIoPwrite, SceUID fd, const void *data,
+       SceSize size, SceOff offset)
+{
+    return vita_io_positioned(fd,NULL,data,size,offset,true);
+}
 
 static SceOff vita_io_seek(SceUID fd, SceOff offset, int whence)
 {
@@ -294,9 +343,11 @@ static SceOff vita_io_seek(SceUID fd, SceOff offset, int whence)
     default: position = io_errno(EINVAL); goto done;
     }
 
+    mutexLock(&vfile->io_lock);
     position = lseek(vfile->native_fd, offset, whence);
     if (position < 0)
         position = io_errno(errno);
+    mutexUnlock(&vfile->io_lock);
 
 done:
     rwlockReadUnlock(&g_vita_opened_files_lock);
