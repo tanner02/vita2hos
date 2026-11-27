@@ -59,10 +59,10 @@ EXPORT(SceThreadmgr,0x9DCB4B7A,SceUID,sceKernelGetProcessId,void)
 }
 
 /* LittleBigPlanet invokes this during boot; no host abort handler is wired up
- * so a no-op success keeps the guest going. */
+ * so a no-op success keeps the guest going. Not logged: this file is compiled
+ * into host tests without a log backend. */
 EXPORT(SceProcessmgr,0xEB6E50BB,int,sceKernelCallAbortHandler,uint32_t param1,uint32_t param2)
 {
-    LOG("sceKernelCallAbortHandler param1=0x%x param2=0x%x",param1,param2);
     return 0;
 }
 
