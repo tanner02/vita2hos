@@ -56,12 +56,12 @@ missing blending from alpha-factor or channel-mask errors. Interior samples
 allow two UNORM rounding steps. The first cube frame also calls counted
 framebuffer waits for zero and two periods; host tests establish target timing,
 while this hardware check establishes import/ABI execution and continued frames.
-A complete cube v9 run has 47 PASS tags. These additions require a runtime with
+A complete cube v9 run has 48 PASS tags. These additions require a runtime with
 sceDisplayWaitSetFrameBufMulti (1e9f698 or later); the installed abc5a95 lacks it.
 
-Version 9 adds seven color-store clipping cases: unaligned inclusive bounds,
+Version 9 adds eight color-store clipping cases: unaligned inclusive bounds,
 one pixel, an empty rectangle, twelve-bit coordinate masking, full restoration,
-BeginScene descriptor snapshot and intersection with tiled region clipping.
+BeginScene descriptor snapshot and intersection with tiled region clipping, and depth writes outside the color clip.
 Each case checks every pixel of a 64x64 target, including preserved destination
 pixels. This is output clipping; rasterizer/depth clipping remains independent.
 Requires the color-clip runtime exports and clipped store path, not just 1e9f698.

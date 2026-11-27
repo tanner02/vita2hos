@@ -222,6 +222,28 @@ int probe_draw(SceGxmContext *context, SceGxmRenderTarget *target,
         hooks->record(clip_passes[pass]);
     }
 
+    /* Output clipping must not prevent depth writes outside the color clip. */
+    SceGxmDepthStencilSurface clip_depth;
+    SceGxmColorSurface depth_clipped=*surface;
+    CHECK(sceGxmDepthStencilSurfaceInit(&clip_depth,SCE_GXM_DEPTH_STENCIL_FORMAT_DF32,
+        SCE_GXM_DEPTH_STENCIL_SURFACE_LINEAR,64,depth,NULL));
+    sceGxmDepthStencilSurfaceSetForceStoreMode(&clip_depth,SCE_GXM_DEPTH_STENCIL_FORCE_STORE_ENABLED);
+    sceGxmColorSurfaceSetClip(&depth_clipped,7,11,40,43);
+    sceGxmSetFrontDepthWriteEnable(context,SCE_GXM_DEPTH_WRITE_ENABLED);
+    sceGxmSetFrontDepthFunc(context,SCE_GXM_DEPTH_FUNC_LESS);
+    CHECK(sceGxmBeginScene(context,0,target,NULL,NULL,NULL,&depth_clipped,&clip_depth));
+    CHECK(sceGxmSetVertexStream(context,0,vertices));
+    CHECK(color(context,clear_color,matrix,red));
+    CHECK(sceGxmDraw(context,SCE_GXM_PRIMITIVE_TRIANGLES,SCE_GXM_INDEX_FORMAT_U16,indices,3));
+    CHECK(sceGxmEndScene(context,NULL,NULL));sceGxmFinish(context);
+    for (unsigned y=4;y<64;y+=8) for (unsigned x=4;x<64;x+=8) {
+        if (((float *)depth)[y*64+x]!=0.75f) {
+            hooks->record("FAIL color_clip_depth_pixel\n");hooks->result("pixel",y*64+x);
+            ret=-1;goto done;
+        }
+    }
+    hooks->record("PASS color_clip_depth_outside_store\n");
+
     /* One draw over CPU-written background separates blend errors from depth
      * occlusion. RGB and alpha intentionally use different blend factors. */
     static const struct {
