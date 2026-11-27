@@ -68,6 +68,8 @@ static int prepare_storage(void)
     if(length<0 || (size_t)length>=sizeof(save_root))return -ENAMETOOLONG;
     return ensure_directory(save_root);
 }
+bool SceAppUtil_is_initialized(void)
+{mutexLock(&app_lock);bool ready=app_ready;mutexUnlock(&app_lock);return ready;}
 void SceAppUtil_finish(void)
 {mutexLock(&app_lock);savedata_mount_set(NULL);app_ready=false;save_root[0]=0;mutexUnlock(&app_lock);}
 EXPORT(SceAppUtil,0xDAFFE671,int,sceAppUtilInit,SceAppUtilInitParam *init,SceAppUtilBootParam *boot)

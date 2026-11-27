@@ -1,3 +1,9 @@
+## 2026-11-27: owned savedata v1 reaches replacement failure on 60d7966
+
+The report passes owned metadata identity and first save/slot creation, then fails the second DataSave with 0x80100640. The runtime explicitly returns process/launch result 1 and image-close zero. The user's clean visual closure therefore is not a successful probe pass. The second operation updates an existing metadata record, matching the non-overwrite rename failure reproduced in the host model. The new replacement fallback is not yet hardware-validated.
+
+The active owned probe is retained for a corrected-runtime rerun. Game executable, module list and original SFO presence remain backed up on SD and locally. Evidence is private in result-5473886f8e8848d6b415ec23c1da42ab. No commercial-title rendering is established.
+
 ## 2026-11-27: owned savedata probe first attempt failed before entry
 
 Runtime 60d7966 recognized the owned probe but automatically preloaded game libraries because the staged modules.txt was absent. Import binding then failed before guest entry, and no savedata-probe.txt was produced. This is a staging configuration error, not a savedata operation failure. The first no-dependency staging plan incorrectly treated an absent list as equivalent to an explicit empty list.

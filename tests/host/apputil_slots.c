@@ -16,7 +16,11 @@ static ssize_t payload_write(int fd,const void *data,size_t size);
 static ssize_t payload_write(int fd,const void *data,size_t size)
 {if(fail_payload_write){errno=ENOSPC;return -1;}return write(fd,data,size);}
 #include "../../source/modules/SceLibKernel.c"
+#include "../../source/modules/SceSysmodule.c"
 #include "../../source/module.c"
+bool SceNet_host_ready(void){return false;}
+bool SceNet_is_initialized(void){return false;}
+bool SceNpTrophy_is_initialized(void){return false;}
 void log_printf(const char *format,...) {(void)format;}
 void SceKernelThreadMgr_prepare_current_exit(int status) {(void)status;}
 VitaThreadInfo *SceKernelThreadMgr_get_thread_info(void) {return NULL;}
@@ -27,6 +31,10 @@ static void put32(unsigned char *p,unsigned value)
 int main(void)
 {
     assert(mkdtemp(test_root));assert(!SceLibKernel_init());
+    assert(sceSysmoduleIsLoaded(SCE_SYSMODULE_APPUTIL)==(int)SCE_SYSMODULE_ERROR_UNLOADED);
+    assert(!sceSysmoduleLoadModule(SCE_SYSMODULE_APPUTIL));
+    assert(!sceSysmoduleLoadModule(SCE_SYSMODULE_APPUTIL));
+    assert(!SceAppUtil_is_initialized());
     SceAppUtilInitParam init={0};SceAppUtilBootParam boot={0};
     SceAppUtilSaveDataSlotParam param={0},output={0};param.userParam=42;param.status=17;
     assert(sceAppUtilSaveDataSlotGetParam(1,&output,NULL)==(int)SCE_APPUTIL_ERROR_NOT_INITIALIZED);
@@ -38,6 +46,9 @@ int main(void)
     put32(sfo+24,10);put32(sfo+28,16);memcpy(sfo+36,"TITLE_ID",9);memcpy(sfo+48,"TEST00001",10);
     FILE *file=fopen(path,"wb");assert(file && fwrite(sfo,1,64,file)==64 && !fclose(file));
     assert(!sceAppUtilInit(&init,&boot));assert(sceAppUtilInit(&init,&boot)==(int)SCE_APPUTIL_ERROR_BUSY);
+    assert(SceAppUtil_is_initialized());
+    assert(sceSysmoduleUnloadModule(SCE_SYSMODULE_APPUTIL)==(int)SCE_SYSMODULE_ERROR_FATAL);
+    assert(!sceSysmoduleIsLoaded(SCE_SYSMODULE_APPUTIL));
     assert(sceAppUtilSaveDataSlotGetParam(1,&output,NULL)==(int)SCE_APPUTIL_ERROR_SAVEDATA_SLOT_NOT_FOUND);
     char staged[1024];assert(!slot_path(staged,save_root,1,true));
     file=fopen(staged,"wb");assert(file && !fclose(file));
@@ -96,6 +107,8 @@ int main(void)
     assert(module_get_func_export(0x48e01d74,0x93f0d89f)==(void *)sceAppUtilSaveDataSlotGetParam);
     char root[1024];memcpy(root,save_root,sizeof(root));SceAppUtil_finish();
     assert(sceAppUtilShutdown()==(int)SCE_APPUTIL_ERROR_NOT_INITIALIZED);
+    assert(!sceSysmoduleUnloadModule(SCE_SYSMODULE_APPUTIL));
+    assert(sceSysmoduleIsLoaded(SCE_SYSMODULE_APPUTIL)==(int)SCE_SYSMODULE_ERROR_UNLOADED);
     assert(!rmdir(root));snprintf(root,sizeof(root),"%s/savedata",test_root);assert(!rmdir(root));
     assert(!unlink(path) && !rmdir(sys) && !rmdir(test_root));
     puts("AppUtil slots: missing mount, initialization retry, persistent reopen, SDK errors, NID and cleanup passed.");

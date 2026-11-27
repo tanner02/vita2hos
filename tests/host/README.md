@@ -369,7 +369,7 @@ Missing metadata/directories, missing/duplicate slots and unsupported explicit
 mount-point arguments return errors. Only the default single-user storage context
 is supported. Tests use a temporary root and owned SFO data, never the Switch.
 Quotas, slot search, custom mounts,
-boot-parameter synthesis and sysmodule lifecycle support remain unimplemented.
+boot-parameter synthesis remain unimplemented.
 Do not infer a complete savedata service or successful game startup from slot tests.
 
 AppUtil DataSave now supports up to 1024 sequential file/directory items, optional
@@ -404,3 +404,7 @@ and rollback failure, checking record readability and blocked destructive change
 Upstream fsdev rename handling was reviewed at
 https://github.com/switchbrew/libnx/blob/master/nx/source/runtime/devices/fs_dev.c ;
 the exact installed backend and physical SD behavior still require the owned probe.
+
+APPUTIL sysmodule load/query/unload now tracks the compiled provider. Loading
+does not initialize storage or establish a mount. Unload rejects an initialized
+AppUtil service; shutdown permits unload. Host integration covers these states.

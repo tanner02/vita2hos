@@ -16,6 +16,7 @@ static void *trophy_calloc(size_t count,size_t size){allocation_calls++;if(fail_
 SceUID SceSysmem_get_next_uid(void){static atomic_int next=100;return atomic_fetch_add(&next,1);}
 bool SceNet_host_ready(void){return false;}
 bool SceNet_is_initialized(void){return false;}
+bool SceAppUtil_is_initialized(void){return false;}
 void log_printf(const char *format,...){(void)format;}
 static void *worker(void *arg)
 {

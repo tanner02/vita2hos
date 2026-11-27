@@ -18,6 +18,7 @@ static Result nifmGetInternetConnectionStatus(NifmInternetConnectionType *type,u
 #include "../../source/modules/SceSysmodule.c"
 #include "../../source/module.c"
 bool SceNpTrophy_is_initialized(void){return false;}
+bool SceAppUtil_is_initialized(void){return false;}
 void log_printf(const char *format,...){(void)format;}
 int main(void)
 {
