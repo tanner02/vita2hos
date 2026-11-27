@@ -124,6 +124,7 @@ typedef struct SceGxmShaderPatcher {
 } SceGxmShaderPatcher;
 
 typedef struct SceGxmVertexProgram {
+    const SceGxmProgram *program; /* Caller-owned GXP, independent of registration ID. */
     GxmProgramRef ref;
     uint32_t default_uniform_count;
     GxmUniformLayout uniform_layout;
@@ -135,6 +136,7 @@ typedef struct SceGxmVertexProgram {
 } SceGxmVertexProgram;
 
 typedef struct SceGxmFragmentProgram {
+    const SceGxmProgram *program;
     GxmProgramRef ref;
     uint32_t default_uniform_count;
     GxmUniformLayout uniform_layout;
@@ -613,6 +615,7 @@ EXPORT(SceGxm, 0xB7BBA6D5, int, sceGxmShaderPatcherCreateVertexProgram,
 
     memset(vertex_program, 0, sizeof(*vertex_program));
     atomic_init(&vertex_program->ref.count, 1);
+    vertex_program->program = programId->programHeader;
     vertex_program->default_uniform_count = programId->programHeader->default_uniform_buffer_count;
     if (!gxp_uniform_layout_c(programId->programHeader, &vertex_program->uniform_layout)) {
         ret = SCE_GXM_ERROR_INVALID_VALUE;
@@ -692,6 +695,7 @@ EXPORT(SceGxm, 0x4ED2E49D, int, sceGxmShaderPatcherCreateFragmentProgram,
 
     memset(fragment_program, 0, sizeof(*fragment_program));
     atomic_init(&fragment_program->ref.count, 1);
+    fragment_program->program = programId->programHeader;
     fragment_program->default_uniform_count = programId->programHeader->default_uniform_buffer_count;
     if (!gxp_uniform_layout_c(programId->programHeader, &fragment_program->uniform_layout)) {
         free(fragment_program);
@@ -1643,25 +1647,6 @@ EXPORT(SceGxm, 0x126A3EB3, uint32_t, sceGxmTextureGetWidth, const SceGxmTexture 
     return gxm_texture_get_width((SceGxmTextureInner *)texture);
 }
 
-EXPORT(SceGxm, 0x277794C4, const SceGxmProgramParameter *, sceGxmProgramFindParameterByName,
-       const SceGxmProgram *program, const char *name)
-{
-    const uint8_t *parameter_bytes;
-    const char *parameter_name;
-    const SceGxmProgramParameter *const parameters =
-        (const SceGxmProgramParameter *)((char *)&program->parameters_offset +
-                                         program->parameters_offset);
-
-    for (uint32_t i = 0; i < program->parameter_count; i++) {
-        parameter_bytes = (const uint8_t *)&parameters[i];
-        parameter_name = (const char *)(parameter_bytes + parameters[i].name_offset);
-        if (strcmp(parameter_name, name) == 0)
-            return (const SceGxmProgramParameter *)parameter_bytes;
-    }
-
-    return NULL;
-}
-
 EXPORT(SceGxm, 0xDBA8D061, uint32_t, sceGxmProgramParameterGetArraySize,
        const SceGxmProgramParameter *parameter)
 {
@@ -2216,4 +2201,16 @@ int SceGxm_init(DkDevice dk_device)
 int SceGxm_finish(void)
 {
     return g_gxm_initialized ? sceGxmTerminate() : 0;
+}
+
+EXPORT(SceGxm, 0xBC52320E, const SceGxmProgram *, sceGxmVertexProgramGetProgram,
+       const SceGxmVertexProgram *program)
+{
+    return program ? program->program : NULL;
+}
+
+EXPORT(SceGxm, 0xE0E3B3F8, const SceGxmProgram *, sceGxmFragmentProgramGetProgram,
+       const SceGxmFragmentProgram *program)
+{
+    return program ? program->program : NULL;
 }

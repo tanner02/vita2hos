@@ -294,6 +294,19 @@
   legacy metadata, explicit overrides, discovery failure, and preparation
   rollback. No Switch files were changed and no commercial code was executed.
 
+## Host shader-program queries after ca4dea1
+
+- Added GXP magic checks, shader type/size, parameter count/index queries, and
+  semantic lookup including the internal alias. Name lookup now bounds relative
+  record/string ranges to the declared program size. Callers still must supply
+  readable buffers matching that size; this is not a guest-memory sandbox.
+- Patched vertex/fragment objects retain their caller-owned source GXP pointer
+  so their GetProgram queries do not depend on the registration ID staying live.
+  The application must keep its source program readable for the object lifetime.
+- Host tests use the pinned repository's real vertex/fragment GXP fixtures and
+  reject invalid table offsets/counts, signed name offsets outside the program,
+  and unterminated names. No new rendering result or game boot is established.
+
 ## Runtime 15d400f48e5d3a3f5d811e2a67bd30a1388cc102
 
 - Standalone HOME title, owned fixed-address CPU probe SHA-256
