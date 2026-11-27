@@ -22,6 +22,7 @@
 #include "gxm/draw.h"
 #include "gxm/viewport.h"
 #include "gxm/region_clip.h"
+#include "gxm/notification.h"
 #include "gxm/uniform_staging.h"
 #include "gxm/blend.h"
 #include "gxm/shader_code.h"
@@ -437,14 +438,20 @@ EXPORT(SceGxm, 0x889AE88C, int, sceGxmSyncObjectDestroy, SceGxmSyncObject *syncO
 EXPORT(SceGxm, 0x9F448E79, int, sceGxmNotificationWait, const SceGxmNotification *notification)
 {
     DkVariable variable;
-    uint32_t offset =
-        dk_memblock_cpu_addr_offset(g_notification_region_memblock, (void *)notification->address);
-    assert(offset < SCE_GXM_NOTIFICATION_COUNT * sizeof(uint32_t));
+    uint32_t offset;
+    if (!g_notification_region_memblock) return SCE_GXM_ERROR_INVALID_POINTER;
+    int ret = gxm_notification_offset(notification,
+        (uintptr_t)dkMemBlockGetCpuAddr(g_notification_region_memblock),
+        SCE_GXM_NOTIFICATION_COUNT * sizeof(uint32_t), &offset);
+    if (ret) return ret;
 
     dkVariableInitialize(&variable, g_notification_region_memblock, offset);
 
-    while (dkVariableRead(&variable) != notification->value)
+    while (dkVariableRead(&variable) != notification->value) {
         dkQueueWaitIdle(g_render_queue);
+        if (dkVariableRead(&variable) != notification->value)
+            sceKernelDelayThread(100);
+    }
 
     return 0;
 }
@@ -1094,7 +1101,7 @@ EXPORT(SceGxm, 0xFE300E2F, int, sceGxmEndScene, SceGxmContext *context,
 
     DkCmdList cmd_list;
     DkVariable variable;
-    uint32_t offset;
+    uint32_t notification_offsets[2];
     DkImage color_surface_image;
     DkImage ds_surface_image;
     const SceGxmRenderTarget *const render_target = context->state.render_target;
@@ -1109,22 +1116,25 @@ EXPORT(SceGxm, 0xFE300E2F, int, sceGxmEndScene, SceGxmContext *context,
 
     LOG("sceGxmEndScene");
 
-    if (vertexNotification) {
-        offset = dk_memblock_cpu_addr_offset(g_notification_region_memblock,
-                                             (void *)vertexNotification->address);
-        assert(offset < SCE_GXM_NOTIFICATION_COUNT * sizeof(uint32_t));
+    /* Validate both addresses before appending any completion commands. */
+    const SceGxmNotification *notifications[2] = {vertexNotification, fragmentNotification};
+    for (unsigned i = 0; i < 2; ++i) {
+        if (!notifications[i]) continue;
+        if (!g_notification_region_memblock) return SCE_GXM_ERROR_INVALID_POINTER;
+        int ret = gxm_notification_offset(notifications[i],
+            (uintptr_t)dkMemBlockGetCpuAddr(g_notification_region_memblock),
+            SCE_GXM_NOTIFICATION_COUNT * sizeof(uint32_t), &notification_offsets[i]);
+        if (ret) return ret;
+    }
 
-        dkVariableInitialize(&variable, g_notification_region_memblock, offset);
+    if (vertexNotification) {
+        dkVariableInitialize(&variable, g_notification_region_memblock, notification_offsets[0]);
         dkCmdBufSignalVariable(context->cmdbuf, &variable, DkVarOp_Set, vertexNotification->value,
                                DkPipelinePos_Rasterizer);
     }
 
     if (fragmentNotification) {
-        offset = dk_memblock_cpu_addr_offset(g_notification_region_memblock,
-                                             (void *)fragmentNotification->address);
-        assert(offset < SCE_GXM_NOTIFICATION_COUNT * sizeof(uint32_t));
-
-        dkVariableInitialize(&variable, g_notification_region_memblock, offset);
+        dkVariableInitialize(&variable, g_notification_region_memblock, notification_offsets[1]);
         dkCmdBufSignalVariable(context->cmdbuf, &variable, DkVarOp_Set, fragmentNotification->value,
                                DkPipelinePos_Bottom);
     }
