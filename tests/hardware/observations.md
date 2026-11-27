@@ -1,3 +1,18 @@
+## Offline front point/line width (2026-11-27)
+
+- Added sceGxmSetFrontPointLineWidth (NID 0x06752183), imported by the supplied
+  LittleBigPlanet executable. The SDK declares an unsigned integer pixel width;
+  it is converted to float internally for deko3d, with no guest VFP adapter.
+- Context state defaults to width 1. Changes are replayed before the next draw,
+  and BeginScene marks the state dirty so another context cannot leave its
+  native point/line width active. Both native point size and line width are set,
+  following the pinned Vita3K GL renderer's front-width behavior.
+- Separate back-face widths and exact hardware width clamping remain unsupported
+  or unverified. This does not add polygon-mode or point-sprite UV support.
+- Local Bonsai source summarization exceeded its context limit; no generated
+  patch was used. Source review and ARM Debug/Release builds provide integration
+  checks; rendered size and rasterization behavior require a future GPU test.
+
 ## Offline depth-buffer GPU staging (2026-11-27)
 
 - Added force-load/store mode getters and setters, with descriptor-bit preservation

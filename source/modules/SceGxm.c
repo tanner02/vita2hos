@@ -72,6 +72,7 @@ typedef struct SceGxmContext {
         GxmViewportState viewport;
         GxmRegionClip region_clip;
         DkRasterizerState rasterizer;
+        uint32_t front_point_line_width;
         DkColorState color;
         DkBlendState blend;
         DkColorWriteState color_write;
@@ -104,6 +105,7 @@ typedef struct SceGxmContext {
                 uint32_t blend : 1;
                 uint32_t rasterizer : 1;
                 uint32_t viewport : 1;
+                uint32_t point_line_width : 1;
             } bit;
             uint32_t raw;
         } dirty;
@@ -359,6 +361,7 @@ EXPORT(SceGxm, 0xE84CE5B4, int, sceGxmCreateContext, const SceGxmContextParams *
     dkRasterizerStateDefaults(&ctx->state.rasterizer);
     ctx->state.rasterizer.cullMode = DkFace_None;
     ctx->state.rasterizer.frontFace = DkFrontFace_CW;
+    ctx->state.front_point_line_width = 1;
 
     dkColorStateDefaults(&ctx->state.color);
     dkColorWriteStateDefaults(&ctx->state.color_write);
@@ -1365,6 +1368,15 @@ EXPORT(SceGxm, 0xE1CA72AE, void, sceGxmSetCullMode, SceGxmContext *context, SceG
     context->state.dirty.bit.rasterizer = true;
 }
 
+EXPORT(SceGxm, 0x06752183, void, sceGxmSetFrontPointLineWidth, SceGxmContext *context,
+       unsigned int width)
+{
+    if (!context || context->state.front_point_line_width == width)
+        return;
+    context->state.front_point_line_width = width;
+    context->state.dirty.bit.point_line_width = true;
+}
+
 EXPORT(SceGxm, 0x31FF8ABD, void, sceGxmSetVertexProgram, SceGxmContext *context,
        const SceGxmVertexProgram *vertexProgram)
 {
@@ -2054,6 +2066,15 @@ static int context_flush_dirty_state(SceGxmContext *context)
 
     if (context->state.dirty.bit.rasterizer)
         dkCmdBufBindRasterizerState(context->cmdbuf, &context->state.rasterizer);
+
+    if (context->state.dirty.bit.point_line_width) {
+        /* Width is an unsigned pixel count, not an IEEE float argument. Native
+         * point/line widths are global; separate back-face widths remain
+         * unsupported, as in the pinned reference renderer. */
+        float width = (float)context->state.front_point_line_width;
+        dkCmdBufSetPointSize(context->cmdbuf, width);
+        dkCmdBufSetLineWidth(context->cmdbuf, width);
+    }
 
     if (context->state.dirty.bit.front_stencil) {
         dkCmdBufSetStencil(context->cmdbuf, DkFace_Front, context->state.front_stencil.write_mask,
