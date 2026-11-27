@@ -175,6 +175,24 @@
   mappings, TLS, startup behavior, or commercial game boot. Private binaries and
   replay inputs are not included in the repository.
 
+## Host-only cross-image binding replay after cd7b621
+
+- The replay prepared the same four private plaintext images, published their
+  ordinary exports into one registry, and invoked the runtime's import binder
+  under ASan/UBSan. Guest addresses were simulated; no target code ran.
+- Main completed mechanical binding, including its eight variable imports.
+  Libc initially failed on `__sce_libcparam` (library `0x5ad9c136`, variable
+  `0xdf084dfa`). The loader now obtains that export from the main executable's
+  validated process-parameter structure and publishes the actual guest address
+  of its libc parameters. Main, libc, and FIOS2 then completed mechanical binding.
+- Ult still fails on the absent `_pLibPerfCaptureFlagPtr` export from ScePerf
+  (library `0x447f047d`, variable `0x936a5f31`). This is an unresolved dependency,
+  not evidence of a startup or runtime failure.
+- The harness intentionally omits native HLE providers, leaving error-return
+  stubs for unresolved functions. Its function-stub counts therefore do not
+  measure the actual runtime's missing-function count. Successful mechanical
+  binding does not demonstrate usable functions, TLS, initialization, or boot.
+
 ## Runtime 15d400f48e5d3a3f5d811e2a67bd30a1388cc102
 
 - Standalone HOME title, owned fixed-address CPU probe SHA-256

@@ -104,5 +104,37 @@ int main(void)
     assert(load_exports_lifecycle(&lifecycle, records, 32, read_memory, memory) < 0);
     record(records, 0); put32(records + 24, 0x10fc);
     assert(load_exports_lifecycle(&lifecycle, records, 32, read_memory, memory) < 0);
+    memset(memory, 0, sizeof(memory));
+    put32(memory, 0x30); put32(memory+4, 0x32505350); put32(memory+8, 6);
+    put32(memory+0x2c, 0x10c0); put32(memory+192, 0x38);
+    ModuleGuestExports parameters={0};
+    assert(load_process_parameters_register(&parameters, &owner, 0x1000, read_memory, memory) == 0);
+    assert(module_guest_exports_find(&parameters, 0x5ad9c136, MODULE_SYMBOL_VARIABLE,
+        0xdf084dfa, NULL) == (void *)0x10c0);
+    module_guest_exports_clear(&parameters);
+    put32(memory+0x2c, 0x10fc); put32(memory+252, 8);
+    assert(load_process_parameters_register(&parameters, &owner, 0x1000, read_memory, memory) < 0);
+    assert(!parameters.libraries);
+    put32(memory+0x2c, 0); /* Optional libc parameters. */
+    assert(load_process_parameters_register(&parameters, &owner, 0x1000, read_memory, memory) == 0);
+    put32(memory, 0x1000);
+    assert(load_process_parameters_register(&parameters, &owner, 0x1000, read_memory, memory) < 0);
+    put32(memory, 0x30); put32(memory+8, 7);
+    assert(load_process_parameters_register(&parameters, &owner, 0x1000, read_memory, memory) < 0);
+    put32(memory+8, 0);
+    assert(load_process_parameters_register(&parameters, &owner, 0x1000, read_memory, memory) == 0);
+    put32(memory+4, 0);
+    assert(load_process_parameters_register(&parameters, &owner, 0x1000, read_memory, memory) < 0);
+    memset(memory, 0, sizeof(memory)); record(records, 0);
+    records[6]=0; put32(records+8, 1);
+    put32(memory, NID_PROCESS_PARAM); put32(memory+16, 0x10c0);
+    uint32_t process_address=0;
+    assert(load_exports_metadata(&lifecycle, &process_address, records, 32, read_memory, memory) == 0);
+    assert(process_address == 0x10c0 && !lifecycle.start);
+    put32(records+8, 2); put32(memory+4, NID_PROCESS_PARAM); put32(memory+20, 0x10c4);
+    assert(load_exports_metadata(&lifecycle, &process_address, records, 32, read_memory, memory) < 0);
+    assert(process_address == 0x10c0); /* Failed decode does not publish partial metadata. */
+    put32(records+8, 0); records[6]=1; put32(memory+16, 0x1080);
+    assert(load_exports_metadata(&lifecycle, &process_address, records, 32, read_memory, memory) < 0);
     puts("guest export decoding tests passed");
 }

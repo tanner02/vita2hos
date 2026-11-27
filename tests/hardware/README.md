@@ -331,6 +331,14 @@ or unreadable list fails loading. This explicit list does not infer Vita preload
 flags or initialization dependencies. Do not treat its availability as evidence
 that bundled commercial libraries or TLS already work.
 
+The main executable's module metadata can also supply `NID_PROCESS_PARAM`.
+For supported version-5/6 parameter structures, the loader validates the structure
+and referenced libc parameter range, then publishes `__sce_libcparam` using its
+actual guest address. Version-0 homebrew parameters provide no libc export.
+Missing optional parameters do not synthesize one. This enables the bundled
+libc's variable import to bind without a placeholder structure; it does not yet
+apply preload-disable flags, thread settings, or TLS initialization.
+
 ### Experimental title-specific launch profile
 
 **Hardware status:** this route failed to start Mario Kart 8 Deluxe on the tested

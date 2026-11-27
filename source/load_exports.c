@@ -16,8 +16,15 @@ static uint32_t read32(const unsigned char *p)
 int load_exports_lifecycle(LoadLifecycle *lifecycle, const void *records, size_t size,
                            LoadExportRead read, void *context)
 {
+    return load_exports_metadata(lifecycle, NULL, records, size, read, context);
+}
+
+int load_exports_metadata(LoadLifecycle *lifecycle, uint32_t *process_param,
+                          const void *records, size_t size, LoadExportRead read, void *context)
+{
     if (!lifecycle || !read || (size && !records)) return -1;
     LoadLifecycle decoded = {0};
+    uint32_t parameter = 0;
     const unsigned char *p = records;
     while (size) {
         if (size < 32 || read16(p) != 32) return -1;
@@ -48,13 +55,46 @@ int load_exports_lifecycle(LoadLifecycle *lifecycle, const void *records, size_t
                     if (!function || *slot) return -1;
                     *slot = (const void *)(uintptr_t)address;
                 }
+                if (nid == NID_PROCESS_PARAM) {
+                    if (function || parameter) return -1;
+                    parameter = address;
+                }
             }
         }
         p += 32;
         size -= 32;
     }
     *lifecycle = decoded;
+    if (process_param) *process_param = parameter;
     return 0;
+}
+
+int load_process_parameters_register(ModuleGuestExports *exports, const void *owner,
+                                      uint32_t address, LoadExportRead read, void *context)
+{
+    if (!exports || !owner || !read) return -1;
+    if (!address) return 0;
+    if (address & 3) return -1;
+    const unsigned char *header = read(context, address, 12, false);
+    if (!header || read32(header + 4) != UINT32_C(0x32505350)) return -1; /* PSP2 */
+    uint32_t size = read32(header), version = read32(header + 8);
+    if (size < 12) return -1;
+    if (!version) return 0; /* Old homebrew parameters have no libc field. */
+    if ((version != 5 && version != 6) || size < 0x30) return -1;
+    const unsigned char *parameter = read(context, address, size, false);
+    if (!parameter) return -1;
+    uint32_t libc_address = read32(parameter + 0x2c);
+    if (!libc_address) return 0;
+    if (libc_address & 3) return -1;
+    const unsigned char *libc = read(context, libc_address, 4, false);
+    if (!libc) return -1;
+    uint32_t libc_size = read32(libc);
+    if (libc_size < 4 || !read(context, libc_address, libc_size, false)) return -1;
+    /* Kernel-supplied __sce_libcparam points at the executable's actual libc
+     * parameters. Preserve the guest VA rather than publishing its RW alias. */
+    ModuleGuestSymbol symbol = {UINT32_C(0xdf084dfa), MODULE_SYMBOL_VARIABLE,
+                                 (const void *)(uintptr_t)libc_address};
+    return module_guest_exports_register(exports, owner, UINT32_C(0x5ad9c136), &symbol, 1);
 }
 
 int load_exports_register(ModuleGuestExports *exports, const void *owner,

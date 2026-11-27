@@ -562,11 +562,17 @@ static int load_segments(LoadImage *image, void **entry, Elf32_Addr e_entry, seg
     }
     ExportReader reader = {segments, num_segments};
     const void *export_records = (const void *)(segments[mod_info_idx].rw_addr + mod_info->export_top);
-    if (load_exports_lifecycle(&image->lifecycle, export_records,
+    uint32_t process_param = 0;
+    if (load_exports_metadata(&image->lifecycle, &process_param, export_records,
             mod_info->export_end - mod_info->export_top, read_export_address, &reader) < 0 ||
         load_exports_register(&image->exports, image, export_records,
             mod_info->export_end - mod_info->export_top, read_export_address, &reader) < 0) {
         LOG("Invalid or unsupported guest library exports.");
+        goto err_free_data;
+    }
+    if (!image->module && load_process_parameters_register(&image->exports, image,
+            process_param, read_export_address, &reader) < 0) {
+        LOG("Invalid or unsupported process parameters.");
         goto err_free_data;
     }
     /* Resolve NIDs */

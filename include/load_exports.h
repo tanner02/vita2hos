@@ -14,6 +14,10 @@ typedef struct {
 /* Decode library-zero lifecycle functions. Output is unchanged on failure. */
 int load_exports_lifecycle(LoadLifecycle *lifecycle, const void *records, size_t size,
                            LoadExportRead read, void *context);
+int load_exports_metadata(LoadLifecycle *lifecycle, uint32_t *process_param,
+                          const void *records, size_t size, LoadExportRead read, void *context);
+int load_process_parameters_register(ModuleGuestExports *exports, const void *owner,
+                                      uint32_t address, LoadExportRead read, void *context);
 int load_exports_register(ModuleGuestExports *exports, const void *owner,
                           const void *records, size_t size,
                           LoadExportRead read, void *context);
