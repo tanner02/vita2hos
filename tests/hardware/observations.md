@@ -1,3 +1,9 @@
+## 2026-11-27: LittleBigPlanet context and graphics initialization on e872799
+
+The collected versioned log records sceNpTrophyCreateContext returning zero, creation of SceGxmDisplayQueue and Render Thread, and allocation of graphics buffers and render targets. The user reports automatic exit without visuals or a visible error. The collected log has no normal process-exit, launch-result or image-close marker; a clean shutdown is therefore not established. No crash report for the dedicated title was found in the exposed atmosphere/crash_reports folder.
+
+First-use records include the unsupported sceDisplayWaitSetFrameBuf and several CommonDialog and online-service APIs. Their presence alone does not identify the cause of exit. Trophy progress, frame submission and commercial-title rendering remain unverified. Evidence was collected privately in result-20261127-155528; no proprietary assets or disassembly are included here.
+
 ## 2026-11-27: trophy initialization and guarded exit on runtime 7a39813
 
 The versioned log shows NP_TROPHY module load returning zero, passes the earlier init failure gate, and reaches unsupported sceNpTrophyCreateContext (library 0x4332c10d, NID 0xc49fd33f). Main then exits zero. The bootstrap logs PROCESS_EXIT_WITH_LIVE_GUEST_THREADS status=0x0 native_process_exit=1 teardown_skipped=1; no subsequent guest/GPU/image teardown is claimed. This positively exercises the guard's native exit path on hardware. It establishes an unquiesced worker, not that every created worker was running.
