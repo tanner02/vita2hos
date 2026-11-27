@@ -10,11 +10,19 @@
 #include "draw_probe.h"
 #ifdef VITA2HOS_VISIBLE_CUBE
 #define PROBE_NAME "visible_cube"
+#ifdef VITA2HOS_TEXTURE_USAGE_PROBE
+#define PROBE_VERSION "10"
+#else
 #define PROBE_VERSION "9"
+#endif
 #define PROBE_REPORT "app0:/visible-cube.txt"
 #else
 #define PROBE_NAME "draw_probe"
+#ifdef VITA2HOS_TEXTURE_USAGE_PROBE
+#define PROBE_VERSION "13"
+#else
 #define PROBE_VERSION "12"
+#endif
 #define PROBE_REPORT "app0:/draw-probe.txt"
 #endif
 #else
@@ -24,7 +32,11 @@
 #endif
 
 enum { WIDTH = 64, HEIGHT = 64, PIXELS = WIDTH * HEIGHT };
+#ifdef VITA2HOS_TEXTURE_USAGE_PROBE
+static SceUID allocations[64];
+#else
 static SceUID allocations[32];
+#endif
 static unsigned allocation_count;
 static SceUID report = -1;
 #ifdef VITA2HOS_VISIBLE_CUBE

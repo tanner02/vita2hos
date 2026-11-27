@@ -76,6 +76,27 @@ int probe_draw(SceGxmContext *context, SceGxmRenderTarget *target,
     /* color_v preserves guest Z under an identity WVP; clear_v forces Z=1. */
     const SceGxmProgram *vertex_source = (const SceGxmProgram *)color_v;
     const SceGxmProgram *fragment_source = (const SceGxmProgram *)clear_f;
+    const SceGxmProgram *texture_vertex_source = (const SceGxmProgram *)texture_v;
+    const SceGxmProgram *texture_fragment_source = (const SceGxmProgram *)texture_f;
+#ifdef VITA2HOS_TEXTURE_USAGE_PROBE
+    /* Static fixture spans deliberately take the runtime's conservative path.
+     * Copy every fixture into one tracked guest allocation to test narrowing. */
+    const uint8_t *fixtures[4]={color_v,clear_f,texture_v,texture_f};
+    const unsigned sizes[4]={sizeof(color_v),sizeof(clear_f),sizeof(texture_v),sizeof(texture_f)};
+    unsigned total=0;
+    for (unsigned i=0;i<4;++i) total+=(sizes[i]+3U)&~3U;
+    uint8_t *storage=hooks->allocate(total);
+    if (!storage) { hooks->record("FAIL owned_shader_allocation\n"); return -1; }
+    const SceGxmProgram *owned[4];
+    for (unsigned i=0;i<4;++i) {
+        owned[i]=(const SceGxmProgram *)storage;
+        memcpy(storage,fixtures[i],sizes[i]);storage+=(sizes[i]+3U)&~3U;
+    }
+    vertex_source=owned[0];fragment_source=owned[1];
+    texture_vertex_source=owned[2];texture_fragment_source=owned[3];
+    hooks->record("RUN known_allocation_shader_fixtures\n");
+    SceGxmFragmentProgram *flat_fragment=NULL;
+#endif
     SceGxmShaderPatcher *patcher = NULL;
     SceGxmShaderPatcherId vertex_id = NULL, fragment_id = NULL;
     SceGxmVertexProgram *vertex = NULL;
@@ -140,6 +161,15 @@ int probe_draw(SceGxmContext *context, SceGxmRenderTarget *target,
     sceGxmDepthStencilSurfaceSetBackgroundStencil(&ds, 0);
     const float red[4] = {1, 0, 0, 1}, green[4] = {0, 1, 0, 1};
     sceGxmSetVertexProgram(context, vertex); sceGxmSetFragmentProgram(context, fragment);
+#ifdef VITA2HOS_TEXTURE_USAGE_PROBE
+    /* Both slots are inactive in these fixtures. A legacy all-slot uploader
+     * rejects the intentionally unmapped address instead of drawing red. */
+    SceGxmTexture unused;
+    CHECK(sceGxmTextureInitLinear(&unused,(const void *)0x1000,
+        SCE_GXM_TEXTURE_FORMAT_U8U8U8U8_ABGR,16,16,1));
+    CHECK(sceGxmSetFragmentTexture(context,15,&unused));
+    CHECK(sceGxmSetVertexTexture(context,15,&unused));
+#endif
     sceGxmSetCullMode(context, SCE_GXM_CULL_NONE);
     sceGxmSetTwoSidedEnable(context, SCE_GXM_TWO_SIDED_DISABLED);
     sceGxmSetFrontDepthWriteEnable(context, SCE_GXM_DEPTH_WRITE_ENABLED);
@@ -152,6 +182,9 @@ int probe_draw(SceGxmContext *context, SceGxmRenderTarget *target,
     CHECK(sceGxmDraw(context, SCE_GXM_PRIMITIVE_TRIANGLES, SCE_GXM_INDEX_FORMAT_U16, indices, 3));
     CHECK(sceGxmEndScene(context, NULL, NULL)); sceGxmFinish(context);
     CHECK(check_pixels(pixels, 0xff0000ff)); hooks->record("PASS shader_red\n");
+#ifdef VITA2HOS_TEXTURE_USAGE_PROBE
+    hooks->record("PASS inactive_texture_bindings_15_31\n");
+#endif
 
     /* Mid-gray distinguishes encoded sRGB output from linear UNORM; alpha
      * must stay linear. Test switching back on the same render target too. */
@@ -388,12 +421,16 @@ int probe_draw(SceGxmContext *context, SceGxmRenderTarget *target,
 
     /* Use actual texture shaders, then change the guest image between scenes.
      * This covers descriptor setup, UV interpolation, row layout and re-upload. */
+#ifdef VITA2HOS_TEXTURE_USAGE_PROBE
+    flat_fragment=fragment;fragment=NULL;
+#else
     sceGxmShaderPatcherReleaseFragmentProgram(patcher, fragment); fragment = NULL;
+#endif
     sceGxmShaderPatcherReleaseVertexProgram(patcher, vertex); vertex = NULL;
     sceGxmShaderPatcherUnregisterProgram(patcher, fragment_id); fragment_id = NULL;
     sceGxmShaderPatcherUnregisterProgram(patcher, vertex_id); vertex_id = NULL;
-    vertex_source = (const SceGxmProgram *)texture_v;
-    fragment_source = (const SceGxmProgram *)texture_f;
+    vertex_source = texture_vertex_source;
+    fragment_source = texture_fragment_source;
     position = sceGxmProgramFindParameterByName(vertex_source, "aPosition");
     const SceGxmProgramParameter *uv = sceGxmProgramFindParameterByName(vertex_source, "aTexcoord");
     matrix = sceGxmProgramFindParameterByName(vertex_source, "wvp");
@@ -439,7 +476,20 @@ int probe_draw(SceGxmContext *context, SceGxmRenderTarget *target,
         if (pass >= 2) sceGxmSetViewport(context, 32, negative_x ? -32 : 32,
                                        32, positive_y ? 32 : -32, 0.5f, 0.5f);
         CHECK(sceGxmSetVertexStream(context, 0, vertices));
+#ifdef VITA2HOS_TEXTURE_USAGE_PROBE
+        if (!pass) sceGxmSetFragmentProgram(context,flat_fragment);
+#endif
         CHECK(sceGxmSetFragmentTexture(context, sceGxmProgramParameterGetResourceIndex(sampler), &texture));
+#ifdef VITA2HOS_TEXTURE_USAGE_PROBE
+        if (!pass) {
+            /* Binding while the flat shader is active records an empty texture
+             * table. Activating the sampling shader must replace it without
+             * another texture bind or BeginScene forcing all dirty bits. */
+            CHECK(color(context,clear_color,matrix,green));
+            CHECK(sceGxmDraw(context,SCE_GXM_PRIMITIVE_TRIANGLES,SCE_GXM_INDEX_FORMAT_U16,indices,3));
+            sceGxmSetFragmentProgram(context,fragment);
+        }
+#endif
         void *uniform;
         const float identity[16] = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
         CHECK(sceGxmReserveVertexDefaultUniformBuffer(context, &uniform));
@@ -465,6 +515,9 @@ int probe_draw(SceGxmContext *context, SceGxmRenderTarget *target,
                 }
             }
         }
+#ifdef VITA2HOS_TEXTURE_USAGE_PROBE
+        if (!pass && !pass_failed) hooks->record("PASS texture_shader_switch_without_rebind\n");
+#endif
         if (!pass_failed) hooks->record(pass == 0 ? "PASS texture_quadrants\n" : pass == 1 ?
             "PASS texture_update\n" : pass == 2 ? "PASS texture_positive_viewport\n" :
             pass == 3 ? "PASS texture_both_axes\n" : pass == 4 ? "PASS texture_negative_x\n" :
@@ -478,6 +531,9 @@ int probe_draw(SceGxmContext *context, SceGxmRenderTarget *target,
     if (!texture_failures) ret = probe_cube(context, vertex, fragment, matrix, sampler, hooks);
 #endif
 done:
+#ifdef VITA2HOS_TEXTURE_USAGE_PROBE
+    if (flat_fragment) sceGxmShaderPatcherReleaseFragmentProgram(patcher,flat_fragment);
+#endif
     if (ms_target) { sceGxmFinish(context);sceGxmDestroyRenderTarget(ms_target); }
     if (ms_fragment) sceGxmShaderPatcherReleaseFragmentProgram(patcher,ms_fragment);
     if (fragment) sceGxmShaderPatcherReleaseFragmentProgram(patcher, fragment);

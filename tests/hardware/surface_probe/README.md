@@ -67,3 +67,31 @@ pixels. This is output clipping; rasterizer/depth clipping remains independent.
 Requires the color-clip runtime exports and clipped store path, not just 1e9f698.
 Partial clipped stores with unequal target/surface dimensions are explicitly
 unsupported; full-surface copies retain the existing scaling behavior.
+
+
+## Optional texture usage batch
+
+Configure with `-DVITA2HOS_TEXTURE_USAGE_PROBE=ON` and build
+`visible_cube_guest` to produce visible cube v10 (draw probe v13). The default
+option remains OFF, retaining visible cube v9 and draw probe v12. The optional
+batch requires the shader-specific texture-usage runtime.
+
+The batch copies all four pinned shader fixtures into one tracked guest
+allocation, so runtime metadata extraction can narrow masks rather than taking
+the unknown/static-span fallback. It binds unmapped address0x1000 in unused
+fragment unit15 and vertex unit15 (descriptor slots15/31). A successful solid
+red draw emits `PASS inactive_texture_bindings_15_31`. Those bindings remain
+present throughout the remaining cases; neither shader uses them.
+
+In the first texture scene, it binds texture0 while a flat fragment shader is
+active and draws. It then activates the sampling fragment shader and draws
+again without rebinding the texture or starting another scene. Expected texture
+quadrants must survive this descriptor transition; require
+`PASS texture_shader_switch_without_rebind`. This validates fragment activation;
+vertex coverage here is inactive slot31, not activation of a vertex sampler.
+
+A hardware pass requires a fresh `visible_cube v10` report with all50 checks,
+the two new PASS tags, all prior pixel/guard/cube checks, and runtime process0
+and cleanup0. Runtime `GXM_TEXTURE_USAGE` logs must show bounded extraction
+(mask0 for the vertex and flat-fragment fixtures, mask1 for the texture fragment).
+Compilation, import audit and source review alone establish no hardware pass.

@@ -2123,3 +2123,16 @@ allocation (so narrowed masks are actually used), inactive invalid bindings,
 and stage switches without rebinding. Static fixture spans deliberately fall
 back to all16, so an unchanged static-shader smoke pass alone would not exercise
 the optimization. No game speedup, cleared alpha artifacts or 3D boot is claimed.
+
+
+## Positive texture usage hardware batch prepared
+
+The opt-in surface-probe build now supplies tracked copies of all four GXP
+fixtures, keeps unmapped textures bound at inactive descriptor slots15/31,
+and draws a flat-to-sampling fragment transition within one scene without
+rebinding texture0. Visible cube v10 expects50 checks; the default v9 remains
+unchanged. ON/OFF VitaSDK builds and runtime import audits passed (67/66 imports
+respectively). Independent source review found no actionable issues in state
+setup, fixture/fragment lifetimes or failure cleanup. This adds positive-path
+coverage needed by the candidate; it has not been deployed or run on hardware.
+Console remains user-owned pending recovery handback.
