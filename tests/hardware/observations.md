@@ -1,3 +1,9 @@
+## 2026-11-27: LittleBigPlanet first main-entry attempt on adbab65 - controlled abort
+
+All seven private data/font assets were copied to app0 and readback-verified before normal main entry was enabled. User reports automatic closure after about fifteen seconds without a visible error. The collected versioned runtime log shows libc/FIOS startup success, one first-use record for SceProcessmgr/0xeb6e50bb (sceKernelCallAbortHandler) originating from libc offset 0x6fc with the Thumb bit set, then sceKernelExitProcess(1), process/launch result 1 and successful image close. No scene or rendering was observed. This positively exercises first-use logging on hardware, but is not the owned probe's complete ABI/duplicate-call validation.
+
+Private static inspection identifies the executable startup path as TLS registration followed by abort on nonzero return. Libc's TLS registrar calls sceKernelGetModuleInfoByAddr into stack storage without initializing the output size. Our address-based implementation incorrectly required that size, unlike the pinned reference. Removing that precondition is a source-supported fix and a likely explanation of this abort; the query return and exact abort cause were not directly traced, so hardware confirmation is still required. The UID-based query retains its input-size check. No proprietary code or disassembly is included here. Evidence was collected privately in result-20261127-142426.
+
 ## 2026-11-27: repeated LittleBigPlanet library startup on tracing runtime adbab65
 
 The collected log confirms installed runtime adbab65, compatible mapping after one layout restart, and successful libc/FIOS startup returns. It reaches LIBRARY_STARTUP_ONLY_RESULT status=0x0 main_skipped=1 close_title=1. There are no UNSUPPORTED_CALL or UNRESOLVED_TRACE_OVERFLOW records. The binding inventory still contains 395 distinct unresolved library/function pairs across the three images.

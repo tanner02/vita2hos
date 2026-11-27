@@ -62,6 +62,18 @@ int main(void)
         /* Registry metadata is a snapshot; state remains an atomic live value. */
         images[i].module_info.module_name[0]='?';
         assert(!sceKernelGetModuleInfo(ids[i],&info) && info.module_name[0]=='i');
+        /* Libc TLS registration passes output-only stack storage: no size
+         * word is initialized before the address-based query. */
+        memset(&info,0xa5,sizeof(info));
+        assert(!sceKernelGetModuleInfoByAddr((char *)address+1,&info));
+        assert(info.size==sizeof(info) && info.modid==ids[i]);
+        assert(info.tlsInit==(char *)address+64 && info.tlsInitSize==4 && info.tlsAreaSize==16);
+        memset(&info,0,sizeof(info));
+        assert(!sceKernelGetModuleInfoByAddr((char *)address+1,&info));
+        SceKernelModuleInfo unknown;memset(&unknown,0x5a,sizeof(unknown));
+        SceKernelModuleInfo unchanged=unknown;
+        assert((uint32_t)sceKernelGetModuleInfoByAddr((void *)0x70000000,&unknown)==SCE_KERNEL_ERROR_MODULEMGR_NOENT);
+        assert(!memcmp(&unknown,&unchanged,sizeof(unknown)));
         SceKernelModuleInfo saved=info;info.size=0;
         assert((uint32_t)sceKernelGetModuleInfo(ids[i],&info)==SCE_KERNEL_ERROR_INVALID_ARGUMENT_SIZE);
         info=saved;

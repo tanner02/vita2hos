@@ -69,7 +69,9 @@ EXPORT(SceLibKernel, 0xD11A5103, int, sceKernelGetModuleInfoByAddr, void *addres
        SceKernelModuleInfo *info)
 {
     if (!info) return SCE_KERNEL_ERROR_ILLEGAL_ADDR;
-    if (info->size!=sizeof(*info)) return SCE_KERNEL_ERROR_INVALID_ARGUMENT_SIZE;
+    /* This address-based query writes the complete output structure. Libc's
+     * TLS registrar passes uninitialized storage here, unlike the UID-based
+     * sceKernelGetModuleInfo query which has an input size contract. */
     if (!module_lock_initialized) return SCE_KERNEL_ERROR_MODULEMGR_NOENT;
     rwlockReadLock(&module_lock);
     const LoadedModule *module=find_module_address(address);
