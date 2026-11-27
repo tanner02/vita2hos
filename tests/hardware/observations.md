@@ -1,3 +1,9 @@
+## 2026-11-27: owned dependency probe on runtime 006d5c4 — PASS
+
+User ran module_probe v1 from source c3ee39d on the installed HOME title. Collected report passes main_tls, dependency_exit_thread_start, function_import, variable_import_alias, and final module_probe. Log identifies runtime 006d5c4, applies two reviewed TP sites, starts owned_dependency in a separate module_start thread, and returns guest/process/launch/close zero without unresolved imports. Active executable SHA256 05ab4d2942cb13791645696cf25736a8653944390772e14eb5fe2a85db595283 and TLS plan 461e99661fc7e840a09b91bdf91341a118539e7b0e9a4ff881ae7603d06f3b60 match the transferred payload.
+
+This proves the owned dependency path, including successful startup through sceKernelExitThread and imported writable state. It does not prove commercial libc/FIOS/Ult startup, module-specific TLS, or a commercial title boot.
+
 ## Owned dependency-start probe (local preparation)
 
 - Added tests/hardware/module_probe with an owned main executable and an owned
