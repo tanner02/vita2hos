@@ -52,9 +52,22 @@ int main(void)
     assert(block && block->uid == uid);
     assert(SceSysmem_get_vita_memblock_info_for_addr((char *)base + 4095) == block);
     assert(SceSysmem_get_vita_memblock_info_for_addr((char *)base + 4096) == NULL);
+    assert(sceKernelFindMemBlockByAddr(base,0)==uid);
+    assert(sceKernelFindMemBlockByAddr(base,4096)==uid);
+    assert(sceKernelFindMemBlockByAddr((char *)base+4095,1)==uid);
+    assert(sceKernelFindMemBlockByAddr((char *)base+128,3968)==uid);
+    assert((uint32_t)sceKernelFindMemBlockByAddr((char *)base+128,3969)==SCE_KERNEL_ERROR_BLOCK_ERROR);
+    assert((uint32_t)sceKernelFindMemBlockByAddr(base,4097)==SCE_KERNEL_ERROR_BLOCK_ERROR);
+    assert((uint32_t)sceKernelFindMemBlockByAddr((char *)base+4096,0)==SCE_KERNEL_ERROR_BLOCK_ERROR);
+    assert((uint32_t)sceKernelFindMemBlockByAddr((void *)((uintptr_t)base-1),1)==SCE_KERNEL_ERROR_BLOCK_ERROR);
+    assert((uint32_t)sceKernelFindMemBlockByAddr((void *)(UINTPTR_MAX-1),16)==SCE_KERNEL_ERROR_BLOCK_ERROR);
+    assert((uint32_t)sceKernelFindMemBlockByAddr(NULL,0)==SCE_KERNEL_ERROR_BLOCK_ERROR);
+    assert((uint32_t)sceKernelFindMemBlockByAddr(base,UINT32_MAX)==SCE_KERNEL_ERROR_BLOCK_ERROR);
+    uintptr_t old_address=(uintptr_t)base;
     assert((uint32_t)sceKernelGetMemBlockBase(uid, NULL) == SCE_KERNEL_ERROR_ILLEGAL_ADDR);
     assert(sceKernelFreeMemBlock(uid) == 0);
     assert(live_mappings == 0);
+    assert((uint32_t)sceKernelFindMemBlockByAddr((void *)old_address,0)==SCE_KERNEL_ERROR_BLOCK_ERROR);
     assert((uint32_t)sceKernelFreeMemBlock(uid) == SCE_KERNEL_ERROR_INVALID_UID);
     assert((uint32_t)sceKernelGetMemBlockBase(uid, &base) == SCE_KERNEL_ERROR_INVALID_UID);
 

@@ -354,6 +354,22 @@
   thread cancellation, priority inheritance and exact invalid-target error
   behavior remain unfinished. No hardware files were changed.
 
+## Host memory-block lookup after d3a0bf8
+
+- Added `sceKernelFindMemBlockByAddr` with size-aware containment in tracked
+  guest allocations. A zero-length query still requires an interior address;
+  padding beyond the requested allocation and one-past-end addresses do not
+  match. The UID is copied while holding the table lock. Range validation follows
+  the SDK's size parameter description; exact hardware edge errors are unverified.
+- Existing base/mapping queries now copy their result before dropping the table
+  lock. Free atomically looks up and removes its record under the write lock,
+  preventing simultaneous frees from reclaiming the same allocation twice.
+- ASan/UBSan tests force reclamation between a query's unlock and return, check
+  concurrent double-free ownership, and cover range boundaries and overflow.
+  Returned guest pointers and GPU mapping handles remain borrowed: applications
+  must keep their allocations alive while using them, including queued GPU work.
+  No new commercial code or hardware test was executed.
+
 ## Runtime 15d400f48e5d3a3f5d811e2a67bd30a1388cc102
 
 - Standalone HOME title, owned fixed-address CPU probe SHA-256

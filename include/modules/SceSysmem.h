@@ -14,6 +14,8 @@ typedef struct VitaMemBlockInfo {
 int SceSysmem_init(DkDevice dk_device);
 void SceSysmem_finish(void);
 SceUID SceSysmem_get_next_uid(void);
+/* Internal graphics callers must keep the guest allocation alive while using
+ * these borrowed metadata/mapping values, including queued GPU references. */
 VitaMemBlockInfo *SceSysmem_get_vita_memblock_info_for_addr(const void *addr);
 DkMemBlock SceSysmem_get_dk_memblock_for_addr(const void *addr);
 

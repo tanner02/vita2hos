@@ -20,17 +20,42 @@ DICT_DEF2(vita_memblock_info_dict, SceUID, M_DEFAULT_OPLIST, VitaMemBlockInfo *,
 static vita_memblock_info_dict_t g_vita_memblock_infos;
 static RwLock g_vita_memblock_infos_lock;
 
-static VitaMemBlockInfo *get_memblock_info_for_uid(SceUID uid)
+/* The caller holds the table lock while using the returned record. */
+static VitaMemBlockInfo *get_memblock_info_for_uid_locked(SceUID uid)
 {
     VitaMemBlockInfo *block;
     VitaMemBlockInfo **entry;
 
-    rwlockReadLock(&g_vita_memblock_infos_lock);
     entry = vita_memblock_info_dict_get(g_vita_memblock_infos, uid);
     block = entry ? *entry : NULL;
-    rwlockReadUnlock(&g_vita_memblock_infos_lock);
 
     return block;
+}
+
+static VitaMemBlockInfo *get_memblock_info_for_range_locked(const void *addr, SceSize size)
+{
+    uintptr_t address=(uintptr_t)addr;
+    vita_memblock_info_dict_it_t it;
+    for (vita_memblock_info_dict_it(it,g_vita_memblock_infos);
+         !vita_memblock_info_dict_end_p(it);vita_memblock_info_dict_next(it)) {
+        VitaMemBlockInfo *block=vita_memblock_info_dict_ref(it)->value;
+        uintptr_t base=(uintptr_t)block->base;
+        /* A zero length still requires an address inside the allocation.
+         * Subtraction avoids overflow at either end of the address space. */
+        if (address>=base && address-base<block->size && size<=block->size-(address-base))
+            return block;
+    }
+    return NULL;
+}
+
+EXPORT(SceSysmem, 0xA33B99D1, SceUID, sceKernelFindMemBlockByAddr, const void *addr,
+       SceSize size)
+{
+    rwlockReadLock(&g_vita_memblock_infos_lock);
+    VitaMemBlockInfo *block=get_memblock_info_for_range_locked(addr,size);
+    SceUID result=block ? block->uid : (SceUID)SCE_KERNEL_ERROR_BLOCK_ERROR;
+    rwlockReadUnlock(&g_vita_memblock_infos_lock);
+    return result;
 }
 
 EXPORT(SceSysmem, 0xB9D5EBDE, SceUID, sceKernelAllocMemBlock, const char *name,
@@ -105,21 +130,22 @@ EXPORT(SceSysmem, 0xB9D5EBDE, SceUID, sceKernelAllocMemBlock, const char *name,
         return SCE_KERNEL_ERROR_NO_MEMORY;
     }
 
+    const SceUID uid=block->uid;
     rwlockWriteLock(&g_vita_memblock_infos_lock);
     vita_memblock_info_dict_set_at(g_vita_memblock_infos, block->uid, block);
     rwlockWriteUnlock(&g_vita_memblock_infos_lock);
 
-    return block->uid;
+    return uid;
 }
 
 EXPORT(SceSysmem, 0xA91E15EE, int, sceKernelFreeMemBlock, SceUID uid)
 {
-    VitaMemBlockInfo *block = get_memblock_info_for_uid(uid);
-
-    if (!block)
-        return SCE_KERNEL_ERROR_INVALID_UID;
-
     rwlockWriteLock(&g_vita_memblock_infos_lock);
+    VitaMemBlockInfo *block = get_memblock_info_for_uid_locked(uid);
+    if (!block) {
+        rwlockWriteUnlock(&g_vita_memblock_infos_lock);
+        return SCE_KERNEL_ERROR_INVALID_UID;
+    }
     vita_memblock_info_dict_erase(g_vita_memblock_infos, uid);
     rwlockWriteUnlock(&g_vita_memblock_infos_lock);
     dkMemBlockDestroy(block->dk_memblock);
@@ -131,17 +157,14 @@ EXPORT(SceSysmem, 0xA91E15EE, int, sceKernelFreeMemBlock, SceUID uid)
 
 EXPORT(SceSysmem, 0xB8EF5818, int, sceKernelGetMemBlockBase, SceUID uid, void **base)
 {
-    VitaMemBlockInfo *block = get_memblock_info_for_uid(uid);
-
-    if (!block)
-        return SCE_KERNEL_ERROR_INVALID_UID;
-
-    if (!base)
-        return SCE_KERNEL_ERROR_ILLEGAL_ADDR;
-
-    *base = block->base;
-
-    return 0;
+    rwlockReadLock(&g_vita_memblock_infos_lock);
+    VitaMemBlockInfo *block = get_memblock_info_for_uid_locked(uid);
+    int result=0;
+    if (!block) result=SCE_KERNEL_ERROR_INVALID_UID;
+    else if (!base) result=SCE_KERNEL_ERROR_ILLEGAL_ADDR;
+    else *base=block->base;
+    rwlockReadUnlock(&g_vita_memblock_infos_lock);
+    return result;
 }
 
 DECLARE_LIBRARY(SceSysmem, 0x37fe725a);
@@ -181,21 +204,8 @@ SceUID SceSysmem_get_next_uid(void)
 
 VitaMemBlockInfo *SceSysmem_get_vita_memblock_info_for_addr(const void *addr)
 {
-    VitaMemBlockInfo *block = NULL;
-    vita_memblock_info_dict_it_t it;
-    struct vita_memblock_info_dict_pair_s *pair;
-
     rwlockReadLock(&g_vita_memblock_infos_lock);
-    for (vita_memblock_info_dict_it(it, g_vita_memblock_infos); !vita_memblock_info_dict_end_p(it);
-         vita_memblock_info_dict_next(it)) {
-        pair = vita_memblock_info_dict_ref(it);
-        uintptr_t address = (uintptr_t)addr;
-        uintptr_t base = (uintptr_t)pair->value->base;
-        if (address >= base && address - base < pair->value->size) {
-            block = pair->value;
-            break;
-        }
-    }
+    VitaMemBlockInfo *block=get_memblock_info_for_range_locked(addr,0);
     rwlockReadUnlock(&g_vita_memblock_infos_lock);
 
     return block;
@@ -203,8 +213,9 @@ VitaMemBlockInfo *SceSysmem_get_vita_memblock_info_for_addr(const void *addr)
 
 DkMemBlock SceSysmem_get_dk_memblock_for_addr(const void *addr)
 {
-    VitaMemBlockInfo *info = SceSysmem_get_vita_memblock_info_for_addr(addr);
-    if (!info)
-        return NULL;
-    return info->dk_memblock;
+    rwlockReadLock(&g_vita_memblock_infos_lock);
+    VitaMemBlockInfo *info=get_memblock_info_for_range_locked(addr,0);
+    DkMemBlock result=info ? info->dk_memblock : NULL;
+    rwlockReadUnlock(&g_vita_memblock_infos_lock);
+    return result;
 }
