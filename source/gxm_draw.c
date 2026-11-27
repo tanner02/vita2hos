@@ -34,17 +34,33 @@ int gxm_build_vertex_attribute_state(const SceGxmVertexAttribute *attributes, un
         } else if (!elements || elements > 4) {
             return SCE_GXM_ERROR_INVALID_VALUE;
         }
-        const unsigned slots = (elements + 3) / 4;
+        const unsigned slots = input->register_format ? (elements + 3) / 4 :
+            (input->array_elements ? input->array_elements : 1);
+        unsigned slot_bytes = 4 * element_bytes;
+        if (!input->register_format && slots > 1) {
+            switch (format) {
+            case SCE_GXM_ATTRIBUTE_FORMAT_U8: case SCE_GXM_ATTRIBUTE_FORMAT_S8:
+            case SCE_GXM_ATTRIBUTE_FORMAT_U8N: case SCE_GXM_ATTRIBUTE_FORMAT_S8N:
+                element_bytes = 1; break;
+            case SCE_GXM_ATTRIBUTE_FORMAT_U16: case SCE_GXM_ATTRIBUTE_FORMAT_S16:
+            case SCE_GXM_ATTRIBUTE_FORMAT_U16N: case SCE_GXM_ATTRIBUTE_FORMAT_S16N:
+            case SCE_GXM_ATTRIBUTE_FORMAT_F16: element_bytes = 2; break;
+            case SCE_GXM_ATTRIBUTE_FORMAT_F32:
+            case SCE_GXM_ATTRIBUTE_FORMAT_UNTYPED: element_bytes = 4; break;
+            default: return SCE_GXM_ERROR_INVALID_VALUE;
+            }
+            slot_bytes = elements * element_bytes;
+        }
         if (input->location >= SCE_GXM_MAX_VERTEX_ATTRIBUTES ||
             slots > SCE_GXM_MAX_VERTEX_ATTRIBUTES - input->location ||
             attributes[i].streamIndex >= SCE_GXM_MAX_VERTEX_STREAMS)
             return SCE_GXM_ERROR_INVALID_VALUE;
         for (unsigned slot = 0; slot < slots; ++slot) {
             const unsigned location = input->location + slot;
-            const unsigned offset = attributes[i].offset + slot * 4 * element_bytes;
+            const unsigned offset = attributes[i].offset + slot * slot_bytes;
             if ((used & (1U << location)) || offset > 0x3fff)
                 return SCE_GXM_ERROR_INVALID_VALUE;
-            const unsigned remaining = elements - slot * 4;
+            const unsigned remaining = input->register_format ? elements - slot * 4 : elements;
             DkVtxAttribType type;
             DkVtxAttribSize size;
             int ret = gxm_translate_vertex_format(format, remaining < 4 ? remaining : 4,

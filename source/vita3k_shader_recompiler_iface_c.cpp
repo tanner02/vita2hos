@@ -29,6 +29,14 @@ bool gxp_vertex_input_c(const SceGxmProgram *program, uint32_t reg_index,
             result.location = info.location;
             result.integer_input = info.is_integer || info.regformat;
             result.register_format = info.regformat;
+            for (unsigned i = 0; i < program->parameter_count; ++i) {
+                const auto &parameter = program->program_parameters()[i];
+                if (parameter.category != SCE_GXM_PARAMETER_CATEGORY_ATTRIBUTE ||
+                    parameter.resource_index != reg_index) continue;
+                if (!parameter.array_size || parameter.array_size > 64) return false;
+                result.array_elements = parameter.array_size;
+                break;
+            }
             if (info.regformat) {
                 switch (info.gxm_type) {
                 case SCE_GXM_PARAMETER_TYPE_U8:

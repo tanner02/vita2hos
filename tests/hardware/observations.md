@@ -1,3 +1,28 @@
+## 2026-11-27: numeric vertex array groundwork (not deployed)
+
+Non-register vertex arrays now reserve one native input location per array
+element. Previously the generated translator/analyzer allocation rounded the
+flattened component count to vec4 slots, which could overlap the following input
+for scalar, vec2 or vec3 arrays. Runtime fetch also previously configured only
+the first location. Packed register inputs retain their separate vec4 packing.
+
+Runtime metadata carries the array element count. Native fetch expands the guest
+attribute format/component count at consecutive locations and advances offsets
+by the actual storage byte width. Normalization and integer/numeric conversion
+are preserved. Invalid metadata, collisions, native capacity and offset overflow
+fail before replacing output state. Original dependency sources stay unchanged;
+the guarded CMake patch modifies generated translator/analyzer copies only.
+
+Twenty-four declaration derivatives cover float and signed-integer arrays with
+one to four components and two to four elements. Actual SPIR-V reflection checks
+type, vector width, location span and no overlap with adjacent inputs; all cases
+also convert through the runtime GLSL wrapper. Host ASan/UBSan checks cover all
+eleven guest formats at widths1..4 plus conversion and failure preservation.
+The full host suite, shader integration test and native Debug/Release builds
+pass. No GPU execution, actual matrix memory layout or rendered game geometry
+is established. The original startup crash remains open; HLE integration stays
+with ZCode. No console access, payload/probe change or deployment occurred.
+
 ## 2026-11-27: latest saved startup crash and thread-pointer evidence
 
 After the user enabled Switch access, read-only collection retrieved three saved

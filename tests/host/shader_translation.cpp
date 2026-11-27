@@ -26,6 +26,15 @@ int main()
     program.parameters[0].array_size = UINT32_MAX;
     assert(!gxp_vertex_input_c(&program, 8, 7, &input) && input.register_components == 8);
     program.parameters[0].array_size = 1;
+    program.parameters[0].resource_index = 0;
+    program.parameters[0].array_size = 3;
+    assert(gxp_vertex_input_c(&program, 0, 7, &input) && !input.register_format && input.array_elements == 3);
+    program.parameters[0].array_size = 0;
+    assert(!gxp_vertex_input_c(&program, 0, 7, &input) && input.array_elements == 3);
+    program.parameters[0].array_size = UINT32_MAX;
+    assert(!gxp_vertex_input_c(&program, 0, 7, &input) && input.array_elements == 3);
+    program.parameters[0].resource_index = 8;
+    program.parameters[0].array_size = 1;
     assert(gxp_vertex_input_c(&program, 99, 7, &input) && input.location == UINT32_MAX);
     shader::test_conversion_mode = 1;
     assert(gxp_vertex_input_c(&program, 0, 7, &input) && !input.integer_input && input.location == 7);

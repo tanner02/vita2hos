@@ -260,6 +260,55 @@ int main(void)
     raw.register_components=UINT32_MAX;
     assert((uint32_t)gxm_build_vertex_attribute_state(&packed,1,&raw,state)==SCE_GXM_ERROR_INVALID_VALUE);
     assert(!memcmp(preserved,state,sizeof(state)));
+    /* Numeric arrays retain one location per vector, including vec1/vec2/vec3.
+     * Offsets advance by guest storage width, not padded native vec4 width. */
+    SceGxmVertexAttribute array_attr = {.streamIndex=1,.offset=12,
+        .format=SCE_GXM_ATTRIBUTE_FORMAT_F32,.componentCount=3};
+    GxmVertexInput array_input = {.location=2,.array_elements=3};
+    for (unsigned f=0;f<sizeof(formats)/sizeof(formats[0]);++f) {
+        array_attr.format=formats[f].format;
+        array_input.integer_input=true;
+        for (unsigned components=1;components<=4;++components) {
+            array_attr.componentCount=components;
+            assert(!gxm_build_vertex_attribute_state(&array_attr,1,&array_input,state));
+            for (unsigned slot=0;slot<3;++slot)
+                assert(state[2+slot].offset==12+slot*components*(1U<<formats[f].width) &&
+                    state[2+slot].size==sizes[formats[f].width][components-1] &&
+                    state[2+slot].type==formats[f].type);
+        }
+    }
+    array_attr.format=SCE_GXM_ATTRIBUTE_FORMAT_F32; array_attr.componentCount=3;
+    array_input.integer_input=false;
+    assert(!gxm_build_vertex_attribute_state(&array_attr,1,&array_input,state));
+    for (unsigned i=0;i<3;++i)
+        assert(!state[2+i].isFixed && state[2+i].bufferId==1 && state[2+i].offset==12+i*12 &&
+               state[2+i].type==DkVtxAttribType_Float && state[2+i].size==DkVtxAttribSize_3x32);
+    array_attr.format=SCE_GXM_ATTRIBUTE_FORMAT_S8N;
+    array_attr.componentCount=2;
+    assert(!gxm_build_vertex_attribute_state(&array_attr,1,&array_input,state));
+    assert(state[3].offset==14 && state[4].offset==16 &&
+           state[4].type==DkVtxAttribType_Snorm && state[4].size==DkVtxAttribSize_2x8);
+    array_attr.format=SCE_GXM_ATTRIBUTE_FORMAT_U16;
+    array_attr.componentCount=1;
+    assert(!gxm_build_vertex_attribute_state(&array_attr,1,&array_input,state));
+    assert(state[3].offset==14 && state[4].type==DkVtxAttribType_Uscaled && state[4].size==DkVtxAttribSize_1x16);
+    array_input.integer_input=true;
+    assert(!gxm_build_vertex_attribute_state(&array_attr,1,&array_input,state));
+    assert(state[4].type==DkVtxAttribType_Uint);
+    memcpy(preserved,state,sizeof(state));
+    overlap_attributes[0]=array_attr; overlap_attributes[1]=array_attr;
+    overlap_inputs[0]=array_input; overlap_inputs[1]=(GxmVertexInput){.location=4};
+    assert((uint32_t)gxm_build_vertex_attribute_state(overlap_attributes,2,overlap_inputs,state)==SCE_GXM_ERROR_INVALID_VALUE);
+    assert(!memcmp(preserved,state,sizeof(state)));
+    array_input.location=15;
+    assert((uint32_t)gxm_build_vertex_attribute_state(&array_attr,1,&array_input,state)==SCE_GXM_ERROR_INVALID_VALUE);
+    assert(!memcmp(preserved,state,sizeof(state)));
+    array_input.location=2; array_input.array_elements=UINT32_MAX;
+    assert((uint32_t)gxm_build_vertex_attribute_state(&array_attr,1,&array_input,state)==SCE_GXM_ERROR_INVALID_VALUE);
+    assert(!memcmp(preserved,state,sizeof(state)));
+    array_input.array_elements=3; array_attr.offset=0x3ffe;
+    assert((uint32_t)gxm_build_vertex_attribute_state(&array_attr,1,&array_input,state)==SCE_GXM_ERROR_INVALID_VALUE);
+    assert(!memcmp(preserved,state,sizeof(state)));
     puts("GXM index range regression checks passed.");
     return 0;
 }

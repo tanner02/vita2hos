@@ -432,4 +432,8 @@ Register-format checks cover unsigned bit fetch at shader-declared byte/halfword
 word widths, normalization bypass, array expansion and offsets, partial final
 vectors, overlapping locations, bounded capacity and offset overflow. Metadata
 checks include zero and overflowing array sizes with output preservation.
-Non-register matrix/array inputs and GPU fetch behavior need further checks.
+Non-register arrays preserve guest formats/component counts while expanding one
+native location per element. Checks cover all eleven formats at widths1..4,
+tightly packed element offsets, normalization/numeric conversion, collisions,
+capacity/offset limits and failure preservation. GPU fetch still needs hardware
+verification.

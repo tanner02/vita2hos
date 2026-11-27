@@ -1,5 +1,5 @@
-# Reserve native locations for the unsigned bytes emitted for register C10
-# inputs. Compose with the generated uniform-shuffle source; never edit Vita3K.
+# Reserve native locations for packed C10 bytes and non-register array elements.
+# Compose with the generated uniform-shuffle source; never edit Vita3K.
 function(vita2hos_fix_vertex_locations repo)
     get_target_property(sources shader SOURCES)
     foreach(name spirv_recompiler usse_program_analyzer)
@@ -35,14 +35,16 @@ function(vita2hos_fix_vertex_locations repo)
                            const uint64_t logical_components = uint64_t(input.array_size) * input.component_count;
                            const uint64_t location_components = s.regformat && input.type == DataType::C10 ?
                                (logical_components * 10 + 7) / 8 : logical_components;
-                           in_fcount_allocated += ((location_components + 3) / 4 * 4);]==])
+                           in_fcount_allocated += s.regformat ? ((location_components + 3) / 4 * 4) :
+                               uint64_t(input.array_size) * 4;]==])
         else()
             set(before "            fcount_allocated += ((parameter.array_size * parameter.component_count + 3) / 4) * 4;")
             set(after [==[
             const uint64_t logical_components = uint64_t(parameter.array_size) * parameter.component_count;
             const uint64_t location_components = regformat && parameter.type == SCE_GXM_PARAMETER_TYPE_C10 ?
                 (logical_components * 10 + 7) / 8 : logical_components;
-            fcount_allocated += ((location_components + 3) / 4) * 4;]==])
+            fcount_allocated += regformat ? ((location_components + 3) / 4) * 4 :
+                uint64_t(parameter.array_size) * 4;]==])
         endif()
         string(FIND "${source}" "${before}" found)
         if(found EQUAL -1)

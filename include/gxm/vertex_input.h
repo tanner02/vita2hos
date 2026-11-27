@@ -7,6 +7,9 @@ typedef struct GxmVertexInput {
     /* UINT32_MAX means an unreferenced attribute in a named shader. */
     uint32_t location;
     bool integer_input;
+    /* Non-register arrays consume one native location per element. Zero is
+     * the single-element fallback for stripped shaders and legacy callers. */
+    uint32_t array_elements;
     /* Register-format inputs fetch unsigned bits using shader-declared widths,
      * bypassing guest attribute normalization and floating-point conversion. */
     bool register_format;

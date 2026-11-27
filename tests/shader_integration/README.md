@@ -124,5 +124,19 @@ analyzer reserve locations using the packed-byte count for register C10 inputs.
 the uniform-shuffle patch, in production and integration builds. Configuration
 fails if either expected upstream allocation statement or source layout changes.
 
-Non-register array/matrix inputs remain separate work. No GPU execution or
-rendered packed geometry is established by these declaration checks.
+## Non-register vertex arrays
+
+Scalar and vec2/vec3/vec4 array derivatives of floating and signed-integer inputs
+check two, three and four elements followed by another named input. Reflection
+checks each array's type, width, location span and absence of overlap; every case
+also converts to GLSL. Non-register arrays reserve one location per element,
+whereas packed register inputs reserve a location per four underlying elements.
+The generated translator and analyzer copies use this same distinction.
+
+Runtime fetch expands a numeric array using its guest attribute format and
+component count. Adjacent element offsets advance by the actual byte width,
+without vec4 padding. Host checks cover all eleven formats at widths1..4,
+normalization/numeric conversion, collisions, native capacity, offset overflow
+and unchanged output on failure. These checks establish declarations and fetch
+configuration; actual GPU fetch, matrix memory layout and rendered geometry
+still require hardware testing.
