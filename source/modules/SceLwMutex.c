@@ -5,6 +5,7 @@
 #include <switch.h>
 #include <psp2/kernel/error.h>
 #include <psp2/kernel/threadmgr/lw_mutex.h>
+#include <psp2/kernel/threadmgr/mutex.h>
 #include <psp2/kernel/threadmgr/lw_cond.h>
 
 #include "module.h"
@@ -37,7 +38,9 @@ typedef struct LwMutex {
     unsigned int attr, references;
     int count;
     LwWaiter *waiters;
-    bool deleted;
+    bool deleted, named;
+    SceKernelLwMutexWork named_work;
+    char name[32];
 } LwMutex;
 
 static Mutex lw_lock;
@@ -204,6 +207,16 @@ EXPORT(SceLibKernel, 0xA6A2C915, int, sceKernelTryLockLwMutex, SceKernelLwMutexW
     return lock_lwmutex(work, count, NULL, true);
 }
 
+static int unlock_mutex_record_locked(LwMutex *m,VitaThreadInfo *thread,int count)
+{
+    if (!m->count || m->owner!=thread->uid) return SCE_KERNEL_ERROR_LW_MUTEX_NOT_OWNED;
+    if (count>m->count) return SCE_KERNEL_ERROR_LW_MUTEX_UNLOCK_UDF;
+    m->count-=count;
+    handoff_lwmutex(m);
+    publish_lwmutex(m,false);
+    return 0;
+}
+
 EXPORT(SceLibKernel, 0x91FA6614, int, sceKernelUnlockLwMutex, SceKernelLwMutexWork *work,
        int count)
 {
@@ -215,14 +228,7 @@ EXPORT(SceLibKernel, 0x91FA6614, int, sceKernelUnlockLwMutex, SceKernelLwMutexWo
     mutexLock(&lw_lock);
     LwMutex *m = find_lwmutex(work);
     if (!m) result = SCE_KERNEL_ERROR_UNKNOWN_LW_MUTEX_ID;
-    else if (!m->count || m->owner != thread->uid) result = SCE_KERNEL_ERROR_LW_MUTEX_NOT_OWNED;
-    else if (count > m->count) result = SCE_KERNEL_ERROR_LW_MUTEX_UNLOCK_UDF;
-    else {
-        m->count -= count;
-        handoff_lwmutex(m);
-        publish_lwmutex(m, false);
-        result = 0;
-    }
+    else result=unlock_mutex_record_locked(m,thread,count);
     mutexUnlock(&lw_lock);
     return result;
 }
@@ -235,6 +241,20 @@ EXPORT(SceLibKernel, 0x120AFC8C, int, sceKernelUnlockLwMutex2, SceKernelLwMutexW
 
 static void delete_lwmutex_conditions(LwMutex *m);
 
+static void delete_mutex_record_locked(LwMutex **link)
+{
+    LwMutex *m=*link;
+    *link=m->next;m->deleted=true;
+    publish_lwmutex(m,true);
+    delete_lwmutex_conditions(m);
+    for (LwWaiter *w=m->waiters;w;w=w->next) {
+        if (w->done) continue;
+        w->result=SCE_KERNEL_ERROR_WAIT_DELETE;w->done=true;
+        condvarWakeAll(&w->condition);
+    }
+    if (--m->references==0) free(m);
+}
+
 EXPORT(SceLibKernel, 0x244E76D2, int, sceKernelDeleteLwMutex, SceKernelLwMutexWork *work)
 {
     int result = validate_work(work);
@@ -244,21 +264,95 @@ EXPORT(SceLibKernel, 0x244E76D2, int, sceKernelDeleteLwMutex, SceKernelLwMutexWo
     while (*link && (*link)->work != work) link = &(*link)->next;
     LwMutex *m = *link;
     const bool found = m != NULL;
-    if (m) {
-        *link = m->next;
-        m->deleted = true;
-        publish_lwmutex(m, true);
-        delete_lwmutex_conditions(m);
-        for (LwWaiter *w = m->waiters; w; w = w->next) {
-            if (w->done) continue;
-            w->result = SCE_KERNEL_ERROR_WAIT_DELETE;
-            w->done = true;
-            condvarWakeAll(&w->condition);
-        }
-        if (--m->references == 0) free(m);
-    }
+    if (m) delete_mutex_record_locked(link);
     mutexUnlock(&lw_lock);
     return found ? 0 : SCE_KERNEL_ERROR_UNKNOWN_LW_MUTEX_ID;
+}
+
+static LwMutex *find_named_mutex(SceUID uid)
+{
+    for (LwMutex *m=lw_mutexes;m;m=m->next) if (m->named && m->uid==uid) return m;
+    return NULL;
+}
+static int named_mutex_result(int result)
+{
+    /* Named and lightweight mutex error groups use corresponding offsets. */
+    if ((uint32_t)result>=SCE_KERNEL_ERROR_LW_MUTEX_ERROR &&
+        (uint32_t)result<=SCE_KERNEL_ERROR_LW_MUTEX_NOT_OWNED)
+        return (int)((uint32_t)result-0x40u);
+    return result;
+}
+EXPORT(SceLibKernel,0xED53334A,SceUID,sceKernelCreateMutex,const char *name,SceUInt attr,
+       int count,SceKernelMutexOptParam *option)
+{
+    if (!name) return SCE_KERNEL_ERROR_ILLEGAL_ADDR;
+    if (attr & ~(SCE_KERNEL_MUTEX_ATTR_RECURSIVE|SCE_KERNEL_ATTR_THREAD_PRIO))
+        return SCE_KERNEL_ERROR_ILLEGAL_ATTR;
+    if (count<0 || (!(attr&SCE_KERNEL_MUTEX_ATTR_RECURSIVE) && count>1))
+        return SCE_KERNEL_ERROR_ILLEGAL_COUNT;
+    if (option && option->size!=sizeof(*option)) return SCE_KERNEL_ERROR_INVALID_ARGUMENT_SIZE;
+    if (option && option->ceilingPriority) return SCE_KERNEL_ERROR_INVALID_ARGUMENT;
+    VitaThreadInfo *thread=SceKernelThreadMgr_get_thread_info();
+    if (count && (!thread || thread->uid<=0)) return SCE_KERNEL_ERROR_UNKNOWN_THREAD_ID;
+    LwMutex *m=calloc(1,sizeof(*m));
+    if (!m) return SCE_KERNEL_ERROR_NO_MEMORY;
+    m->uid=SceSysmem_get_next_uid();
+    if (m->uid<=0) { free(m);return SCE_KERNEL_ERROR_NO_MEMORY; }
+    SceUID uid=m->uid;
+    m->named=true;m->work=&m->named_work;m->references=1;
+    m->owner=count ? thread->uid : 0;m->count=count;m->attr=attr;
+    strncpy(m->name,name,sizeof(m->name)-1);
+    mutexLock(&lw_lock);
+    publish_lwmutex(m,false);m->next=lw_mutexes;lw_mutexes=m;
+    mutexUnlock(&lw_lock);
+    return uid;
+}
+EXPORT(SceThreadmgr,0x92667AE5,SceUID,_sceKernelCreateMutex,const char *name,SceUInt attr,
+       int count,SceKernelMutexOptParam *option)
+{ return sceKernelCreateMutex(name,attr,count,option); }
+static int lock_named_mutex(SceUID uid,int count,unsigned int *timeout,bool only_try)
+{
+    if (count<=0) return SCE_KERNEL_ERROR_ILLEGAL_COUNT;
+    VitaThreadInfo *thread=SceKernelThreadMgr_get_thread_info();
+    if (!thread || thread->uid<=0) return SCE_KERNEL_ERROR_UNKNOWN_THREAD_ID;
+    uint64_t start=armGetSystemTick(),duration=timeout ? (uint64_t)*timeout*1000 : UINT64_MAX;
+    mutexLock(&lw_lock);
+    LwMutex *m=find_named_mutex(uid);
+    int result=m ? acquire_lwmutex_locked(m,thread,count,only_try,start,duration,timeout!=NULL)
+                 : (int)SCE_KERNEL_ERROR_UNKNOWN_MUTEX_ID;
+    if (timeout) {
+        uint64_t elapsed=armTicksToNs(armGetSystemTick()-start);
+        *timeout=elapsed>=duration ? 0 : (unsigned int)((duration-elapsed)/1000);
+    }
+    mutexUnlock(&lw_lock);
+    return named_mutex_result(result);
+}
+EXPORT(SceLibKernel,0x1D8D7945,int,sceKernelLockMutex,SceUID uid,int count,unsigned int *timeout)
+{ return lock_named_mutex(uid,count,timeout,false); }
+EXPORT(SceThreadmgr,0x7FA945AD,int,_sceKernelLockMutex,SceUID uid,int count,unsigned int *timeout)
+{ return lock_named_mutex(uid,count,timeout,false); }
+EXPORT(SceThreadmgr,0x72FC1F54,int,sceKernelTryLockMutex,SceUID uid,int count)
+{ return lock_named_mutex(uid,count,NULL,true); }
+EXPORT(SceThreadmgr,0x1A372EC8,int,sceKernelUnlockMutex,SceUID uid,int count)
+{
+    if (count<=0) return SCE_KERNEL_ERROR_ILLEGAL_COUNT;
+    VitaThreadInfo *thread=SceKernelThreadMgr_get_thread_info();
+    if (!thread || thread->uid<=0) return SCE_KERNEL_ERROR_UNKNOWN_THREAD_ID;
+    mutexLock(&lw_lock);
+    LwMutex *m=find_named_mutex(uid);
+    int result=m ? unlock_mutex_record_locked(m,thread,count) : (int)SCE_KERNEL_ERROR_UNKNOWN_MUTEX_ID;
+    mutexUnlock(&lw_lock);
+    return named_mutex_result(result);
+}
+EXPORT(SceThreadmgr,0xCB78710D,int,sceKernelDeleteMutex,SceUID uid)
+{
+    mutexLock(&lw_lock);
+    LwMutex **link=&lw_mutexes;
+    while (*link && (!(*link)->named || (*link)->uid!=uid)) link=&(*link)->next;
+    bool found=*link!=NULL;
+    if (found) delete_mutex_record_locked(link);
+    mutexUnlock(&lw_lock);
+    return found ? 0 : SCE_KERNEL_ERROR_UNKNOWN_MUTEX_ID;
 }
 
 /* Share lw_lock with mutex ownership: publishing the waiter and dropping one

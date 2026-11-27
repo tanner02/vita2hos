@@ -1,3 +1,28 @@
+## Offline named mutexes (after 006d5c4 hardware baseline)
+
+- Added SceLibKernel CreateMutex (0xED53334A) and LockMutex (0x1D8D7945),
+  SceThreadmgr raw create/lock (0x92667AE5/0x7FA945AD), TryLockMutex
+  (0x72FC1F54), UnlockMutex (0x1A372EC8), and DeleteMutex (0xCB78710D).
+  These use real UID-selected ownership/wait queues. Named UIDs cannot select
+  lightweight mutex objects.
+- Named objects retain an internal work area and reuse the lightweight mutex
+  queue machinery under the same lock. FIFO and priority-at-enqueue policies,
+  recursive counts, overflow/underflow, owner checks and microsecond timeout
+  accounting are supported. Errors use the named mutex group.
+- Deletion unlinks the object, wakes blocked callers with WAIT_DELETE and retains
+  storage until waiter/condition references retire. Shared unlock/delete helpers
+  preserve existing lightweight behavior. Installed runtime 006d5c4 is unchanged.
+- Host tests cover NIDs, option/UID failures, recursion/overflow, wrong-owner
+  unlock, try contention, FIFO/priority order, timeouts with a remaining waiter,
+  deletion with a blocked waiter, 128 try/delete races and cross-kind handles.
+  The full ASan/UBSan suite, including lightweight mutex/condition regressions,
+  final focused tests and ARM Debug/Release builds passed.
+- A bounded Bonsai review suggested timeout-removal and delete-race cases.
+  Automatic owner-death cleanup, priority inheritance/ceiling, named open/close,
+  callbacks and named condition/RW-lock APIs remain unimplemented. Unsupported
+  attributes/nonzero ceiling options are rejected. This new path has not been
+  hardware-tested, and commercial game boot remains unverified.
+
 ## Runtime 006d5c495f2265d877cc14a94ab63b8843136cbf — owned TLS v1
 
 - User completed the probe; current report/log were collected via USB/MTP.
