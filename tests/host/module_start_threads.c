@@ -57,7 +57,7 @@ Result threadCreate(Thread *thread,void (*entry)(void *),void *arg,void *stack,
 {
     (void)stack;assert(cpu>=0 && cpu<3);
     if (atomic_exchange(&fail_create,0)) return 1;
-    assert(size==256*1024 && priority==vita_priority_to_hos_priority(100));
+    assert(size==1024*1024 && priority==vita_priority_to_hos_priority(100));
     *thread=(Thread){.entry=entry,.argument=arg,.handle=0x1234};
     pending_native_info=arg;atomic_fetch_add(&creates,1);return 0;
 }

@@ -1974,3 +1974,37 @@ fresh UDP capture and the version stamp, with best-effort delivery limitations.
 The logging change did not resolve LittleBigPlanet's observed multi-second
 frame gaps. Real-game timing collection is in progress; no performance fix is
 claimed from the owned cube result.
+
+
+## Game profiling and native stack exhaustion
+
+A second bounded launch of frozen `0a5ea6e` entered the real game after the
+first launch exhausted its 64 layout retries. Fresh UDP capture contains 755
+complete shader timing records and 286 complete scene records. Median GLSL
+translation was 45,269 us and the encompassing UAM phase was 517,549 us.
+The UAM phase includes compilation and temporary-file output/readback/cleanup;
+it does not isolate SD time. Scene retirement and texture staging also have
+large wall times. These measurements include preemption and overlap across
+threads, so their totals must not be added into an exclusive cost breakdown.
+The trace has no repeated pointer/size/stage key; identical shader contents at
+different pointers have not been ruled out. The game still displayed startup
+and autosave graphics with alpha artifacts, without an interactive 3D scene.
+
+The run ended in a native data abort around an operator HOME request; causality
+between that request and the crash is not established. The crash report and
+DTI2 dump agree on all crashed registers, unique thread IDs and exact EOF.
+SP is 560 bytes below the native stack mapping's lower boundary. A rebuilt
+`0a5ea6e` ELF's entire executable segment exactly matches the original deployed
+NSO, SHA-256 `cc17955a55a76f04c144fd09ce37ef1f8e783e47770a74f3089fb9cf25908581`.
+Its PC resolves to `_svfprintf_r`'s first stack store after an 816-byte frame,
+with LR in `sprintf`; the format pointer addresses `%.32g`, also used by the
+pinned SPIRV-Cross float formatter. This supports native stack exhaustion in
+the shader translation path; a complete caller unwind was not recovered.
+
+Guest-thread creation now reserves at least 1 MiB native backing because guest
+and HLE/compiler frames share a stack, preserving larger requests. Thread-info
+reports the actual native allocation. Focused ASan/UBSan tests cover small and
+large requests, invalid sizes before allocation/query/create, and unchanged
+thread/affinity/TLS ownership. The change increases memory per small guest
+thread. Hardware verification beyond the observed failing shader is pending;
+1 MiB is not a proven maximum compiler stack requirement.

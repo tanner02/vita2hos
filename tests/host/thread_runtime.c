@@ -7,9 +7,12 @@
 #include "../../source/guest_tls.c"
 #include "../../source/thread_events.c"
 static void track_thread_free(void *pointer);
+static void *track_thread_alloc(size_t size);
+#define malloc track_thread_alloc
 #define free track_thread_free
 #include "../../source/modules/SceKernelThreadMgr.c"
 #undef free
+#undef malloc
 #include "../../source/module.c"
 DECLARE_LIBRARY(SceLibKernel,0xcae9ace6);
 
@@ -27,7 +30,9 @@ static unsigned tp_exchanges;
 static bool expect_guest_tp;
 static size_t last_stack;
 static int last_priority;
-static unsigned create_calls, close_calls, start_calls, mask_calls, query_calls;
+static unsigned create_calls, close_calls, start_calls, mask_calls, query_calls, info_allocations;
+static void *track_thread_alloc(size_t size)
+{ ++info_allocations;return malloc(size); }
 static u64 allowed_cores=7;
 static Result query_result, mask_result;
 static int last_cpu, mask_cpu;
@@ -133,6 +138,24 @@ int main(void)
     assert((uint32_t)sceKernelDeleteThread(-1) == SCE_KERNEL_ERROR_UNKNOWN_THREAD_ID);
     assert(sceKernelGetThreadTLSAddr(-1, 0) == NULL);
     assert((uint32_t)create_thread(NULL, entry, 160, 4096) == SCE_KERNEL_ERROR_ILLEGAL_ADDR);
+    const SceSize stack_requests[]={4096,64*1024,256*1024,1024*1024,2*1024*1024};
+    for(unsigned i=0;i<sizeof(stack_requests)/sizeof(stack_requests[0]);++i) {
+        SceSize requested=stack_requests[i];
+        SceUID sized=create_thread("native stack backing",entry,160,requested);assert(sized>0);
+        size_t expected=requested<1024*1024 ? 1024*1024 : requested;
+        assert(last_stack==expected);
+        VitaThreadInfo *sized_info=get_thread_info_for_uid(sized);
+        assert(sized_info->thread.stack_sz==expected);
+        GuestThreadSnapshot sized_snapshot={.size=128};
+        assert(!_sceKernelGetThreadInfo(sized,(void *)&sized_snapshot));
+        assert(sized_snapshot.stack_size==(int32_t)expected);
+        assert(!sceKernelDeleteThread(sized));
+    }
+    unsigned size_created=create_calls,size_queried=query_calls,size_allocated=info_allocations;
+    assert((uint32_t)create_thread("zero stack",entry,160,0)==SCE_KERNEL_ERROR_ILLEGAL_STACK_SIZE);
+    assert((uint32_t)create_thread("overflow stack",entry,160,UINT32_MAX)==SCE_KERNEL_ERROR_ILLEGAL_STACK_SIZE);
+    assert(create_calls==size_created && query_calls==size_queried && info_allocations==size_allocated);
+    assert(!vita_thread_info_dict_size(g_vita_thread_infos));
     SceUID uid = create_thread("worker", entry, SCE_KERNEL_DEFAULT_PRIORITY, 4096);
     assert(uid > 0);
     VitaThreadInfo *info = get_thread_info_for_uid(uid);
@@ -194,7 +217,7 @@ int main(void)
     assert(!query(0,(void *)&snapshot));
     assert(snapshot.process_id==77 && !strcmp(snapshot.name,"worker"));
     assert(snapshot.entry==(uint32_t)(uintptr_t)entry && snapshot.stack==0x90000000);
-    assert(snapshot.stack_size==4096 && snapshot.initial_priority==160 && snapshot.current_priority==160);
+    assert(snapshot.stack_size==1024*1024 && snapshot.initial_priority==160 && snapshot.current_priority==160);
     assert(snapshot.status==SCE_THREAD_DORMANT && snapshot.current_cpu==-1 && !snapshot.run_clocks);
     GuestThreadSnapshot saved_snapshot=snapshot;
     snapshot.size=127;GuestThreadSnapshot bad=snapshot;
@@ -242,12 +265,12 @@ int main(void)
         process_exit_status = exits[i];
         assert(SceKernelThreadMgr_main_entry(entry, 0, NULL) == exits[i]);
     }
-    assert(last_stack==256*1024 && last_priority==vita_priority_to_hos_priority(160));
+    assert(last_stack==1024*1024 && last_priority==vita_priority_to_hos_priority(160));
     LoadProcessParameters settings={.has_main_priority=true,.main_priority=100,
         .has_main_stack_size=true,.main_stack_size=65536};
     process_exit_status=17;
     assert(SceKernelThreadMgr_main_entry_configured(entry,0,NULL,&settings)==17);
-    assert(last_stack==65536 && last_priority==vita_priority_to_hos_priority(100));
+    assert(last_stack==1024*1024 && last_priority==vita_priority_to_hos_priority(100));
     settings.main_priority=0x10000103;
     assert(SceKernelThreadMgr_main_entry_configured(entry,0,NULL,&settings)==17);
     assert(last_priority==vita_priority_to_hos_priority(0x10000103));

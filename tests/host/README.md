@@ -451,3 +451,14 @@ native location per element. Checks cover all eleven formats at widths1..4,
 tightly packed element offsets, normalization/numeric conversion, collisions,
 capacity/offset limits and failure preservation. GPU fetch still needs hardware
 verification.
+
+
+Native guest-thread stacks reserve at least 1 MiB for shared guest and native
+HLE execution, preserving larger guest requests. The game reached a stack guard
+in SPIRV-Cross float formatting on a roughly 64 KiB native worker stack; this
+headroom addresses that observed failure, without claiming a proven maximum
+compiler stack requirement. Thread-info reports the actual native backing size.
+Tests cover small/default/large requests, rejection before native allocation for
+zero or alignment-overflow sizes, and unchanged module-start/affinity ownership.
+The additional backing consumes memory per guest thread; shader work has not
+been moved to a separate native stack.

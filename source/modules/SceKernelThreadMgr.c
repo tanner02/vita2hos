@@ -27,6 +27,7 @@
 #define HOS_HIGHEST_PRIORITY 28
 #define HOS_LOWEST_PRIORITY  59
 #define MAIN_EXIT_JOIN_GRACE_NS UINT64_C(100000000)
+#define GUEST_NATIVE_STACK_MIN (1024U * 1024U)
 
 static s32 g_vita_thread_info_tls_slot_id;
 static GuestTlsTemplate g_main_tls; /* Borrowed from the live process image. */
@@ -105,6 +106,14 @@ static SceUID create_thread_with_affinity(const char *name, SceKernelThreadEntry
         return SCE_KERNEL_ERROR_ILLEGAL_CPU_AFFINITY_MASK;
     if (!name || !entry)
         return SCE_KERNEL_ERROR_ILLEGAL_ADDR;
+    if (!stackSize || stackSize > UINT32_MAX - 0xfff)
+        return SCE_KERNEL_ERROR_ILLEGAL_STACK_SIZE;
+    /* Guest entry and native HLE/compiler code share this stack. A Vita-sized
+     * worker stack can overflow while SPIRV-Cross formats a shader, even when
+     * the guest itself stays within its original budget. Thread-info reports
+     * the actual native allocation; larger guest requests remain intact. */
+    size_t native_stack_size = stackSize < GUEST_NATIVE_STACK_MIN ?
+        GUEST_NATIVE_STACK_MIN : stackSize;
 
     /* Guest user-core bits map to the three application cores. Resolve the
      * native process permissions before allocating or publishing a thread;
@@ -160,7 +169,7 @@ static SceUID create_thread_with_affinity(const char *name, SceKernelThreadEntry
     ti->vita_tls[9] = affinity; /* Pinned guest kernel TLS affinity slot. */
     ti->vita_tls[8] = atomic_load(&ti->priority); /* Pinned kernel TLS priority slot. */
 
-    res = threadCreate(&ti->thread, thread_entry_wrapper, ti, NULL, stackSize, priority,
+    res = threadCreate(&ti->thread, thread_entry_wrapper, ti, NULL, native_stack_size, priority,
                        preferred_core);
     if (R_FAILED(res)) {
         LOG("Error creating thread: 0x%" PRIx32, res);
@@ -180,8 +189,8 @@ static SceUID create_thread_with_affinity(const char *name, SceKernelThreadEntry
         return SCE_KERNEL_ERROR_THREAD_ERROR;
     }
 
-    LOG("Created thread \"%s\", thid: 0x%x, native core=%d mask=0x%x",
-        name, ti->uid, preferred_core, native_mask);
+    LOG("Created thread \"%s\", thid: 0x%x, native core=%d mask=0x%x guest_stack=0x%x native_stack=0x%zx",
+        name, ti->uid, preferred_core, native_mask, (unsigned)stackSize, native_stack_size);
 #ifdef __SWITCH__
     /* Atmosphere reports the native kernel ID, not the guest UID above.
      * Record the relation before starting the thread so an immediate crash

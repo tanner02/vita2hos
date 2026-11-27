@@ -17,7 +17,7 @@ typedef struct {
     void *argp;
     atomic_int return_status;
     int initial_priority;
-    int affinity_mask; /* Guest metadata; native scheduler affinity is unchanged. */
+    int affinity_mask; /* Raw guest mask; native scheduling uses its user-core bits. */
     atomic_int priority; /* Resolved Vita priority, before mapping to Horizon. */
     uint32_t *vita_tls;
     void *vita_user_tls;
