@@ -493,6 +493,14 @@ static int translate_shader(DkShader *shader, const SceGxmProgram *program, pipe
     char *glsl = NULL;
     uint32_t shader_size = 0;
     DkShaderMaker shader_maker;
+    if (!shader || !program || !code_memblock || !code_offset)
+        return SCE_GXM_ERROR_INVALID_POINTER;
+    uint32_t code_size = dkMemBlockGetSize(code_memblock);
+    if (*code_offset > code_size || *code_offset % DK_SHADER_CODE_ALIGNMENT)
+        return SCE_GXM_ERROR_INVALID_VALUE;
+    uint32_t capacity = (code_size - *code_offset) & ~(DK_SHADER_CODE_ALIGNMENT - 1U);
+    if (!capacity)
+        return SCE_KERNEL_ERROR_NO_MEMORY;
     void *shader_load_addr = dkMemBlockGetCpuAddr(code_memblock) + *code_offset;
 
 #if DUMP_SHADER_SPIRV
@@ -521,7 +529,7 @@ static int translate_shader(DkShader *shader, const SceGxmProgram *program, pipe
     }
 
     LOG("UAM compiling shader (%s)...", prefix);
-    ret = uam_compiler_compile_glsl(stage, glsl, shader_load_addr, &shader_size);
+    ret = uam_compiler_compile_glsl(stage, glsl, shader_load_addr, capacity, &shader_size);
     LOG("  compile ret: %d, size: 0x%x", ret, shader_size);
     free(glsl);
     if (!ret || !shader_size)
