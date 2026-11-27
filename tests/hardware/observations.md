@@ -149,7 +149,25 @@
   `0x5ca00000` + `0x40000000`; the alias reservation was `0xad200000` + `0x40000000`.
 - This explains the host address conflict, not a guest code failure. The runtime
   now checks reserved regions explicitly and has bounded standalone-title layout
-  retries. Hardware confirmation of fixed-address execution is still pending.
+  retries. Fixed-address execution was subsequently confirmed below.
+
+## Runtime 15d400f48e5d3a3f5d811e2a67bd30a1388cc102
+
+- Standalone HOME title, owned fixed-address CPU probe SHA-256
+  `ea59fcf2675f9a786613048e11a646875379b40d703c73564358171fd210bdc5`.
+- User reported that the first launch took a while and requested another layout;
+  after a manual relaunch it returned to HOME without an error. The earlier
+  exhausted/failing sequence is not preserved in the two recovered log files.
+- The recovered previous log shows code range `0x81000000` conflicting with
+  alias reservation `0x49800000` + `0x40000000`, followed by automatic restart
+  attempt 2/64 under the expected program ID `0x0100f27432680000`.
+- The final log identifies `vita2hos_fixed_probe`, RX code at `0x81000000`,
+  RW data at `0x81879000`, and reports a compatible layout after 2 restarts.
+  Guest exit status and process result were both 0; image cleanup returned 0.
+  The probe checks its actual PC, initialized data, zero BSS, and a data write.
+- This verifies native fixed-address execution and retry-count forwarding on
+  this run. It does not establish the success rate, the 64-attempt boundary on
+  hardware, TLS initialization, bundled-module startup, or commercial game boot.
 
 ## Runtime f55edbf626acb6ff46d510a55bdd026dd78ac5ad
 
