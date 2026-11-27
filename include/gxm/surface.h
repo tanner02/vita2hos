@@ -1,6 +1,12 @@
 #ifndef GXM_SURFACE_H
 #define GXM_SURFACE_H
+#include <stddef.h>
+#include <stdint.h>
 #include <psp2/gxm.h>
+
+/* Native ABGR8 linear-image fast path; available starts at the surface data. */
+int gxm_color_surface_linear_pitch(uint32_t width, uint32_t height, uint32_t stride,
+                                    size_t available, uint32_t *pitch);
 
 /* Packed ZLS descriptor fields, matching the pinned GXM reference layout. */
 #define GXM_DS_FORMAT_MASK 0x07eee000u

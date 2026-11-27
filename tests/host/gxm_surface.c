@@ -8,6 +8,21 @@ DECLARE_LIBRARY(SceGxm, 0xf76b66bd);
 
 int main(void)
 {
+    uint32_t pitch = 0;
+    assert(gxm_color_surface_linear_pitch(960, 544, 960, 960 * 544 * 4, &pitch) == 0);
+    assert(pitch == 3840);
+    assert(gxm_color_surface_linear_pitch(959, 544, 960, 960 * 544 * 4, &pitch) == 0);
+    pitch = 123;
+    assert(gxm_color_surface_linear_pitch(960, 544, 960, 960 * 544 * 4 - 1, &pitch) != 0);
+    assert(pitch == 123);
+    assert(gxm_color_surface_linear_pitch(960, 544, 959, SIZE_MAX, &pitch) != 0);
+    assert(gxm_color_surface_linear_pitch(960, 544, 962, SIZE_MAX, &pitch) != 0);
+    assert(gxm_color_surface_linear_pitch(0, 544, 960, SIZE_MAX, &pitch) != 0);
+    assert(gxm_color_surface_linear_pitch(960, 0, 960, SIZE_MAX, &pitch) != 0);
+    assert(gxm_color_surface_linear_pitch(4097, 544, 4104, SIZE_MAX, &pitch) != 0);
+    assert(gxm_color_surface_linear_pitch(960, 4097, 960, SIZE_MAX, &pitch) != 0);
+    assert(gxm_color_surface_linear_pitch(960, 544, UINT32_MAX, SIZE_MAX, &pitch) != 0);
+    assert(gxm_color_surface_linear_pitch(960, 544, 960, SIZE_MAX, NULL) != 0);
     const SceGxmDepthStencilFormat formats[] = {
         SCE_GXM_DEPTH_STENCIL_FORMAT_DF32, SCE_GXM_DEPTH_STENCIL_FORMAT_S8,
         SCE_GXM_DEPTH_STENCIL_FORMAT_DF32_S8, SCE_GXM_DEPTH_STENCIL_FORMAT_DF32M,

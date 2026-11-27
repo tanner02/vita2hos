@@ -73,6 +73,12 @@ settings without losing saved back-face state. Separate back-face depth function
 and depth-write modes remain unsupported, and draws still require a bound fragment
 program. These paths need hardware coverage beyond the existing cube result.
 
+Scene setup reloads supported linear ABGR8 color surfaces into the shadow render
+target, so switching guest framebuffers does not reuse stale shadow color. The
+native copy path checks dimensions, 32-byte row pitch, offset alignment, and full
+image allocation bounds. Vita tiled/swizzled color surfaces require conversion
+and are rejected by this path rather than treated as NVIDIA block-linear images.
+
 Pinned sample archive SHA-256 values:
 
 - `gxm_cube_sample.zip`: `619f2c1bbc1cdf2652025545041ac628675a18628d4fe499074cc23f71da045f`

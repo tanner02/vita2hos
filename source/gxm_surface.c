@@ -5,6 +5,20 @@
 #include "gxm/surface.h"
 #include "module.h"
 
+int gxm_color_surface_linear_pitch(uint32_t width, uint32_t height, uint32_t stride,
+                                    size_t available, uint32_t *pitch)
+{
+    if (!pitch) return SCE_GXM_ERROR_INVALID_POINTER;
+    if (!width || width > 4096 || !height || height > 4096 || stride < width)
+        return SCE_GXM_ERROR_INVALID_VALUE;
+    uint64_t bytes = (uint64_t)stride * 4;
+    if (bytes > UINT32_MAX || bytes * height > available)
+        return SCE_GXM_ERROR_INVALID_VALUE;
+    if (bytes % 32) return SCE_GXM_ERROR_INVALID_ALIGNMENT;
+    *pitch = (uint32_t)bytes;
+    return 0;
+}
+
 EXPORT(SceGxm, 0xCA9D41D1, int, sceGxmDepthStencilSurfaceInit,
        SceGxmDepthStencilSurface *surface, SceGxmDepthStencilFormat format,
        SceGxmDepthStencilSurfaceType type, unsigned int stride,

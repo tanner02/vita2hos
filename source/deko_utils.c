@@ -60,21 +60,35 @@ bool dk_image_for_gxm_color_surface(DkDevice device, DkImage *image,
 {
     DkImageLayoutMaker maker;
     DkImageLayout layout;
-    DkMemBlock block = SceSysmem_get_dk_memblock_for_addr(surface->data);
-
-    if (!block)
+    if (!surface || surface->disabled || !surface->data)
         return false;
-
+    /* Vita tiled/swizzled storage is not native NVIDIA block-linear storage.
+     * Those layouts require an explicit conversion, not a native image view. */
+    if (surface->surfaceType != SCE_GXM_COLOR_SURFACE_LINEAR ||
+        surface->colorFormat != SCE_GXM_COLOR_FORMAT_U8U8U8U8_ABGR)
+        return false;
+    VitaMemBlockInfo *info = SceSysmem_get_vita_memblock_info_for_addr(surface->data);
+    if (!info || !info->dk_memblock) return false;
+    DkMemBlock block = info->dk_memblock;
+    uintptr_t address = (uintptr_t)surface->data, base = (uintptr_t)info->base;
+    if (address < base || address - base >= info->size) return false;
+    uint32_t offset = address - base;
+    uint32_t pitch;
+    if (gxm_color_surface_linear_pitch(surface->width, surface->height, surface->strideInPixels,
+                                        info->size - offset, &pitch))
+        return false;
     dkImageLayoutMakerDefaults(&maker, device);
     maker.flags =
         gxm_color_surface_type_to_dk_image_flags(surface->surfaceType) | DkImageFlags_Usage2DEngine;
     maker.format = gxm_color_format_to_dk_image_format(surface->colorFormat);
     maker.dimensions[0] = surface->width;
     maker.dimensions[1] = surface->height;
-    maker.pitchStride =
-        surface->strideInPixels * gxm_color_format_bytes_per_pixel(surface->colorFormat);
+    maker.pitchStride = pitch;
     dkImageLayoutInitialize(&layout, &maker);
-    dkImageInitialize(image, &layout, block, dk_memblock_cpu_addr_offset(block, surface->data));
+    if (dkImageLayoutGetSize(&layout) > info->size - offset ||
+        offset % dkImageLayoutGetAlignment(&layout))
+        return false;
+    dkImageInitialize(image, &layout, block, offset);
 
     return true;
 }

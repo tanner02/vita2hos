@@ -1103,6 +1103,21 @@ EXPORT(SceGxm, 0x8734FF4E, int, sceGxmBeginScene, SceGxmContext *context, unsign
     if (fragmentSyncObject)
         dkCmdBufWaitFence(context->cmdbuf, &fragmentSyncObject->fence);
 
+    /* A render target can be reused with different guest color buffers. Load
+     * the selected buffer rather than retaining the last shadow image's color. */
+    if (color_surface_inner && !color_surface_inner->disabled) {
+        DkImage source;
+        if (dk_image_for_gxm_color_surface(g_dk_device, &source, color_surface_inner)) {
+            dkCmdBufBarrier(context->cmdbuf, DkBarrier_Full, DkInvalidateFlags_L2Cache);
+            dk_cmdbuf_copy_image(context->cmdbuf, &source, color_surface_inner->width,
+                color_surface_inner->height, &renderTarget->shadow_color_surface.image,
+                rt_width, rt_height);
+            dkCmdBufBarrier(context->cmdbuf, DkBarrier_Full, DkInvalidateFlags_Image);
+        } else {
+            LOG("sceGxmBeginScene: unsupported or invalid color surface");
+        }
+    }
+
     if (!depthStencil || !sceGxmDepthStencilSurfaceIsEnabled(depthStencil)) {
         dkCmdBufClearDepthStencil(context->cmdbuf, true, 1.0f, 0xFF, 0);
     } else {
