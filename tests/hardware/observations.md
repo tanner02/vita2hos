@@ -1,3 +1,30 @@
+## 2026-11-27: wider fragment-shader compile audit and log-open recovery
+
+A deterministic sample of520 owned-game shaders was selected from21294 unique
+archive programs, grouping by program flags and spreading each group across
+parameter-count/size order. Every selected program translated through the
+production wrapper and compiled through host UAM to structurally valid DKSH.
+The current pinned-fixture integration checks also pass. All selected programs
+are fragment shaders; this result does not cover commercial vertex programs,
+vertex binding hints, GPU execution or title boot. The archive's single raw
+GXP magic occurrence was inside a video and failed basic size validation; it
+was not counted as another shader. Assets and detailed diagnostics stay private.
+
+During cube7 collection, concurrent file reads returned temporary access errors,
+and the runtime log stopped mid-render although the guest completed all35 checks
+and returned HOME. The exact failing native filesystem operation/errno was not
+captured, so read/write contention is a hypothesis. Source inspection establishes
+that any append fopen failure permanently disabled the file sink. The logger now
+retries with the next message when opening failed before any write. It still
+disables after failed rotation or write/close, where ownership or byte accounting
+may be uncertain. The failed message itself is not replayed.
+
+Fault-injected host ASan/UBSan checks verify recovery without rotation and after
+successful rotation followed by a failed append open, unchanged bytes on the
+open failure, and preservation of prior bounded-log/failure checks. No new
+hardware log-recovery result is claimed yet. HLE ownership, held TLS probe and
+restored original game remain unchanged.
+
 ## 2026-11-27: ten numeric vertex formats verified in one hardware batch
 
 Visible cube7 adds actual textured draws for U8, S8, U16, S16, U8N, S8N,

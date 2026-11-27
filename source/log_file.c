@@ -37,7 +37,11 @@ bool log_file_write(LogFile *log, const char *message)
         log->bytes = 0;
     }
     FILE *file = fopen(log->path, "ab");
-    if (!file) { log->enabled = false; return false; }
+    /* No bytes were appended if opening failed. A concurrent SD reader can
+     * temporarily prevent access, so let the next message try again. Keep
+     * failures after opening fatal: partial writes make byte accounting
+     * unreliable and must not defeat the bounded log. */
+    if (!file) return false;
     bool ok = fputs(message, file) >= 0 && fputc('\n', file) != EOF;
     if (fclose(file)) ok = false;
     if (!ok) { log->enabled = false; return false; }

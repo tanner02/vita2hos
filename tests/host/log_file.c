@@ -2,7 +2,23 @@
 #include <stdlib.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <errno.h>
+#include <stdio.h>
+#include <string.h>
+
+static unsigned append_failures;
+static FILE *injected_fopen(const char *path, const char *mode)
+{
+    if (append_failures && !strcmp(mode, "ab")) {
+        --append_failures;
+        errno = EBUSY;
+        return NULL;
+    }
+    return fopen(path, mode);
+}
+#define fopen injected_fopen
 #include "../../source/log_file.c"
+#undef fopen
 
 static void contents(const char *path, const char *expected)
 {
@@ -25,9 +41,20 @@ int main(void)
     LogFile log;
     assert(log_file_init(&log, path, previous, 8));
     assert(log_file_write(&log, "abc"));
+    append_failures = 1;
+    assert(!log_file_write(&log, "x") && log.enabled && log.bytes == 4);
+    assert(!append_failures);
+    contents(path, "abc\n");
     assert(log_file_write(&log, "def"));
     contents(path, "abc\ndef\n");
     assert(log.bytes == 8);
+    /* Rotation already moved the old file, but a failed append open writes
+     * nothing. The next message must create the new bounded log. */
+    append_failures = 1;
+    assert(!log_file_write(&log, "g") && log.enabled && log.bytes == 0);
+    assert(!append_failures);
+    contents(previous, "abc\ndef\n");
+    assert(access(path, F_OK) == -1 && errno == ENOENT);
     assert(log_file_write(&log, "g"));
     contents(previous, "abc\ndef\n"); contents(path, "g\n");
     assert(!log_file_write(&log, "12345678") && log.enabled);
@@ -49,5 +76,5 @@ int main(void)
     assert(log_file_write(&log, "")); contents(path, "\n");
     assert(!log_file_write(NULL, "test") && !log_file_write(&log, NULL));
     assert(!unlink(path) && !unlink(previous) && !rmdir(directory));
-    puts("Bounded diagnostic log rotation and failure checks passed.");
+    puts("Bounded diagnostic log rotation, open retry and failure checks passed.");
 }
