@@ -1,3 +1,27 @@
+## Offline thread-priority changes (2026-11-27)
+
+- Added SceThreadmgr sceKernelChangeThreadPriority (0xBD0139F2) and
+  sceKernelChangeThreadPriority2 (0xC5FFCA61). The former returns zero on
+  success; the latter returns the previous resolved Vita priority, following
+  the pinned reference implementation. Thread ID zero selects the caller;
+  priority zero copies the caller's priority even when targeting another thread.
+- Supported Vita/default priorities use the existing 64..191 to Horizon 28..59
+  mapping and call svcSetThreadPriority on the native thread handle. A failed
+  native update preserves guest priority and TLS. Priority queries retain the
+  resolved Vita value, including values sharing a native scheduling bucket.
+- Priority is atomic for concurrent readers. Updates and DeleteThread serialize
+  native-handle use, closing, registry removal and record/TLS reclamation under
+  the registry write lock. This specifically protects priority-update/delete;
+  other thread operations still borrow records and need broader lifetime work.
+- Kernel TLS word 8 is initialized and updated with priority, matching the pinned
+  kernel TLS index. Host checks cover NID lookup, self/other targets, zero/default
+  priorities, native mapping, previous-value returns, invalid values, backend
+  failure preservation, and a real pthread priority-update/delete race. The full
+  ASan/UBSan host suite and ARM Debug/Release builds passed.
+- This is native scheduler plumbing with host-model checks, not a claim of Vita
+  scheduler timing parity or a hardware-tested FIOS/library/game startup.
+  No Switch files were changed while the user was unavailable.
+
 ## Offline texture gamma sampling (2026-11-27)
 
 - Added sceGxmTextureSetGammaMode (0xA6D9F4DA), using the pinned descriptor's

@@ -16,7 +16,7 @@ typedef struct {
     SceSize arglen;
     void *argp;
     int return_status;
-    int priority; /* Resolved Vita priority, before mapping to Horizon. */
+    atomic_int priority; /* Resolved Vita priority, before mapping to Horizon. */
     uint32_t *vita_tls;
     void *vita_user_tls;
     atomic_bool started;

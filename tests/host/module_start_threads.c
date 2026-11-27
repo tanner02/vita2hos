@@ -64,6 +64,7 @@ Result waitSingle(Waiter waiter,uint64_t ns)
     }
     return 0;
 }
+Result svcSetThreadPriority(uint32_t handle,uint32_t priority) { (void)handle;(void)priority;return 0; }
 void svcSleepThread(s64 ns) { (void)ns; }
 void threadExit(void) { pthread_exit(NULL); }
 
@@ -131,6 +132,30 @@ static void run(bool exit_call,int status,int injected)
     assert(!sceKernelDeleteThread(parent_uid));
     assert(vita_thread_info_dict_size(g_vita_thread_infos)==0);
 }
+static atomic_uint priority_successes;
+static void *change_until_deleted(void *argument)
+{
+    SceUID uid=*(SceUID *)argument;
+    for (;;) {
+        int result=sceKernelChangeThreadPriority(uid,100);
+        if ((uint32_t)result==SCE_KERNEL_ERROR_UNKNOWN_THREAD_ID) break;
+        assert(!result);
+        atomic_fetch_add(&priority_successes,1);
+    }
+    return NULL;
+}
+static void priority_delete_race(void)
+{
+    SceUID uid=create_thread("priority/delete",dependency,100,256*1024);
+    assert(uid>0);
+    pthread_t changer;
+    assert(!pthread_create(&changer,NULL,change_until_deleted,&uid));
+    while (!atomic_load(&priority_successes)) sched_yield();
+    assert(!sceKernelDeleteThread(uid));
+    assert(!pthread_join(changer,NULL));
+    assert((uint32_t)sceKernelChangeThreadPriority(uid,100)==SCE_KERNEL_ERROR_UNKNOWN_THREAD_ID);
+    assert(!vita_thread_info_dict_size(g_vita_thread_infos));
+}
 int main(void)
 {
     GuestTlsTemplate tls={0};uint32_t seed=0x12345678;
@@ -142,6 +167,7 @@ int main(void)
     run(false,0,0);run(true,0,0);run(true,2,0);run(false,-123,0);
     run(false,0,1);run(false,0,2);run(true,0,3);
     exit_process=true;run(false,0,0);
+    priority_delete_race();
     SceKernelThreadMgr_finish();guest_tls_template_clear(&tls);
     puts("Module startup threads: return/exit status, main continuation, isolated TLS, events, joins and failure gating passed.");
 }

@@ -110,13 +110,14 @@ static SceUID create_thread(const char *name, SceKernelThreadEntry entry, int in
     ti->uid = SceSysmem_get_next_uid();
     strncpy(ti->name, name, sizeof(ti->name) - 1);
     ti->entry = entry;
-    ti->priority = resolve_vita_priority(initPriority);
+    atomic_init(&ti->priority, resolve_vita_priority(initPriority));
     ti->vita_tls = guest_tls_allocate(&g_main_tls);
     if (!ti->vita_tls) {
         free(ti);
         return SCE_KERNEL_ERROR_NO_MEMORY;
     }
     ti->vita_user_tls = guest_tls_user_area(ti->vita_tls);
+    ti->vita_tls[8] = atomic_load(&ti->priority); /* Pinned kernel TLS priority slot. */
 
     res = threadCreate(&ti->thread, thread_entry_wrapper, ti, NULL, stackSize, priority, -2);
     if (R_FAILED(res)) {
@@ -182,24 +183,26 @@ EXPORT(SceLibKernel, 0xC5C11EE7, SceUID, sceKernelCreateThread, const char *name
 
 EXPORT(SceThreadmgr, 0x1BBDE3D9, int, sceKernelDeleteThread, SceUID thid)
 {
-    VitaThreadInfo *ti = get_thread_info_for_uid(thid);
-    Result res;
-
-    if (!ti)
+    /* Serialize native-handle close and record reclamation with priority
+     * updates. threadClose does not wait for a running thread to terminate. */
+    rwlockWriteLock(&g_vita_thread_infos_lock);
+    VitaThreadInfo **entry = vita_thread_info_dict_get(g_vita_thread_infos, thid);
+    VitaThreadInfo *ti = entry ? *entry : NULL;
+    if (!ti) {
+        rwlockWriteUnlock(&g_vita_thread_infos_lock);
         return SCE_KERNEL_ERROR_UNKNOWN_THREAD_ID;
-
-    res = threadClose(&ti->thread);
+    }
+    Result res = threadClose(&ti->thread);
     if (R_FAILED(res)) {
+        rwlockWriteUnlock(&g_vita_thread_infos_lock);
         LOG("Error closing thread 0x%x exit: 0x%" PRIx32, thid, res);
         return SCE_KERNEL_ERROR_THREAD_ERROR;
     }
-
+    vita_thread_info_dict_erase(g_vita_thread_infos, thid);
     free(ti->argp);
     free(ti->vita_tls);
-    rwlockWriteLock(&g_vita_thread_infos_lock);
-    vita_thread_info_dict_erase(g_vita_thread_infos, thid);
-    rwlockWriteUnlock(&g_vita_thread_infos_lock);
     free(ti);
+    rwlockWriteUnlock(&g_vita_thread_infos_lock);
     LOG("Deleted thread 0x%x", thid);
 
     return 0;
@@ -359,6 +362,48 @@ EXPORT(SceLibKernel, 0xC53A9848, int, sceKernelGetThreadCurrentPriority)
 {
     VitaThreadInfo *thread = SceKernelThreadMgr_get_thread_info();
     return thread ? thread->priority : (int)SCE_KERNEL_ERROR_UNKNOWN_THREAD_ID;
+}
+
+/* Priority 0 selects the caller's current priority, even for another target.
+ * Keep the Vita value: adjacent Vita priorities may map to one Horizon value. */
+EXPORT(SceThreadmgr, 0xC5FFCA61, int, sceKernelChangeThreadPriority2, SceUID thid, int priority)
+{
+    VitaThreadInfo *caller = SceKernelThreadMgr_get_thread_info();
+    if (!thid) {
+        if (!caller) return SCE_KERNEL_ERROR_UNKNOWN_THREAD_ID;
+        thid = caller->uid;
+    }
+    rwlockWriteLock(&g_vita_thread_infos_lock);
+    VitaThreadInfo **entry = vita_thread_info_dict_get(g_vita_thread_infos, thid);
+    VitaThreadInfo *target = entry ? *entry : NULL;
+    int result;
+    if (!target) {
+        result = SCE_KERNEL_ERROR_UNKNOWN_THREAD_ID;
+    } else if (!priority && !caller) {
+        result = SCE_KERNEL_ERROR_UNKNOWN_THREAD_ID;
+    } else {
+        int resolved = resolve_vita_priority(priority ? priority : atomic_load(&caller->priority));
+        if (resolved < 0) {
+            result = resolved;
+        } else {
+            Result native = svcSetThreadPriority(target->thread.handle,
+                                                  vita_priority_to_hos_priority(resolved));
+            if (R_FAILED(native)) {
+                result = SCE_KERNEL_ERROR_THREAD_ERROR;
+            } else {
+                result = atomic_exchange(&target->priority, resolved);
+                target->vita_tls[8] = resolved;
+            }
+        }
+    }
+    rwlockWriteUnlock(&g_vita_thread_infos_lock);
+    return result;
+}
+
+EXPORT(SceThreadmgr, 0xBD0139F2, int, sceKernelChangeThreadPriority, SceUID thid, int priority)
+{
+    int result = sceKernelChangeThreadPriority2(thid, priority);
+    return result < 0 ? result : 0;
 }
 
 /* Bundled FIOS imports the syscall NID through SceThreadmgr directly. */

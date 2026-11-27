@@ -33,9 +33,9 @@ typedef int UEvent;
 #ifdef TEST_THREAD_RUNTIME_PTHREAD
 #include <pthread.h>
 typedef struct { void (*entry)(void *); void *argument; pthread_t native;
-                 bool started, joined; } Thread;
+                 bool started, joined; uint32_t handle; } Thread;
 #else
-typedef struct { void (*entry)(void *); void *argument; } Thread;
+typedef struct { void (*entry)(void *); void *argument; uint32_t handle; } Thread;
 #endif
 #else
 typedef int Thread;
@@ -90,6 +90,7 @@ typedef uint32_t Result;
 Result threadCreate(Thread *, void (*)(void *), void *, void *, size_t, int, int);
 Result threadStart(Thread *);
 Result threadClose(Thread *);
+Result svcSetThreadPriority(uint32_t, uint32_t);
 int threadTlsAlloc(void (*)(void *));
 void threadTlsFree(int);
 void threadTlsSet(int, void *);

@@ -11,7 +11,11 @@ DECLARE_LIBRARY(SceLibKernel,0xcae9ace6);
 
 static jmp_buf thread_return;
 static void *tls_value;
-static Result start_result, wait_result;
+static Result start_result, wait_result, priority_result;
+static uint32_t changed_handle, changed_priority;
+static unsigned priority_changes;
+Result svcSetThreadPriority(uint32_t handle, uint32_t priority)
+{ changed_handle=handle;changed_priority=priority;++priority_changes;return priority_result; }
 static UEvent exit_event;
 static int process_exit_status;
 static uintptr_t writable_tp;
@@ -45,6 +49,7 @@ Result threadCreate(Thread *thread, void (*entry)(void *), void *arg, void *stac
 {
     (void)stack; (void)cpu;
     last_stack=size;last_priority=priority;++create_calls;
+    thread->handle = 0x1234;
     thread->entry = entry;
     thread->argument = arg;
     return 0;
@@ -90,7 +95,7 @@ int main(void)
     VitaThreadInfo *info = get_thread_info_for_uid(uid);
     assert(info->priority == 160);
     for (unsigned int i = 0; i < SCE_KERNEL_TLS_SIZE; i++)
-        assert(((unsigned char *)info->vita_tls)[i] == 0);
+        assert(((unsigned char *)info->vita_tls)[i] == (i==32 ? 160 : 0));
     assert(info->vita_user_tls == (char *)info->vita_tls + GUEST_KERNEL_TLS_SIZE);
     assert(*(uint32_t *)info->vita_user_tls == 0x12345678);
     for (int i=4; i<16; ++i) assert(((unsigned char *)info->vita_user_tls)[i] == 0);
@@ -98,6 +103,32 @@ int main(void)
     *(uint32_t *)info->vita_user_tls=99;
     SceUID other=create_thread("independent TLS", entry, 160, 4096);
     assert(other > 0);
+    int (*change)(SceUID,int)=(void *)module_get_func_export(0x859a24b1,0xBD0139F2);
+    int (*change2)(SceUID,int)=(void *)module_get_func_export(0x859a24b1,0xC5FFCA61);
+    assert(change && change2);
+    assert((uint32_t)change(0,100)==SCE_KERNEL_ERROR_UNKNOWN_THREAD_ID);
+    assert((uint32_t)change(-1,100)==SCE_KERNEL_ERROR_UNKNOWN_THREAD_ID);
+    assert(!priority_changes);
+    tls_value=info;
+    assert(change2(0,64)==160);
+    assert(changed_handle==0x1234 && changed_priority==28);
+    assert(info->priority==64 && info->vita_tls[8]==64 && raw_priority()==64);
+    assert(change2(uid,65)==64 && changed_priority==28 && raw_priority()==65);
+    assert(change(other,0)==0);
+    VitaThreadInfo *other_info=get_thread_info_for_uid(other);
+    assert(other_info->priority==65 && other_info->vita_tls[8]==65);
+    unsigned calls=priority_changes;
+    assert((uint32_t)change(uid,63)==SCE_KERNEL_ERROR_ILLEGAL_PRIORITY);
+    assert((uint32_t)change(uid,192)==SCE_KERNEL_ERROR_ILLEGAL_PRIORITY);
+    assert(priority_changes==calls && info->priority==65);
+    priority_result=1;
+    assert((uint32_t)change(uid,100)==SCE_KERNEL_ERROR_THREAD_ERROR);
+    assert(info->priority==65 && info->vita_tls[8]==65);
+    priority_result=0;
+    assert(change2(uid,SCE_KERNEL_DEFAULT_PRIORITY+3)==65 && raw_priority()==163);
+    assert(!change(uid,160));
+    tls_value=NULL;
+
     assert(*(uint32_t *)get_thread_info_for_uid(other)->vita_user_tls == 0x12345678);
     assert(sceKernelDeleteThread(other) == 0);
     assert((uint32_t)start_thread(uid, 4, NULL) == SCE_KERNEL_ERROR_ILLEGAL_ADDR);
