@@ -19,6 +19,7 @@
 #include "gxm/gxm_to_dk.h"
 #include "gxm/util.h"
 #include "gxm/draw.h"
+#include "gxm/shader_code.h"
 #include "gxm/texture_layout.h"
 #include "gxm/texture_staging.h"
 #include "modules/SceSysmem.h"
@@ -171,11 +172,7 @@ static DkDevice g_dk_device;
 static DkQueue g_render_queue;
 static DkMemBlock g_notification_region_memblock;
 static DisplayQueueControlBlock *g_display_queue;
-typedef struct ShaderCodeBlock {
-    struct ShaderCodeBlock *next;
-    DkMemBlock block;
-} ShaderCodeBlock;
-static ShaderCodeBlock *g_shader_code_blocks;
+static GxmShaderCode *g_shader_code_blocks;
 static Mutex g_shader_code_lock;
 
 static int SceGxmDisplayQueue_thread(SceSize args, void *argp);
@@ -275,12 +272,9 @@ EXPORT(SceGxm, 0xB627DE66, int, sceGxmTerminate)
     /* Code can still be referenced by submitted command lists after its
      * program wrapper is released. Retain it until the queue is idle here. */
     dkQueueWaitIdle(g_render_queue);
-    while (g_shader_code_blocks) {
-        ShaderCodeBlock *code = g_shader_code_blocks;
-        g_shader_code_blocks = code->next;
-        dkMemBlockDestroy(code->block);
-        free(code);
-    }
+    mutexLock(&g_shader_code_lock);
+    gxm_shader_code_clear(&g_shader_code_blocks);
+    mutexUnlock(&g_shader_code_lock);
     dkMemBlockDestroy(g_notification_region_memblock);
     dkQueueDestroy(g_render_queue);
 
@@ -536,30 +530,15 @@ static int translate_shader(DkShader *shader, const SceGxmProgram *program, pipe
         return SCE_GXM_ERROR_INVALID_VALUE;
     }
 
-    if (shader_size > UINT32_MAX - (DK_MEMBLOCK_ALIGNMENT - 1U)) {
-        free(compiled);
-        return SCE_KERNEL_ERROR_NO_MEMORY;
-    }
-    ShaderCodeBlock *code = calloc(1, sizeof(*code));
-    if (!code) {
-        free(compiled);
-        return SCE_KERNEL_ERROR_NO_MEMORY;
-    }
-    code->block = dk_alloc_memblock(g_dk_device, shader_size,
-        DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached | DkMemBlockFlags_Code);
-    if (!code->block) {
-        free(compiled);
-        free(code);
-        return SCE_KERNEL_ERROR_NO_MEMORY;
-    }
-    memcpy(dkMemBlockGetCpuAddr(code->block), compiled, shader_size);
-    free(compiled);
-    dkShaderMakerDefaults(&shader_maker, code->block, 0);
-    dkShaderInitialize(shader, &shader_maker);
+    DkMemBlock code;
     mutexLock(&g_shader_code_lock);
-    code->next = g_shader_code_blocks;
-    g_shader_code_blocks = code;
+    int upload_result = gxm_shader_code_upload(g_dk_device, &g_shader_code_blocks,
+                                              compiled, shader_size, &code);
     mutexUnlock(&g_shader_code_lock);
+    free(compiled);
+    if (upload_result != 0) return upload_result;
+    dkShaderMakerDefaults(&shader_maker, code, 0);
+    dkShaderInitialize(shader, &shader_maker);
 
     return 0;
 }

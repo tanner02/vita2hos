@@ -25,6 +25,7 @@ enum {
     DkMemBlockFlags_GpuCached = 2,
     DkMemBlockFlags_CpuUncached = 4,
     DkMemBlockFlags_Image = 8,
+    DkMemBlockFlags_Code = 16,
 };
 void dkMemBlockDestroy(DkMemBlock block);
 #define DK_MEMBLOCK_ALIGNMENT 4096U
