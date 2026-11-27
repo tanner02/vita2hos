@@ -1,3 +1,25 @@
+## 2026-11-27: shader admission failure diagnostics (not deployed)
+
+Private source-bound import/control-flow decoding links a resource-construction
+helper to sceGxmShaderPatcherCreateFragmentProgram. Registration and vertex or
+fragment creation can fail before the existing shader-conversion log. Therefore,
+absence of conversion messages does not establish that creation was never called.
+An admission failure is a hypothesis; no captured return value proves it caused
+the game's current-resource TLS value to remain unset.
+
+Failed registration/creation now logs operation, phase, opaque program pointer
+and the original SDK result. Tags distinguish output/argument/registry/header,
+allocation, uniform/vertex layout, input metadata, blend and translation failures.
+The atomic budget admits at most64 failures per GXM initialization plus one
+exhaustion notice. SDK results, output clearing and cleanup paths are preserved.
+An eight-thread ASan/UBSan check verifies the budget, reset and return preservation;
+native Debug/Release builds pass. No game failure tag has been observed yet.
+
+After ZCode's recorded handback, a read-only sys-autopilot status attempt failed
+to connect; no fresh log/crash was collected, and the console claim was released.
+No title/input/install, SD payload change or probe correction occurred. The probe
+hold remains. Actual startup failure and commercial 3D rendering remain open.
+
 ## 2026-11-27: startup thread attribution (offline, not deployed)
 
 Atmosphere crash Thread IDs are native kernel identifiers; the existing Created

@@ -198,6 +198,21 @@ static DkMemBlock g_notification_region_memblock;
 static DisplayQueueControlBlock *g_display_queue;
 static GxmShaderCode *g_shader_code_blocks;
 static Mutex g_shader_code_lock;
+static atomic_uint g_shader_failure_budget = 64;
+
+static int shader_creation_error(const char *operation, const char *phase,
+                                  const void *program, int result)
+{
+    unsigned remaining = atomic_load_explicit(&g_shader_failure_budget, memory_order_relaxed);
+    while (remaining && !atomic_compare_exchange_weak_explicit(&g_shader_failure_budget,
+        &remaining, remaining - 1, memory_order_relaxed, memory_order_relaxed)) {}
+    if (remaining) {
+        LOG("GXM_SHADER_FAILURE operation=%s phase=%s program=%p result=0x%08x",
+            operation, phase, program, (unsigned)result);
+        if (remaining == 1) LOG("GXM shader failure log budget exhausted");
+    }
+    return result;
+}
 
 static int SceGxmDisplayQueue_thread(SceSize args, void *argp);
 
@@ -239,6 +254,7 @@ EXPORT(SceGxm, 0xB0F1E4EC, int, sceGxmInitialize, const SceGxmInitializeParams *
 
     if (g_gxm_initialized)
         return SCE_GXM_ERROR_ALREADY_INITIALIZED;
+    atomic_store_explicit(&g_shader_failure_budget, 64, memory_order_relaxed);
 
     /* Create graphics queue */
     dkQueueMakerDefaults(&queue_maker, g_dk_device);
@@ -495,13 +511,13 @@ EXPORT(SceGxm, 0x2B528462, int, sceGxmShaderPatcherRegisterProgram,
     SceGxmRegisteredProgram *shader_patcher_id;
 
     if (!programId)
-        return SCE_GXM_ERROR_INVALID_POINTER;
+        return shader_creation_error("register", "output", programHeader, SCE_GXM_ERROR_INVALID_POINTER);
     *programId = NULL;
     if (!shaderPatcher || !programHeader)
-        return SCE_GXM_ERROR_INVALID_POINTER;
+        return shader_creation_error("register", "arguments", programHeader, SCE_GXM_ERROR_INVALID_POINTER);
     shader_patcher_id = malloc(sizeof(*shader_patcher_id));
     if (!shader_patcher_id)
-        return SCE_KERNEL_ERROR_NO_MEMORY;
+        return shader_creation_error("register", "allocation", programHeader, SCE_KERNEL_ERROR_NO_MEMORY);
 
     memset(shader_patcher_id, 0, sizeof(*shader_patcher_id));
     shader_patcher_id->programHeader = programHeader;
@@ -510,7 +526,7 @@ EXPORT(SceGxm, 0x2B528462, int, sceGxmShaderPatcherRegisterProgram,
                                         &shaderPatcher->registered_count, shader_patcher_id);
     if (ret != 0) {
         free(shader_patcher_id);
-        return ret;
+        return shader_creation_error("register", "registry", programHeader, ret);
     }
 
     *programId = shader_patcher_id;
@@ -597,25 +613,26 @@ EXPORT(SceGxm, 0xB7BBA6D5, int, sceGxmShaderPatcherCreateVertexProgram,
        SceGxmVertexProgram **vertexProgram)
 {
     int ret;
+    const char *failure_phase = "uniform-layout";
     SceGxmVertexProgram *vertex_program;
 
     if (!vertexProgram)
-        return SCE_GXM_ERROR_INVALID_POINTER;
+        return shader_creation_error("vertex", "output", programId, SCE_GXM_ERROR_INVALID_POINTER);
     *vertexProgram = NULL;
     if (!shaderPatcher || !programId)
-        return SCE_GXM_ERROR_INVALID_POINTER;
+        return shader_creation_error("vertex", "arguments", programId, SCE_GXM_ERROR_INVALID_POINTER);
     if (!gxm_program_registry_contains(shaderPatcher->registered_programs,
                                         shaderPatcher->registered_count, programId))
-        return SCE_GXM_ERROR_INVALID_VALUE;
+        return shader_creation_error("vertex", "registration", programId, SCE_GXM_ERROR_INVALID_VALUE);
     if (!programId->programHeader)
-        return SCE_GXM_ERROR_INVALID_POINTER;
+        return shader_creation_error("vertex", "header", programId, SCE_GXM_ERROR_INVALID_POINTER);
     ret = gxm_validate_vertex_layout(attributes, attributeCount, streams, streamCount);
     if (ret != 0)
-        return ret;
+        return shader_creation_error("vertex", "vertex-layout", programId, ret);
 
     vertex_program = malloc(sizeof(*vertex_program));
     if (!vertex_program)
-        return SCE_KERNEL_ERROR_NO_MEMORY;
+        return shader_creation_error("vertex", "allocation", programId, SCE_KERNEL_ERROR_NO_MEMORY);
 
     memset(vertex_program, 0, sizeof(*vertex_program));
     atomic_init(&vertex_program->ref.count, 1);
@@ -626,6 +643,7 @@ EXPORT(SceGxm, 0xB7BBA6D5, int, sceGxmShaderPatcherCreateVertexProgram,
         goto fail;
     }
     if (attributeCount) {
+        failure_phase = "attributes-allocation";
         vertex_program->attributes = calloc(attributeCount, sizeof(SceGxmVertexAttribute));
         if (!vertex_program->attributes) {
             ret = SCE_KERNEL_ERROR_NO_MEMORY;
@@ -634,6 +652,7 @@ EXPORT(SceGxm, 0xB7BBA6D5, int, sceGxmShaderPatcherCreateVertexProgram,
         memcpy(vertex_program->attributes, attributes, attributeCount * sizeof(SceGxmVertexAttribute));
     }
     vertex_program->attributeCount = attributeCount;
+    failure_phase = "input-metadata";
     GxmVertexInput inputs[SCE_GXM_MAX_VERTEX_ATTRIBUTES];
     for (unsigned i = 0; i < attributeCount; ++i) {
         if (!gxp_vertex_input_c(programId->programHeader, attributes[i].regIndex, i, &inputs[i])) {
@@ -641,6 +660,7 @@ EXPORT(SceGxm, 0xB7BBA6D5, int, sceGxmShaderPatcherCreateVertexProgram,
             goto fail;
         }
     }
+    failure_phase = "vertex-input";
     ret = gxm_build_vertex_attribute_state(attributes, attributeCount, inputs,
                                             vertex_program->dk_attributes);
     if (ret) goto fail;
@@ -648,6 +668,7 @@ EXPORT(SceGxm, 0xB7BBA6D5, int, sceGxmShaderPatcherCreateVertexProgram,
         if (!vertex_program->dk_attributes[i].isFixed)
             vertex_program->used_streams |= 1U << vertex_program->dk_attributes[i].bufferId;
     if (streamCount) {
+        failure_phase = "streams-allocation";
         vertex_program->streams = calloc(streamCount, sizeof(SceGxmVertexStream));
         if (!vertex_program->streams) {
             ret = SCE_KERNEL_ERROR_NO_MEMORY;
@@ -657,6 +678,7 @@ EXPORT(SceGxm, 0xB7BBA6D5, int, sceGxmShaderPatcherCreateVertexProgram,
     }
     vertex_program->streamCount = streamCount;
 
+    failure_phase = "translation";
     ret = translate_shader(&vertex_program->dk_shader, programId->programHeader,
                            pipeline_stage_vertex, "vert",
                            attributes, attributeCount);
@@ -670,7 +692,7 @@ fail:
     free(vertex_program->attributes);
     free(vertex_program->streams);
     free(vertex_program);
-    return ret;
+    return shader_creation_error("vertex", failure_phase, programId, ret);
 }
 
 EXPORT(SceGxm, 0xAC1FF2DA, int, sceGxmShaderPatcherReleaseVertexProgram,
@@ -697,18 +719,18 @@ EXPORT(SceGxm, 0x4ED2E49D, int, sceGxmShaderPatcherCreateFragmentProgram,
     SceGxmFragmentProgram *fragment_program;
 
     if (!fragmentProgram)
-        return SCE_GXM_ERROR_INVALID_POINTER;
+        return shader_creation_error("fragment", "output", programId, SCE_GXM_ERROR_INVALID_POINTER);
     *fragmentProgram = NULL;
     if (!shaderPatcher || !programId)
-        return SCE_GXM_ERROR_INVALID_POINTER;
+        return shader_creation_error("fragment", "arguments", programId, SCE_GXM_ERROR_INVALID_POINTER);
     if (!gxm_program_registry_contains(shaderPatcher->registered_programs,
                                         shaderPatcher->registered_count, programId))
-        return SCE_GXM_ERROR_INVALID_VALUE;
+        return shader_creation_error("fragment", "registration", programId, SCE_GXM_ERROR_INVALID_VALUE);
     if (!programId->programHeader)
-        return SCE_GXM_ERROR_INVALID_POINTER;
+        return shader_creation_error("fragment", "header", programId, SCE_GXM_ERROR_INVALID_POINTER);
     fragment_program = malloc(sizeof(*fragment_program));
     if (!fragment_program)
-        return SCE_KERNEL_ERROR_NO_MEMORY;
+        return shader_creation_error("fragment", "allocation", programId, SCE_KERNEL_ERROR_NO_MEMORY);
 
     memset(fragment_program, 0, sizeof(*fragment_program));
     atomic_init(&fragment_program->ref.count, 1);
@@ -716,7 +738,7 @@ EXPORT(SceGxm, 0x4ED2E49D, int, sceGxmShaderPatcherCreateFragmentProgram,
     fragment_program->default_uniform_count = programId->programHeader->default_uniform_buffer_count;
     if (!gxp_uniform_layout_c(programId->programHeader, &fragment_program->uniform_layout)) {
         free(fragment_program);
-        return SCE_GXM_ERROR_INVALID_VALUE;
+        return shader_creation_error("fragment", "uniform-layout", programId, SCE_GXM_ERROR_INVALID_VALUE);
     }
     fragment_program->outputFormat = outputFormat;
     fragment_program->multisampleMode = multisampleMode;
@@ -733,14 +755,14 @@ EXPORT(SceGxm, 0x4ED2E49D, int, sceGxmShaderPatcherCreateFragmentProgram,
     ret = gxm_translate_blend(&fragment_program->blendInfo, &fragment_program->blend);
     if (ret != 0) {
         free(fragment_program);
-        return ret;
+        return shader_creation_error("fragment", "blend", programId, ret);
     }
     ret = translate_shader(&fragment_program->dk_shader, programId->programHeader,
                            pipeline_stage_fragment, "frag",
                            NULL, 0);
     if (ret != 0) {
         free(fragment_program);
-        return ret;
+        return shader_creation_error("fragment", "translation", programId, ret);
     }
 
     *fragmentProgram = fragment_program;
