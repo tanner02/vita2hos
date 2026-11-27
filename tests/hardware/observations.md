@@ -1860,3 +1860,31 @@ This proves the owned dependency path, including successful startup through sceK
 This is evidence of a basic 3D boot on the user's Switch, not proof of broader
 game compatibility. Keep the runtime fixed when first switching to the textured
 cube so the test changes one component at a time.
+
+## Cube v8 hardware batch: 40 checks passed
+
+Runtime verification composite ceaddb85d41d3cae39f7a9a9f8138d1570ac23d7
+contains unchanged HLE source from owner073ee41 plus five Codex-owned production
+paths: shader-code tail reservation, append-open log retry, display wait state
+and the counted framebuffer wait export. Main guest source is ca3b556.
+Exact source archive, ARM32 runtime stamp/NSO and all three NCA hash trees were
+verified before installation on dedicated title0100f27432680000.
+
+Cube v8 completed all40 PASS tags, including straight alpha, premultiplied
+alpha, additive saturation, R/A-only writes and zero/two-period framebuffer
+wait calls. All previous surface/gamma/depth/stencil/MSAA/texture/vertex-format
+checks passed;360cube frames and intact ring guards completed. Logs capture
+process exit0 and load_process_close0, followed by observed HOME/Start. Both
+guests build with warnings as errors and resolve62cube/60draw source imports.
+The original game executable/modules/normal mode were restored by exact
+readback; no global homebrew/title override changed.
+
+These four ordinary single-sample blend cases do not establish correctness
+for every game shader, texture format, fragment-discard or render-to-texture
+path. Counted-wait timing boundaries are covered by host tests; hardware proves
+ABI execution and continued rendering. LittleBigPlanet still has startup
+artifacts and has not reached its title menu or interactive3D. The unchanged
+HLE revision requests SHUTTER_SOUND0x27, receives805a10ff and its initializer
+returnsfalse. Detailed verification was returned through AGENT-PROGRESS.md;
+HLE source remains with its owner. Captured GXM ColorSurfaceSetClip86456f7b
+is an additional unsupported API requiring graphics-lane investigation.
