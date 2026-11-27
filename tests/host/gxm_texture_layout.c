@@ -75,6 +75,43 @@ int main(void)
     assert(!sceGxmTextureSetWidth(&texture,33) && !sceGxmTextureSetHeight(&texture,17));
     assert(!gxm_texture_get_linear_layout(inner,&layout));
     assert(layout.width==33 && layout.height==17 && layout.source_width==64 && layout.source_height==32);
+    /* Gamma changes image interpretation, never the encoded texel bytes. */
+    const SceGxmTextureFormat gamma_formats[] = {SCE_GXM_TEXTURE_FORMAT_U8U8U8U8_ABGR,
+        SCE_GXM_TEXTURE_FORMAT_UBC1_ABGR, SCE_GXM_TEXTURE_FORMAT_UBC2_ABGR,
+        SCE_GXM_TEXTURE_FORMAT_UBC3_ABGR};
+    const DkImageFormat gamma_native[] = {DkImageFormat_RGBA8_Unorm_sRGB,
+        DkImageFormat_RGBA_BC1_sRGB,DkImageFormat_RGBA_BC2_sRGB,DkImageFormat_RGBA_BC3_sRGB};
+    for (unsigned i=0;i<4;++i) {
+        assert(!sceGxmTextureInitLinear(&texture,NULL,gamma_formats[i],8,8,3));
+        GxmTextureMipChain linear,gamma;
+        assert(!gxm_texture_get_mip_chain(inner,&linear));
+        SceGxmTexture before=texture;
+        assert(!sceGxmTextureSetGammaMode(&texture,SCE_GXM_TEXTURE_GAMMA_BGR));
+        uint32_t a[4],b[4];memcpy(a,&before,16);memcpy(b,&texture,16);
+        assert((a[0]^b[0])==0x08000000u);
+        assert(!memcmp(a+1,b+1,12));
+        assert(!gxm_texture_get_mip_chain(inner,&gamma));
+        assert(gamma.count==3 && linear.count==3);
+        assert(gamma.source_size==linear.source_size);
+        for (unsigned level=0;level<3;++level) {
+            assert(gamma.offsets[level]==linear.offsets[level]);
+            GxmTextureLayout expected=linear.levels[level];expected.format=gamma_native[i];
+            assert(!memcmp(&expected,&gamma.levels[level],sizeof(expected)));
+        }
+        unsigned char source[256],out_linear[512],out_gamma[512];
+        for (unsigned j=0;j<sizeof(source);++j) source[j]=(unsigned char)(j*17);
+        assert(!gxm_texture_pack_linear(&linear.levels[0],source,sizeof(source),out_linear,sizeof(out_linear)));
+        assert(!gxm_texture_pack_linear(&gamma.levels[0],source,sizeof(source),out_gamma,sizeof(out_gamma)));
+        assert(!memcmp(out_linear,out_gamma,gamma.levels[0].size));
+        assert(!sceGxmTextureSetGammaMode(&texture,SCE_GXM_TEXTURE_GAMMA_GR));
+        saved=layout;
+        assert((uint32_t)gxm_texture_get_linear_layout(inner,&layout)==SCE_GXM_ERROR_UNSUPPORTED);
+        assert(!memcmp(&saved,&layout,sizeof(layout)));
+    }
+    assert(!sceGxmTextureInitLinear(&texture,NULL,SCE_GXM_TEXTURE_FORMAT_R8,8,8,1));
+    assert(!sceGxmTextureSetGammaMode(&texture,SCE_GXM_TEXTURE_GAMMA_R));
+    assert((uint32_t)gxm_texture_get_linear_layout(inner,&layout)==SCE_GXM_ERROR_UNSUPPORTED);
+    assert((uint32_t)sceGxmTextureSetGammaMode(NULL,SCE_GXM_TEXTURE_GAMMA_NONE)==SCE_GXM_ERROR_INVALID_POINTER);
     puts("GXM texture-layout regression checks passed.");
     return 0;
 }

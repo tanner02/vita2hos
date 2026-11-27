@@ -45,8 +45,6 @@ int gxm_texture_get_linear_layout(const SceGxmTextureInner *texture, GxmTextureL
         type != SCE_GXM_TEXTURE_SWIZZLED && type != SCE_GXM_TEXTURE_SWIZZLED_ARBITRARY &&
         type != SCE_GXM_TEXTURE_TILED)
         return SCE_GXM_ERROR_UNSUPPORTED;
-    if (texture->gamma_mode != 0)
-        return SCE_GXM_ERROR_UNSUPPORTED;
     if (type != SCE_GXM_TEXTURE_LINEAR_STRIDED && texture->mip_filter != 0)
         return SCE_GXM_ERROR_UNSUPPORTED;
     if (texture->mag_filter > SCE_GXM_TEXTURE_FILTER_LINEAR ||
@@ -101,6 +99,21 @@ int gxm_texture_get_linear_layout(const SceGxmTextureInner *texture, GxmTextureL
 #undef FORMAT
     default:
         return SCE_GXM_ERROR_UNSUPPORTED;
+    }
+
+    if (texture->gamma_mode != 0) {
+        /* The pinned renderer uses native sRGB sampling for color textures.
+         * Keep channel-selective modes and formats without an sRGB native
+         * equivalent unsupported instead of silently sampling them linearly. */
+        if (texture->gamma_mode != (SCE_GXM_TEXTURE_GAMMA_BGR >> 27))
+            return SCE_GXM_ERROR_UNSUPPORTED;
+        switch (result.format) {
+        case DkImageFormat_RGBA8_Unorm: result.format = DkImageFormat_RGBA8_Unorm_sRGB; break;
+        case DkImageFormat_RGBA_BC1: result.format = DkImageFormat_RGBA_BC1_sRGB; break;
+        case DkImageFormat_RGBA_BC2: result.format = DkImageFormat_RGBA_BC2_sRGB; break;
+        case DkImageFormat_RGBA_BC3: result.format = DkImageFormat_RGBA_BC3_sRGB; break;
+        default: return SCE_GXM_ERROR_UNSUPPORTED;
+        }
     }
 
     const uint32_t swizzle = texture->swizzle_format;

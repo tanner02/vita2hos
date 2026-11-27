@@ -1,3 +1,22 @@
+## Offline texture gamma sampling (2026-11-27)
+
+- Added sceGxmTextureSetGammaMode (0xA6D9F4DA), using the pinned descriptor's
+  two-bit field and shift-by-27 operation. Null texture returns INVALID_POINTER;
+  conversion support is checked when building the native image layout.
+- Gamma BGR now selects native sRGB RGBA8 and BC1/BC2/BC3 images, including
+  existing upload and mip-chain paths. The packed upload bytes, source geometry,
+  channel swizzle and row padding remain unchanged; sampling performs conversion.
+  This follows the pinned Vita3K renderer's native sRGB color-texture path.
+- Both the pinned VitaSDK and Vita3K headers alias GAMMA_R and GAMMA_BGR to
+  0x08000000. This change does not guess new enum values. Single/two-channel,
+  signed/float and channel-selective GR conversion remain unsupported, with
+  unchanged output metadata on conversion failure.
+- Host checks cover descriptor-bit preservation, all four native sRGB format
+  selections across three mip levels, byte-for-byte packing parity, unsupported
+  combinations and null input. The full ASan/UBSan host suite and ARM Debug/Release
+  builds passed. These checks establish metadata/packing behavior, not GPU color accuracy.
+  No files were transferred to the Switch; commercial boot remains unverified.
+
 ## Offline front point/line width (2026-11-27)
 
 - Added sceGxmSetFrontPointLineWidth (NID 0x06752183), imported by the supplied

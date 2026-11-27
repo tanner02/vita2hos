@@ -254,3 +254,14 @@ EXPORT(SceGxm, 0x855814C4, int, sceGxmTextureSetData, SceGxmTexture *texture, co
     ((SceGxmTextureInner *)texture)->data_addr = (uintptr_t)data >> 2;
     return 0;
 }
+
+EXPORT(SceGxm, 0xA6D9F4DA, int, sceGxmTextureSetGammaMode, SceGxmTexture *texture,
+       SceGxmTextureGammaMode mode)
+{
+    if (!texture)
+        return SCE_GXM_ERROR_INVALID_POINTER;
+    /* Match the packed descriptor operation; conversion support is checked
+     * separately when the renderer builds its native image layout. */
+    ((SceGxmTextureInner *)texture)->gamma_mode = (uint32_t)mode >> 27;
+    return 0;
+}
