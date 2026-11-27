@@ -1,0 +1,12 @@
+version: 2
+firmware: 3.60
+modules:
+  owned_missing:
+    nid: 0x6F776E10
+    libraries:
+      OwnedMissing:
+        kernel: false
+        nid: 0x6F776E74
+        functions:
+          missing_arm: 0xAABB1011
+          missing_thumb: 0xAABB1022
