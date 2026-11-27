@@ -232,6 +232,8 @@ int probe_draw(SceGxmContext *context, SceGxmRenderTarget *target,
     sceGxmSetFrontDepthWriteEnable(context,SCE_GXM_DEPTH_WRITE_ENABLED);
     sceGxmSetFrontDepthFunc(context,SCE_GXM_DEPTH_FUNC_LESS);
     CHECK(sceGxmBeginScene(context,0,target,NULL,NULL,NULL,&depth_clipped,&clip_depth));
+    /* Explicit identity Z mapping: default viewport maps0.75 to0.875. */
+    sceGxmSetViewport(context,32,32,32,-32,0,1);
     CHECK(sceGxmSetVertexStream(context,0,vertices));
     CHECK(color(context,clear_color,matrix,red));
     CHECK(sceGxmDraw(context,SCE_GXM_PRIMITIVE_TRIANGLES,SCE_GXM_INDEX_FORMAT_U16,indices,3));
@@ -239,6 +241,8 @@ int probe_draw(SceGxmContext *context, SceGxmRenderTarget *target,
     for (unsigned y=4;y<64;y+=8) for (unsigned x=4;x<64;x+=8) {
         if (((float *)depth)[y*64+x]!=0.75f) {
             hooks->record("FAIL color_clip_depth_pixel\n");hooks->result("pixel",y*64+x);
+            uint32_t depth_bits;memcpy(&depth_bits,(float *)depth+y*64+x,sizeof(depth_bits));
+            hooks->result("depth_bits",depth_bits);
             ret=-1;goto done;
         }
     }
