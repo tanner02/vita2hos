@@ -1,3 +1,27 @@
+## 2026-11-27: log-retry runtime passes graphics batch with live collection
+
+Clean Debug/Release builds of927c50f pass the existing build/package checks,
+including all three NCA hash trees and ARM32 process metadata. The dedicated
+HOME title was installed and the same owned visible_cube7 batch ran again.
+All35 checks pass, including ten numeric vertex formats and all360 cube frames.
+Screenshots show the cube followed by HOME/Start with the title closed.
+
+Thirteen live log-read attempts were made during rendering. Six of the first
+twelve returned HTTP404 despite the file existing; successful reads continued
+growing. The final96316-byte log identifies927c50f and contains process result0,
+launch result0 and image cleanup0. This establishes successful collection through
+the end of this run. It does not identify the native filesystem errno, force an
+append-open failure, prove every message survived, or establish that prior file
+reads caused the earlier truncation. The host injected-open-failure regression
+fails against the old source and passes under ASan/UBSan against927c50f.
+
+Runtime-log SHA256: 235122a514ddc78be263126dc711d3b33766ac7ba8cef60378819da79dd7b17d.
+Report SHA256: 36eecef77472a3931515d78c78750ccfc5d9cd1ebaf6e3453514949947305a0b.
+Original LittleBigPlanet executable/modules/normal mode were restored and
+readback-verified afterward; installed/root runtime927c50f remains. Virtual
+input is detached. No HLE/scanner integration, global override change or held
+TLS-probe update occurred. Commercial-title boot remains unverified.
+
 ## 2026-11-27: wider fragment-shader compile audit and log-open recovery
 
 A deterministic sample of520 owned-game shaders was selected from21294 unique
