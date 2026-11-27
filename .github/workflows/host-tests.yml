@@ -26,6 +26,8 @@ jobs:
         run: python3 -B tests/host/test_deploy_title_profile.py
       - name: Check optional hardware-probe packaging
         run: python3 -B tests/host/test_package_hardware_smoke.py
+      - name: Check standalone HOME-menu title packaging
+        run: python3 -B tests/host/test_home_menu_package.py
 
   shader-integration:
     runs-on: ubuntu-latest

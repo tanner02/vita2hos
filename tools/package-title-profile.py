@@ -75,11 +75,11 @@ def build_profile(bundle, title_id):
     target = f"sd/atmosphere/contents/{title:016x}/exefs.nsp"
     profile = retarget(runtime, title)
     instructions = (
-        "Experimental title-specific vita2hos launch profile; hardware execution not verified.\n\n"
+        "Experimental title-specific vita2hos launch profile. This route failed to launch on the tested Switch.\n\n"
         f"Host application program ID: {title:016x}\nRuntime: {manifest['runtime_commit']}\n\n"
         "Preserve normal hbmenu configuration: atmosphere/hbl.nsp, R application override, 39_bit.\n"
         "Install the single file below sd/ only if this title has no existing ExeFS overrides.\n"
-        "Normal launch of this host application now runs vita2hos in ARM32. Hold R for normal hbmenu.\n"
+        "Intended behavior: normal host launch runs vita2hos in ARM32; R opens normal hbmenu. Launch compatibility is not established.\n"
         "Other applications and Album retain their existing launch configuration.\n"
         "The runtime still reads /vita2hos/executable and /vita2hos/ game assets.\n\n"
         "Rollback: close the application, then rename the installed exefs.nsp to\n"

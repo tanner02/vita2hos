@@ -96,6 +96,32 @@ their hashes, and copies the NSP and sample files without executing them.
 
 ## FTP deployment
 
+### Standalone HOME-menu title package
+
+`vita2hos.nsp` from the runtime build is an ExeFS container. To create a separate
+installable HOME-menu application, use `tools/package-home-menu.py`:
+
+```sh
+python3 tools/package-home-menu.py smoke-test.zip \
+  --packer /path/to/hacbrewpack --nacptool /path/to/nacptool \
+  --keyset /path/to/local/prod.keys --output vita2hos-home-menu.nsp
+```
+
+The default standalone program ID is `0100f27432680000`. The package contains
+program, control, and content-meta NCAs, its own vita2hos name/icon, and ARM32
+process metadata. It runs the runtime directly and reads `/vita2hos/executable`
+and other game assets from SD. Install it through a compatible homebrew title
+installer, then select the vita2hos HOME tile. No existing game or global hbmenu
+configuration needs replacement. The installer and hardware launch remain
+separate from packaging validation.
+
+The packager validates the input bundle, preserves the runtime NSO, validates
+content filenames against their SHA-256 digests, and records an output manifest.
+Packaging keys stay local and are excluded from outputs. The default JPEG is
+`assets/home-menu-icon.jpg`; `--icon` accepts another 256x256 JPEG. The external
+[hacBrewPack](https://github.com/rlaphoenix/hacBrewPack) revision used for the first
+package was `745b16ecfc9ce055743067d200572204cb2aac6c`.
+
 ### Automated surface/notification guest
 
 `tests/hardware/surface_probe` builds a freestanding Vita executable with Vita SDK:
@@ -123,6 +149,11 @@ runtime log when reporting a failure. The program exits when finished, so a visi
 3D scene is not expected.
 
 ### Experimental title-specific launch profile
+
+**Hardware status:** this route failed to start Mario Kart 8 Deluxe on the tested
+Switch (`"Could not start the software"`), while R still opened hbmenu. The profile
+was disabled. The packaging checks below validate file structure, not launch
+compatibility; do not treat this route as a supported launch method.
 
 To prepare a separate 32-bit launch route while retaining normal hbmenu,
 generate an ExeFS replacement for an installed host application:
