@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 typedef struct {
+    uint32_t guest_address, structure_size;
     uint32_t libc_address, main_stack_size, preload_disabled;
     uint32_t version; /* Zero when absent or legacy. */
     int32_t main_priority;

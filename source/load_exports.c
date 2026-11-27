@@ -80,7 +80,11 @@ int load_process_parameters_read(LoadProcessParameters *parameters, uint32_t add
     if (!header || read32(header + 4) != UINT32_C(0x32505350)) return -1; /* PSP2 */
     uint32_t size = read32(header), version = read32(header + 8);
     if (size < 12) return -1;
-    if (!version) { *parameters=decoded;return 0; }
+    if (!version) {
+        if (!read(context,address,size,false)) return -1;
+        decoded.guest_address=address;decoded.structure_size=size;
+        *parameters=decoded;return 0;
+    }
     if ((version != 5 && version != 6) || size < 0x30) return -1;
     const unsigned char *parameter = read(context, address, size, false);
     if (!parameter) return -1;
@@ -108,6 +112,7 @@ int load_process_parameters_read(LoadProcessParameters *parameters, uint32_t add
     }
     decoded.libc_address=libc_address;
     decoded.version=version;
+    decoded.guest_address=address;decoded.structure_size=size;
     *parameters=decoded;
     return 0;
 }

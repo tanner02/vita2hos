@@ -442,6 +442,24 @@
   reproduced. Full formatting parity, Clib mspace heaps, and checked variants
   remain unfinished. No Switch files were changed.
 
+## Host process parameters after fe3ca2b
+
+- Added SceProcessmgr `sceKernelGetProcessParam` for the loaded main image.
+  It returns the original guest address, including legacy version-0 structures,
+  or null when absent. Dependencies cannot replace the main image's parameters.
+- The loader validates the entire declared structure before retaining its address.
+  Runtime registration checks alignment and containment in a main PT_LOAD segment,
+  uses executable RX/data guest addresses, and rejects hidden write aliases.
+  Registration precedes guest startup; teardown clears the exposed address.
+- Host ASan/UBSan tests cover NID lookup, main ownership, duplicate registration,
+  absent and legacy parameters, malformed ranges, alias rejection and teardown.
+  Both ARM Debug and Release builds pass.
+- A private four-image loader replay recovered the main process parameter at
+  `0x8187a3b4`, size 48, with libc parameters at `0x817c5cdc`. This replay performs
+  relocation and metadata parsing on host buffers; it does not execute guest ARM
+  code or establish bundled-libc startup or commercial-title compatibility.
+  No Switch files were changed.
+
 ## Runtime 15d400f48e5d3a3f5d811e2a67bd30a1388cc102
 
 - Standalone HOME title, owned fixed-address CPU probe SHA-256

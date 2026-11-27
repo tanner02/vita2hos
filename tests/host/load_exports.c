@@ -121,6 +121,7 @@ int main(void)
     assert(settings.has_preload_disabled && settings.preload_disabled==0x210000);
     assert(settings.libc_address==0x10c0);
     assert(settings.version==6);
+    assert(settings.guest_address==0x1000 && settings.structure_size==0x30);
     put32(memory+0x18,0x10fe);
     assert(load_process_parameters_read(&settings,0x1000,read_memory,memory)<0);
     assert(settings.main_priority==0x10000103 && settings.main_stack_size==0x40000);
@@ -140,6 +141,11 @@ int main(void)
     assert(load_process_parameters_register(&parameters, &owner, 0x1000, read_memory, memory) < 0);
     put32(memory+8, 0);
     assert(load_process_parameters_read(&settings,0x1000,read_memory,memory)==0 && !settings.version);
+    assert(settings.guest_address==0x1000 && settings.structure_size==0x30);
+    put32(memory,512);
+    assert(load_process_parameters_read(&settings,0x1000,read_memory,memory)<0);
+    assert(settings.guest_address==0x1000 && settings.structure_size==0x30);
+    put32(memory,0x30);
     assert(load_process_parameters_register(&parameters, &owner, 0x1000, read_memory, memory) == 0);
     put32(memory+4, 0);
     assert(load_process_parameters_register(&parameters, &owner, 0x1000, read_memory, memory) < 0);

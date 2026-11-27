@@ -28,6 +28,7 @@
 #include "modules/SceKernelTime.h"
 #include "modules/SceLibKernel.h"
 #include "modules/SceModulemgr.h"
+#include "modules/SceProcessmgr.h"
 #include "modules/SceSysmem.h"
 #include "modules/SceTouch.h"
 
@@ -62,6 +63,7 @@ static int launch(LoadProcess *process)
     DkDevice dk_device;
     int ret;
     bool modulemgr_initialized=false;
+    bool processmgr_initialized=false;
 
     /* Initialize deko3d device */
     dkDeviceMakerDefaults(&device_maker);
@@ -82,6 +84,10 @@ static int launch(LoadProcess *process)
     if (ret != 0)
         goto done;
     modulemgr_initialized=true;
+    ret = SceProcessmgr_init(process);
+    if (ret != 0)
+        goto done;
+    processmgr_initialized=true;
     ret = SceKernelThreadMgr_init(&process->images[0].tls, process->guest_tp_retargeted);
     if (ret != 0)
         goto done;
@@ -120,6 +126,7 @@ static int launch(LoadProcess *process)
     LOG("Process finished! Returned: %d", ret);
 
 done:
+    if (processmgr_initialized) SceProcessmgr_finish();
     if (modulemgr_initialized) SceModulemgr_finish();
     return ret;
 }

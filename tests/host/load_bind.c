@@ -102,8 +102,10 @@ int main(void)
     memcpy(words, b+128, sizeof(words));
     assert(words[0] == arm_encode_movw(12, 0x9001));
     close_result = 1;
+    first.parameters.guest_address=0x81000020;first.parameters.structure_size=12;
     assert(load_image_close(&first) != 0);
     assert(!first.prepared && !first.bound && !first.segments && !first.entry);
+    assert(!first.parameters.guest_address && !first.parameters.structure_size);
     assert(module_guest_exports_find(&process, 100, MODULE_SYMBOL_FUNCTION, 11, NULL) == NULL);
     assert(module_guest_exports_find(&process, 101, MODULE_SYMBOL_FUNCTION, 11, NULL) == (void *)0xa001);
     close_result = 0;
