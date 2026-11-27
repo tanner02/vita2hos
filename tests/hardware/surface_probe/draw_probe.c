@@ -179,12 +179,19 @@ int probe_draw(SceGxmContext *context, SceGxmRenderTarget *target,
     sceGxmSetFrontStencilFunc(context, SCE_GXM_STENCIL_FUNC_ALWAYS, SCE_GXM_STENCIL_OP_KEEP,
         SCE_GXM_STENCIL_OP_KEEP, SCE_GXM_STENCIL_OP_KEEP, 0xff, 0);
     const uint32_t palette[4] = {0xff0000ff, 0xff00ff00, 0xffff0000, 0xffffffff};
-    for (unsigned pass = 0; pass < 3; ++pass) {
+    int texture_failures = 0;
+    for (unsigned pass = 0; pass < 6; ++pass) {
         for (unsigned y = 0; y < 16; ++y)
             for (unsigned x = 0; x < 16; ++x)
                 texels[y * 16 + x] = palette[((y >= 8) * 2 + (x >= 8) + pass) & 3];
+        /* A distinctive untouched value separates missing coverage from UV
+         * errors or a retained image from the previous scene. */
+        for (unsigned i = 0; i < 64 * 64; ++i) pixels[i] = 0xff332211;
         CHECK(sceGxmBeginScene(context, 0, target, NULL, NULL, NULL, surface, NULL));
-        if (pass == 2) sceGxmSetViewport(context, 32, 32, 32, 32, 0.5f, 0.5f);
+        int positive_y = pass == 2 || pass == 3;
+        int negative_x = pass == 3 || pass == 4;
+        if (pass >= 2) sceGxmSetViewport(context, 32, negative_x ? -32 : 32,
+                                       32, positive_y ? 32 : -32, 0.5f, 0.5f);
         CHECK(sceGxmSetVertexStream(context, 0, vertices));
         CHECK(sceGxmSetFragmentTexture(context, sceGxmProgramParameterGetResourceIndex(sampler), &texture));
         void *uniform;
@@ -193,24 +200,31 @@ int probe_draw(SceGxmContext *context, SceGxmRenderTarget *target,
         CHECK(sceGxmSetUniformDataF(uniform, matrix, 0, 16, identity));
         CHECK(sceGxmDraw(context, SCE_GXM_PRIMITIVE_TRIANGLES, SCE_GXM_INDEX_FORMAT_U16, indices, 3));
         CHECK(sceGxmEndScene(context, NULL, NULL)); sceGxmFinish(context);
+        int pass_failed = 0;
+        hooks->result("texture_pass", pass);
         for (unsigned y = 0; y < 2; ++y) {
             for (unsigned x = 0; x < 2; ++x) {
                 unsigned index = (16 + y * 32) * 64 + 16 + x * 32;
                 /* Default GXM viewport: y_screen = 32 - 32*y_ndc.
                  * Our UV increases with NDC Y, so top samples the bottom
                  * texture row. A positive Y scale reverses that mapping. */
-                unsigned texture_y = pass == 2 ? y : 1 - y;
-                uint32_t expected = palette[(texture_y * 2 + x + pass) & 3];
+                unsigned texture_y = positive_y ? y : 1 - y;
+                unsigned texture_x = negative_x ? 1 - x : x;
+                uint32_t expected = palette[(texture_y * 2 + texture_x + pass) & 3];
+                hooks->result("sample", index); hooks->result("actual", pixels[index]);
+                hooks->result("expected", expected);
                 if (pixels[index] != expected) {
                     hooks->result("FAIL texture_pixel", index);
-                    hooks->result("actual", pixels[index]); hooks->result("expected", expected);
-                    ret = -1; goto done;
+                    pass_failed = texture_failures = 1;
                 }
             }
         }
-        hooks->record(pass == 0 ? "PASS texture_quadrants\n" : pass == 1 ?
-                      "PASS texture_update\n" : "PASS texture_positive_viewport\n");
+        if (!pass_failed) hooks->record(pass == 0 ? "PASS texture_quadrants\n" : pass == 1 ?
+            "PASS texture_update\n" : pass == 2 ? "PASS texture_positive_viewport\n" :
+            pass == 3 ? "PASS texture_both_axes\n" : pass == 4 ? "PASS texture_negative_x\n" :
+            "PASS texture_restore_viewport\n");
     }
+    if (texture_failures) ret = -1;
 done:
     if (fragment) sceGxmShaderPatcherReleaseFragmentProgram(patcher, fragment);
     if (vertex) sceGxmShaderPatcherReleaseVertexProgram(patcher, vertex);

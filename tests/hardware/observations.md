@@ -61,6 +61,18 @@
   framebuffer position. Version 3 corrects the expected mapping and adds a
   positive-Y viewport case. Its full texture result remains unverified.
 
+### Texture probe version 3: sampling/update PASS, positive Y FAIL
+
+- Guest source `064b0adbf61942703f816eb1d95539b68182a9da`, SHA-256
+  `dcba44e256791addc13dc76fa7153ac64aad68f27ff2e4a513d5294aff20e637`.
+- USB readback recovered `PASS texture_quadrants` and `PASS texture_update`,
+  following all earlier surface/draw checks. These establish basic point-filtered
+  sampling and re-upload of a changed guest allocation on the installed runtime.
+- The positive-Y viewport case read `0xffffffff` at pixel `0x410` instead of
+  `0xffff0000`. The complete probe failed and the guest exited 1. This case
+  remains unresolved; version 4 adds coverage/axis diagnostics without changing
+  the runtime or weakening the expected result.
+
 ## Runtime f55edbf626acb6ff46d510a55bdd026dd78ac5ad
 
 - Experimental route: a retargeted ARM32 ExeFS NSP at
