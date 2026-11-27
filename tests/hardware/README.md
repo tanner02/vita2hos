@@ -83,6 +83,34 @@ their hashes, and copies the NSP and sample files without executing them.
 
 ## FTP deployment
 
+### Experimental title-specific launch profile
+
+To prepare a separate 32-bit launch route while retaining normal hbmenu,
+generate an ExeFS replacement for an installed host application:
+
+```sh
+python3 tools/package-title-profile.py smoke-test.zip \
+  --program-id APPLICATION_PROGRAM_ID --output title-profile.zip
+```
+
+The package contains one `sd/atmosphere/contents/PROGRAM_ID/exefs.nsp` file.
+It validates the source bundle and ARM32 metadata, changes only the NPDM program
+ID and allowed ID range, and preserves the runtime NSO byte-for-byte. It does
+not contain or modify `override_config.ini`. Do not overlay an existing ExeFS
+mod for the host application. This route is not yet hardware-verified.
+
+With the normal `atmosphere/hbl.nsp`, R application override, and `39_bit`
+homebrew configuration retained, launching the host application normally runs
+vita2hos; holding R launches hbmenu. The host game's normal launch is temporarily
+replaced. Rename only the new `exefs.nsp` to `exefs.vita2hos-disabled.nsp` to
+restore the host game. Runtime samples/assets still belong in `/vita2hos/`.
+
+This relies on Atmosphere's documented [ExeFS replacement and hbloader
+precedence](https://github.com/Atmosphere-NX/Atmosphere/blob/master/docs/components/modules/loader.md).
+The NSP here is an ExeFS container, not an installable game package.
+
+### Runtime and sample transfer
+
 With the Switch FTP server open, a PC with Python 3 can transfer and verify the
 bundle automatically:
 
