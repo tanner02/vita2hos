@@ -21,6 +21,7 @@
 #include "gxm/util.h"
 #include "gxm/draw.h"
 #include "gxm/shader_code.h"
+#include "gxm/program_registry.h"
 #include "gxm/texture_layout.h"
 #include "gxm/texture_staging.h"
 #include "modules/SceSysmem.h"
@@ -446,6 +447,9 @@ EXPORT(SceGxm, 0x05032658, int, sceGxmShaderPatcherCreate, const SceGxmShaderPat
 {
     SceGxmShaderPatcher *shader_patcher;
 
+    if (!params || !shaderPatcher)
+        return SCE_GXM_ERROR_INVALID_POINTER;
+    *shaderPatcher = NULL;
     shader_patcher = malloc(sizeof(*shader_patcher));
     if (!shader_patcher)
         return SCE_KERNEL_ERROR_NO_MEMORY;
@@ -459,6 +463,8 @@ EXPORT(SceGxm, 0x05032658, int, sceGxmShaderPatcherCreate, const SceGxmShaderPat
 
 EXPORT(SceGxm, 0xEAA5B100, int, sceGxmShaderPatcherDestroy, SceGxmShaderPatcher *shaderPatcher)
 {
+    if (!shaderPatcher)
+        return SCE_GXM_ERROR_INVALID_POINTER;
     free(shaderPatcher->registered_programs);
     free(shaderPatcher);
     return 0;
@@ -470,6 +476,11 @@ EXPORT(SceGxm, 0x2B528462, int, sceGxmShaderPatcherRegisterProgram,
 {
     SceGxmRegisteredProgram *shader_patcher_id;
 
+    if (!programId)
+        return SCE_GXM_ERROR_INVALID_POINTER;
+    *programId = NULL;
+    if (!shaderPatcher || !programHeader)
+        return SCE_GXM_ERROR_INVALID_POINTER;
     shader_patcher_id = malloc(sizeof(*shader_patcher_id));
     if (!shader_patcher_id)
         return SCE_KERNEL_ERROR_NO_MEMORY;
@@ -477,11 +488,12 @@ EXPORT(SceGxm, 0x2B528462, int, sceGxmShaderPatcherRegisterProgram,
     memset(shader_patcher_id, 0, sizeof(*shader_patcher_id));
     shader_patcher_id->programHeader = programHeader;
 
-    shaderPatcher->registered_programs =
-        reallocarray(shaderPatcher->registered_programs, shaderPatcher->registered_count + 1,
-                     sizeof(SceGxmShaderPatcherId));
-    shaderPatcher->registered_programs[shaderPatcher->registered_count] = shader_patcher_id;
-    shaderPatcher->registered_count++;
+    int ret = gxm_program_registry_add(&shaderPatcher->registered_programs,
+                                        &shaderPatcher->registered_count, shader_patcher_id);
+    if (ret != 0) {
+        free(shader_patcher_id);
+        return ret;
+    }
 
     *programId = shader_patcher_id;
 
@@ -491,6 +503,12 @@ EXPORT(SceGxm, 0x2B528462, int, sceGxmShaderPatcherRegisterProgram,
 EXPORT(SceGxm, 0xF103AF8A, int, sceGxmShaderPatcherUnregisterProgram,
        SceGxmShaderPatcher *shaderPatcher, SceGxmShaderPatcherId programId)
 {
+    if (!shaderPatcher || !programId)
+        return SCE_GXM_ERROR_INVALID_POINTER;
+    int ret = gxm_program_registry_remove(shaderPatcher->registered_programs,
+                                           &shaderPatcher->registered_count, programId);
+    if (ret != 0)
+        return ret;
     free(programId);
     return 0;
 }
