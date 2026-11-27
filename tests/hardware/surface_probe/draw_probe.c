@@ -39,6 +39,35 @@ static int check_pixels(const uint32_t *pixels, uint32_t expected)
     return 0;
 }
 
+static int check_msaa_depth_edge(const uint32_t *pixels, SceGxmMultisampleMode mode)
+{
+    /* A near green triangle covers x+2*y<72.5 in screen coordinates. A far
+     * red fullscreen triangle must fill only samples not occluded by green. */
+    if (pixels[16*64+16]!=0xff00ff00 || pixels[48*64+48]!=0xff0000ff) {
+        callbacks->record("FAIL msaa_interior_depth\n");
+        callbacks->result("inside",pixels[16*64+16]);
+        callbacks->result("outside",pixels[48*64+48]);
+        return -1;
+    }
+    for (unsigned y=12;y<=26;y+=2) {
+        unsigned x=71-2*y;
+        uint32_t pixel=pixels[y*64+x];
+        unsigned red=pixel&255,green=(pixel>>8)&255;
+        int valid=(pixel>>24)==255 && ((pixel>>16)&255)==0;
+        if (mode==SCE_GXM_MULTISAMPLE_NONE)
+            valid=valid && (pixel==0xff0000ff || pixel==0xff00ff00);
+        else
+            valid=valid && red>0 && red<255 && green>0 && green<255 &&
+                red+green>=253 && red+green<=257;
+        if (!valid) {
+            callbacks->record("FAIL msaa_coverage_depth_resolve\n");
+            callbacks->result("mode",mode);callbacks->result("pixel",y*64+x);
+            callbacks->result("actual",pixel);return -1;
+        }
+    }
+    return 0;
+}
+
 int probe_draw(SceGxmContext *context, SceGxmRenderTarget *target,
                SceGxmColorSurface *surface, uint32_t *pixels, const ProbeHooks *hooks)
 {
@@ -50,6 +79,8 @@ int probe_draw(SceGxmContext *context, SceGxmRenderTarget *target,
     SceGxmShaderPatcherId vertex_id = NULL, fragment_id = NULL;
     SceGxmVertexProgram *vertex = NULL;
     SceGxmFragmentProgram *fragment = NULL;
+    SceGxmFragmentProgram *ms_fragment = NULL;
+    SceGxmRenderTarget *ms_target = NULL;
     int ret = -1;
     SceGxmShaderPatcherParams params = {0};
     params.hostAllocCallback = host_allocate; params.hostFreeCallback = host_free;
@@ -147,6 +178,64 @@ int probe_draw(SceGxmContext *context, SceGxmRenderTarget *target,
         }
     }
     hooks->record("PASS color_surface_gamma_rgb_alpha_and_reset\n");
+
+    /* One batch covers real multisampled draws and a return to single-sample
+     * coverage. Compile the fragment program for each matching target mode. */
+    const SceGxmMultisampleMode ms_modes[3]={
+        SCE_GXM_MULTISAMPLE_2X,SCE_GXM_MULTISAMPLE_4X,SCE_GXM_MULTISAMPLE_NONE};
+    for (unsigned pass=0;pass<3;++pass) {
+        SceGxmMultisampleMode mode=ms_modes[pass];
+        hooks->result("RUN msaa_draw_mode",mode);
+        if (mode!=SCE_GXM_MULTISAMPLE_NONE)
+            CHECK(sceGxmShaderPatcherCreateFragmentProgram(patcher,fragment_id,
+                SCE_GXM_OUTPUT_REGISTER_FORMAT_UCHAR4,mode,NULL,vertex_source,&ms_fragment));
+        sceGxmSetFragmentProgram(context,ms_fragment ? ms_fragment : fragment);
+        SceGxmRenderTargetParams ms_params={0};
+        ms_params.driverMemBlock=-1;ms_params.width=ms_params.height=64;
+        ms_params.scenesPerFrame=1;ms_params.multisampleMode=mode;
+        CHECK(sceGxmCreateRenderTarget(&ms_params,&ms_target));
+        SceGxmColorSurface ms_color;
+        CHECK(sceGxmColorSurfaceInit(&ms_color,SCE_GXM_COLOR_FORMAT_U8U8U8U8_ABGR,
+            SCE_GXM_COLOR_SURFACE_LINEAR,mode==SCE_GXM_MULTISAMPLE_NONE ?
+                SCE_GXM_COLOR_SURFACE_SCALE_NONE : SCE_GXM_COLOR_SURFACE_SCALE_MSAA_DOWNSCALE,
+            SCE_GXM_OUTPUT_REGISTER_SIZE_32BIT,64,64,64,pixels));
+        SceGxmDepthStencilSurface ms_depth;
+        /* Transient depth only: no forced guest depth-plane load or store. */
+        CHECK(sceGxmDepthStencilSurfaceInit(&ms_depth,SCE_GXM_DEPTH_STENCIL_FORMAT_DF32_S8,
+            SCE_GXM_DEPTH_STENCIL_SURFACE_LINEAR,64,NULL,NULL));
+        for (unsigned i=0;i<64*64;++i) pixels[i]=0xff000000;
+        for (unsigned i=0;i<3;++i) {
+            /* Screen vertices (8.5,8),(56.5,8),(8.5,32). The oblique edge
+             * splits native default samples even when an axis is reflected. */
+            vertices[i][0]=i==1 ? 0.765625f : -0.734375f;
+            vertices[i][1]=i==2 ? 0.0f : 0.75f;
+            vertices[i][2]=0.25f;vertices[3+i][2]=0.75f;
+        }
+        sceGxmSetFrontDepthWriteEnable(context,SCE_GXM_DEPTH_WRITE_ENABLED);
+        sceGxmSetFrontDepthFunc(context,SCE_GXM_DEPTH_FUNC_LESS);
+        CHECK(sceGxmBeginScene(context,0,ms_target,NULL,NULL,NULL,&ms_color,&ms_depth));
+        CHECK(sceGxmSetVertexStream(context,0,vertices));
+        CHECK(color(context,clear_color,matrix,green));
+        CHECK(sceGxmDraw(context,SCE_GXM_PRIMITIVE_TRIANGLES,SCE_GXM_INDEX_FORMAT_U16,indices,3));
+        CHECK(sceGxmSetVertexStream(context,0,vertices+3));
+        CHECK(color(context,clear_color,matrix,red));
+        CHECK(sceGxmDraw(context,SCE_GXM_PRIMITIVE_TRIANGLES,SCE_GXM_INDEX_FORMAT_U16,indices,3));
+        CHECK(sceGxmEndScene(context,NULL,NULL));sceGxmFinish(context);
+        CHECK(check_msaa_depth_edge(pixels,mode));
+        hooks->record(pass==0 ? "PASS msaa_2x_coverage_depth_resolve\n" : pass==1 ?
+            "PASS msaa_4x_coverage_depth_resolve\n" : "PASS msaa_restore_1x_coverage_depth\n");
+        sceGxmSetFragmentProgram(context,fragment);
+        if (ms_fragment) {
+            CHECK(sceGxmShaderPatcherReleaseFragmentProgram(patcher,ms_fragment));
+            ms_fragment=NULL;
+        }
+        CHECK(sceGxmDestroyRenderTarget(ms_target));ms_target=NULL;
+    }
+    for (unsigned i=0;i<3;++i) {
+        vertices[i][0]=i==1 ? 3.0f : -1.0f;
+        vertices[i][1]=i==2 ? 3.0f : -1.0f;
+        vertices[i][2]=0.75f;vertices[3+i][2]=0.25f;
+    }
 
     CHECK(sceGxmBeginScene(context, 0, target, NULL, NULL, NULL, surface, &ds));
     CHECK(sceGxmSetVertexStream(context, 0, vertices)); CHECK(color(context, clear_color, matrix, red));
@@ -266,6 +355,8 @@ int probe_draw(SceGxmContext *context, SceGxmRenderTarget *target,
     if (!texture_failures) ret = probe_cube(context, vertex, fragment, matrix, sampler, hooks);
 #endif
 done:
+    if (ms_target) { sceGxmFinish(context);sceGxmDestroyRenderTarget(ms_target); }
+    if (ms_fragment) sceGxmShaderPatcherReleaseFragmentProgram(patcher,ms_fragment);
     if (fragment) sceGxmShaderPatcherReleaseFragmentProgram(patcher, fragment);
     if (vertex) sceGxmShaderPatcherReleaseVertexProgram(patcher, vertex);
     if (fragment_id) sceGxmShaderPatcherUnregisterProgram(patcher, fragment_id);

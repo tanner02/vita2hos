@@ -1,3 +1,28 @@
+## 2026-11-27: multisample draw/depth batch checks (not deployed)
+
+The existing graphics batch now tests actual draws in2x,4x and restored1x modes,
+in addition to its no-draw color transfer preservation. A near green triangle
+occludes a later far red fullscreen triangle. Interior and exterior readbacks
+check depth ordering. Eight oblique-edge pixels must contain red/green mixtures
+for MSAA and binary red/green for1x. Every target uses a matching fragment-program
+mode, native transient depth, no gamma and downscaled color where applicable.
+Temporary shaders/targets are retired after Finish; original geometry/program
+state is restored before the existing depth, stencil, texture and cube checks.
+
+The edge is x+2*y=72.5; selected integer pixels satisfy x+2*y=71. Exact rational
+geometry checks split native default2x/4x positions evenly under all axis
+reflections. A private host harness extracts the actual guest pixel checker:
+ASan/UBSan accepts valid mixtures and single-sample coverage, and rejects missing
+coverage/depth, stale multisampling, invalid blue/alpha and inconsistent channel
+sums. This verifies the oracle, not GPU behavior. A lightweight local review had
+arithmetic errors; those values were not used and were checked independently.
+
+Draw probe9 and visible cube6 compile with VitaSDK warnings treated as errors.
+Their entry/import audits verify60 and61 current runtime source exports. No new
+native runtime code changed in this commit, and no hardware result is claimed.
+No staging, deployment, console access or held real-libc TLS probe update occurred;
+ZCode retains console/HLE ownership. Commercial3D boot remains unresolved.
+
 ## 2026-11-27: native multisample attachments and color resolve (not deployed)
 
 Render targets previously ignored their multisample mode and always created
