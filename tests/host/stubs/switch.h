@@ -58,6 +58,7 @@ static inline Result condvarWaitTimeout(CondVar *condition, Mutex *mutex, uint64
     int result = pthread_cond_timedwait(condition, mutex, &deadline);
     return result == ETIMEDOUT ? 0xEA01 : (Result)result;
 }
+#ifndef TEST_KERNEL_TIME
 static inline uint64_t armGetSystemTick(void)
 {
     struct timespec now;
@@ -65,6 +66,7 @@ static inline uint64_t armGetSystemTick(void)
     return (uint64_t)now.tv_sec * 1000000000 + now.tv_nsec;
 }
 static inline uint64_t armTicksToNs(uint64_t ticks) { return ticks; }
+#endif
 #else
 typedef int Mutex;
 static inline void mutexInit(Mutex *mutex) { *mutex = 0; }
