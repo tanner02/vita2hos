@@ -30,6 +30,9 @@ typedef struct {
 
 /* The immutable template is borrowed until all guest threads have stopped. */
 int SceKernelThreadMgr_init(const GuestTlsTemplate *main_tls, bool retarget_thread_pointer);
+/* Freeze creation/start and prove native worker termination before teardown.
+ * Failure leaves TLS, metadata and callback registrations intact. */
+int SceKernelThreadMgr_quiesce(void);
 int SceKernelThreadMgr_finish(void);
 /* Called on the current guest thread immediately before its nonreturning exit. */
 void SceKernelThreadMgr_prepare_current_exit(int status);

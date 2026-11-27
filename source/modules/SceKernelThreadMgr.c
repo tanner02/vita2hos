@@ -34,6 +34,7 @@ static bool g_retarget_thread_pointer;
 DICT_DEF2(vita_thread_info_dict, SceUID, M_DEFAULT_OPLIST, VitaThreadInfo *, M_POD_OPLIST)
 static vita_thread_info_dict_t g_vita_thread_infos;
 static RwLock g_vita_thread_infos_lock;
+static bool g_thread_shutdown; /* Protected by the registry lock. */
 
 static inline int resolve_vita_priority(int priority)
 {
@@ -104,9 +105,15 @@ static SceUID create_thread_with_affinity(const char *name, SceKernelThreadEntry
     if (!name || !entry)
         return SCE_KERNEL_ERROR_ILLEGAL_ADDR;
 
+    rwlockWriteLock(&g_vita_thread_infos_lock);
+    if(g_thread_shutdown) {
+        rwlockWriteUnlock(&g_vita_thread_infos_lock);
+        return SCE_KERNEL_ERROR_THREAD_ERROR;
+    }
     ti = malloc(sizeof(*ti));
     if (!ti) {
         LOG("Could not allocate thread info for thread \"%s\"", name);
+        rwlockWriteUnlock(&g_vita_thread_infos_lock);
         return SCE_KERNEL_ERROR_NO_MEMORY;
     }
 
@@ -125,6 +132,7 @@ static SceUID create_thread_with_affinity(const char *name, SceKernelThreadEntry
     ti->vita_tls = guest_tls_allocate(&g_main_tls);
     if (!ti->vita_tls) {
         free(ti);
+        rwlockWriteUnlock(&g_vita_thread_infos_lock);
         return SCE_KERNEL_ERROR_NO_MEMORY;
     }
     ti->vita_user_tls = guest_tls_user_area(ti->vita_tls);
@@ -136,12 +144,12 @@ static SceUID create_thread_with_affinity(const char *name, SceKernelThreadEntry
         LOG("Error creating thread: 0x%" PRIx32, res);
         free(ti->vita_tls);
         free(ti);
+        rwlockWriteUnlock(&g_vita_thread_infos_lock);
         return SCE_KERNEL_ERROR_THREAD_ERROR;
     }
 
     LOG("Created thread \"%s\", thid: 0x%x", name, ti->uid);
 
-    rwlockWriteLock(&g_vita_thread_infos_lock);
     vita_thread_info_dict_set_at(g_vita_thread_infos, ti->uid, ti);
     rwlockWriteUnlock(&g_vita_thread_infos_lock);
 
@@ -151,9 +159,10 @@ static SceUID create_thread_with_affinity(const char *name, SceKernelThreadEntry
 static SceUID create_thread(const char *name,SceKernelThreadEntry entry,int priority,SceSize stack)
 { return create_thread_with_affinity(name,entry,priority,stack,0); }
 
-static int start_thread(SceUID thid, SceSize arglen, void *argp)
+static int start_thread_locked(SceUID thid, SceSize arglen, void *argp)
 {
-    VitaThreadInfo *ti = get_thread_info_for_uid(thid);
+    VitaThreadInfo **record=vita_thread_info_dict_get(g_vita_thread_infos,thid);
+    VitaThreadInfo *ti=record ? *record : NULL;
     Result res;
 
     if (!ti)
@@ -189,6 +198,15 @@ static int start_thread(SceUID thid, SceSize arglen, void *argp)
     return 0;
 }
 
+static int start_thread(SceUID thid,SceSize arglen,void *argp)
+{
+    rwlockWriteLock(&g_vita_thread_infos_lock);
+    int result=g_thread_shutdown ? (int)SCE_KERNEL_ERROR_THREAD_ERROR :
+        start_thread_locked(thid,arglen,argp);
+    rwlockWriteUnlock(&g_vita_thread_infos_lock);
+    return result;
+}
+
 EXPORT(SceLibKernel, 0xC5C11EE7, SceUID, sceKernelCreateThread, const char *name,
        SceKernelThreadEntry entry, int initPriority, SceSize stackSize, SceUInt attr,
        int cpuAffinityMask, const SceKernelThreadOptParam *option)
@@ -206,6 +224,11 @@ EXPORT(SceThreadmgr, 0x1BBDE3D9, int, sceKernelDeleteThread, SceUID thid)
     if (!ti) {
         rwlockWriteUnlock(&g_vita_thread_infos_lock);
         return SCE_KERNEL_ERROR_UNKNOWN_THREAD_ID;
+    }
+    if(atomic_load(&ti->started) &&
+       (!atomic_load(&ti->completed) || R_FAILED(waitSingle(waiterForThread(&ti->thread),0)))) {
+        rwlockWriteUnlock(&g_vita_thread_infos_lock);
+        return SCE_KERNEL_ERROR_NOT_DORMANT;
     }
     Result res = threadClose(&ti->thread);
     if (R_FAILED(res)) {
@@ -546,12 +569,35 @@ int SceKernelThreadMgr_init(const GuestTlsTemplate *main_tls, bool retarget_thre
     g_vita_thread_info_tls_slot_id = threadTlsAlloc(NULL);
     vita_thread_info_dict_init(g_vita_thread_infos);
     rwlockInit(&g_vita_thread_infos_lock);
+    g_thread_shutdown=false;
 
     return 0;
 }
 
+int SceKernelThreadMgr_quiesce(void)
+{
+    rwlockWriteLock(&g_vita_thread_infos_lock);
+    g_thread_shutdown=true;
+    int result=0;
+    vita_thread_info_dict_it_t it;
+    for(vita_thread_info_dict_it(it,g_vita_thread_infos);
+        !vita_thread_info_dict_end_p(it);vita_thread_info_dict_next(it)) {
+        VitaThreadInfo *thread=vita_thread_info_dict_ref(it)->value;
+        if(atomic_load(&thread->started) &&
+           (!atomic_load(&thread->completed) ||
+            R_FAILED(waitSingle(waiterForThread(&thread->thread),0)))) {
+            result=SCE_KERNEL_ERROR_NOT_DORMANT;
+            break;
+        }
+    }
+    rwlockWriteUnlock(&g_vita_thread_infos_lock);
+    return result;
+}
+
 int SceKernelThreadMgr_finish(void)
 {
+    int result=SceKernelThreadMgr_quiesce();
+    if(result)return result;
     thread_events_finish();
     g_main_tls = (GuestTlsTemplate){0};
     g_retarget_thread_pointer=false;

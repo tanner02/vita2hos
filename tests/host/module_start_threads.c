@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #define TEST_THREAD_RUNTIME
 #define TEST_THREAD_RUNTIME_PTHREAD
 #define TEST_THREADED_RWLOCK
@@ -64,7 +65,14 @@ Result waitSingle(Waiter waiter,uint64_t ns)
         }
         return 0;
     }
-    assert(waiter.thread && ns==UINT64_MAX);
+    assert(waiter.thread && (ns==UINT64_MAX || ns==0));
+    if(ns==0) {
+        Thread *thread=waiter.thread;
+        if(thread->joined)return 0;
+        int result=pthread_tryjoin_np(thread->native,NULL);
+        if(!result){thread->joined=true;atomic_fetch_add(&joins,1);}
+        return result ? 0xEA01 : 0;
+    }
     if (atomic_exchange(&fail_wait,0)) return 1;
     Thread *thread=waiter.thread;
     if (!thread->joined) {
@@ -198,6 +206,31 @@ static void signal_roundtrips(void)
     }
     assert(!sceKernelWaitThreadEnd(uid,NULL,NULL));assert(!sceKernelDeleteThread(uid));
 }
+static atomic_bool shutdown_entered,shutdown_release;
+static int shutdown_worker(SceSize args,void *argp)
+{
+    (void)args;(void)argp;atomic_store(&shutdown_entered,true);
+    while(!atomic_load(&shutdown_release))sched_yield();
+    return 0;
+}
+static void shutdown_live_worker(void)
+{
+    SceUID uid=create_thread("shutdown worker",shutdown_worker,100,256*1024);assert(uid>0);
+    SceUID dormant=create_thread("shutdown dormant",shutdown_worker,100,256*1024);assert(dormant>0);
+    assert(!start_thread(uid,0,NULL));
+    uint64_t start=armGetSystemTick();
+    while(!atomic_load(&shutdown_entered)) {
+        assert(armTicksToNs(armGetSystemTick()-start)<UINT64_C(5000000000));sched_yield();
+    }
+    assert((uint32_t)SceKernelThreadMgr_quiesce()==SCE_KERNEL_ERROR_NOT_DORMANT);
+    assert((uint32_t)SceKernelThreadMgr_finish()==SCE_KERNEL_ERROR_NOT_DORMANT);
+    assert((uint32_t)start_thread(dormant,0,NULL)==SCE_KERNEL_ERROR_THREAD_ERROR);
+    assert((uint32_t)create_thread("late",shutdown_worker,100,256*1024)==SCE_KERNEL_ERROR_THREAD_ERROR);
+    atomic_store(&shutdown_release,true);
+    assert(!sceKernelWaitThreadEnd(uid,NULL,NULL));
+    assert(!SceKernelThreadMgr_quiesce());
+    assert(!sceKernelDeleteThread(uid));assert(!sceKernelDeleteThread(dormant));
+}
 int main(void)
 {
     GuestTlsTemplate tls={0};uint32_t seed=0x12345678;
@@ -211,6 +244,7 @@ int main(void)
     exit_process=true;run(false,0,0);
     signal_roundtrips();
     priority_delete_race();
-    SceKernelThreadMgr_finish();guest_tls_template_clear(&tls);
+    shutdown_live_worker();
+    assert(!SceKernelThreadMgr_finish());guest_tls_template_clear(&tls);
     puts("Module startup threads: return/exit status, main continuation, isolated TLS, events, joins and failure gating passed.");
 }

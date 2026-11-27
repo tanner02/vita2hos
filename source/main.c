@@ -120,6 +120,13 @@ static int launch(LoadProcess *process)
 
     LOG("SceKernelThreadMgr returned...");
 
+    if(SceKernelThreadMgr_quiesce()!=0) {
+        LOG("PROCESS_EXIT_WITH_LIVE_GUEST_THREADS status=0x%x native_process_exit=1 teardown_skipped=1",ret);
+        /* Horizon reclaims the complete address space and all threads together.
+         * Do not tear down GPU/TLS/images while guest workers can still use them. */
+        svcExitProcess();
+    }
+
     int gxm_cleanup_result = SceGxm_finish();
     if (gxm_cleanup_result != 0) {
         LOG("GXM shutdown failed: 0x%x", gxm_cleanup_result);

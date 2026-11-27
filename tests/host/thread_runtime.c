@@ -62,7 +62,14 @@ int threadTlsAlloc(void (*destructor)(void *)) { (void)destructor; return 1; }
 void threadTlsFree(int slot) { (void)slot; }
 void threadTlsSet(int slot, void *value) { (void)slot; tls_value = value; }
 void *threadTlsGet(int slot) { (void)slot; return tls_value; }
-Result waitSingle(Waiter waiter, uint64_t ns) { (void)waiter; (void)ns; return wait_result; }
+Result waitSingle(Waiter waiter, uint64_t ns)
+{
+    if(!wait_result && waiter.thread && ns!=0) {
+        VitaThreadInfo *info=waiter.thread->argument;
+        atomic_store(&info->completed,true);
+    }
+    return wait_result;
+}
 void svcSleepThread(s64 ns) { (void)ns; }
 void threadExit(void) { longjmp(thread_return, 1); }
 
@@ -292,6 +299,26 @@ int main(void)
     assert((uint32_t)sceKernelCreateThread("system affinity",entry,160,4096,0,0x80000,NULL)==SCE_KERNEL_ERROR_ILLEGAL_CPU_AFFINITY_MASK);
     assert(module_get_func_export(0x859a24b1,0xF1AE5654));
     assert(SceKernelThreadMgr_finish()==0);
+    assert(!SceKernelThreadMgr_init(&tls,false));
+    uid=create_thread("shutdown live",entry,160,4096);assert(uid>0);
+    SceUID dormant=create_thread("shutdown dormant",entry,160,4096);assert(dormant>0);
+    info=get_thread_info_for_uid(uid);assert(!start_thread(uid,0,NULL));
+    uint32_t *saved_tls=info->vita_tls;
+    assert((uint32_t)sceKernelDeleteThread(uid)==SCE_KERNEL_ERROR_NOT_DORMANT);
+    assert((uint32_t)SceKernelThreadMgr_quiesce()==SCE_KERNEL_ERROR_NOT_DORMANT);
+    assert((uint32_t)SceKernelThreadMgr_finish()==SCE_KERNEL_ERROR_NOT_DORMANT);
+    assert(get_thread_info_for_uid(uid)==info && info->vita_tls==saved_tls);
+    assert(guest_tls_template_valid(&g_main_tls) && !memcmp(&g_main_tls,&tls,sizeof(tls)));
+    assert((uint32_t)create_thread("after shutdown",entry,160,4096)==SCE_KERNEL_ERROR_THREAD_ERROR);
+    assert((uint32_t)start_thread(dormant,0,NULL)==SCE_KERNEL_ERROR_THREAD_ERROR);
+    atomic_store(&info->completed,true);wait_result=1;
+    assert((uint32_t)SceKernelThreadMgr_quiesce()==SCE_KERNEL_ERROR_NOT_DORMANT);
+    wait_result=0;assert(!SceKernelThreadMgr_quiesce());
+    assert(!sceKernelDeleteThread(uid));assert(!sceKernelDeleteThread(dormant));
+    assert(!SceKernelThreadMgr_finish());
+    assert(!SceKernelThreadMgr_init(&tls,false));
+    uid=create_thread("shutdown reset",entry,160,4096);assert(uid>0);
+    assert(!sceKernelDeleteThread(uid));assert(!SceKernelThreadMgr_finish());
     guest_tls_template_clear(&tls);
     puts("Thread runtime regression checks passed.");
     return 0;

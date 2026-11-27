@@ -224,3 +224,14 @@ No callbacks, adhoc mode, Vita sockets/resolvers, network info or native connect
 requests are implemented here. State queries report native NIFM status, mapping
 its connecting states to CONNECTING and preserving output on native failure.
 The host tests do not establish successful networking on the Switch.
+
+Thread shutdown tests retain a live pthread worker across attempted quiesce and
+finish calls. They check that new create/start operations are blocked, live
+thread deletion is rejected, TLS/registry state survives failed cleanup, native
+termination is required after the software completion flag, and initialization
+resets the shutdown gate. The bootstrap checks quiescence before GPU/TLS/image
+cleanup. If workers remain, it logs PROCESS_EXIT_WITH_LIVE_GUEST_THREADS and
+calls Horizon ExitProcess directly, leaving shared resources intact for process
+reclamation. That native exit branch remains unverified on hardware. This does
+not add cooperative cancellation, stop guest workers individually, or claim to
+free every unused dormant-thread allocation before the Horizon process ends.
