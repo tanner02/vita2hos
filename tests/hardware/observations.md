@@ -687,6 +687,33 @@
   remain unfinished. No Switch files were changed; commercial 3D boot remains
   unverified.
 
+## Host depth-transfer CPU groundwork after 262cd89
+
+- Investigation of force load/store found the old native image helper directly
+  treats guest depth storage as a native image. deko3d explicitly forbids pitched
+  depth images; Vita tiled layouts also need conversion. Do not expose setters
+  that activate that path before replacing it with transfer staging.
+  https://github.com/devkitPro/deko3d/blob/master/source/dk_image.cpp
+- Added a CPU transfer plan and read/write codec for linear DF32, S8 and separate
+  DF32_S8 planes. The staging sample stores depth as an unchanged 32-bit float
+  bit pattern and stencil in the low byte of a separate word. This is a CPU
+  representation, not a verified declaration of NVIDIA packed image storage.
+- Plans check dimensions, the guest's 32-pixel stride units, independent sample
+  row stride, and ARM32 span limits. Required spans include only active pixels
+  in the final row. Codecs revalidate copied plan sizes and all buffers before
+  output, reject pointer wrap/overlap (including plan metadata), preserve padding,
+  and use supplied backgrounds for explicitly unbacked planes.
+- Regression checks exact signed-zero, signaling/quiet NaN payload and infinity
+  bits, separate stencil round trips and low-byte truncation, padded rows,
+  absent planes, unsupported tiled/other formats, malformed sizes/plans and
+  failure preservation. A local Bonsai test draft was rejected for incorrect
+  units/SDK stubs; the checked-in tests use the actual SDK types.
+  The full ASan/UBSan suite and ARM Debug/Release builds passed.
+- GPU allocation/upload/readback, native image storage conversion, format/layout
+  expansion and scene load/store integration remain required. Force load/store
+  exports are deliberately not added by this groundwork commit. No new runtime
+  depth-buffer transfer, Switch test, or commercial boot is claimed.
+
 ## Runtime 15d400f48e5d3a3f5d811e2a67bd30a1388cc102
 
 - Standalone HOME title, owned fixed-address CPU probe SHA-256
