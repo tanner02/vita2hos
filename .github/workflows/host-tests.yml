@@ -18,3 +18,5 @@ jobs:
         run: sh tests/host/run.sh
       - name: Check deployment backup and rollback behavior
         run: python3 -B tests/host/test_deploy_switch.py
+      - name: Check unresolved import reports
+        run: python3 -B tests/host/test_report_imports.py

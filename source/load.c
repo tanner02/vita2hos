@@ -600,6 +600,8 @@ static int resolve_imports(const segment_info_t *segments, int count, sce_module
             stub[1] = arm_encode_movt(0, (uint16_t)(SCE_KERNEL_ERROR_MODULEMGR_NO_FUNC_NID >> 16));
             stub[2] = arm_encode_ret();
             LOG("  Could not resolve NID 0x%08" PRIx32 ", export not found!", nid);
+            LOG("UNRESOLVED_IMPORT kind=function library=0x%08" PRIx32 " nid=0x%08" PRIx32,
+                lib_nid, nid);
         }
     }
 
@@ -615,6 +617,8 @@ static int resolve_imports(const segment_info_t *segments, int count, sce_module
         LOG("  Trying to resolve variable NID 0x%08" PRIx32, nid);
         /* TODO */
         LOG("    Variable NID resolving currently not implemented!");
+        LOG("UNRESOLVED_IMPORT kind=variable library=0x%08" PRIx32 " nid=0x%08" PRIx32,
+            lib_nid, nid);
     }
 
     return 0;
