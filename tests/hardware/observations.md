@@ -1956,3 +1956,21 @@ guest work between BeginScene/EndScene. DISPLAY_SUBMIT records a ready-buffer
 submission, not completion of physical scanout. Program pointer/size repetition
 is a clue, not proof of identical immutable shader contents. Native/hardware
 verification of these additional diagnostics is pending.
+
+
+## Release profiling hardware regression
+
+Frozen composite `0a5ea6e` combines unchanged HLE owner `491e281` with the
+owned clip, logging and timing changes through `0746941`. The Release native
+build and package were source/stamp verified. On Switch, visible_cube v9
+passed all 48 checks, including 360 cube frames, then returned process 0 and
+cleanup 0. HOME was observed and the original game executable, module list
+and normal launch mode were restored by exact readback. Captured framebuffer
+submission intervals have median 33,345 microseconds; this measures successful
+buffer submissions, not physical scanout. All timing categories were emitted.
+The earlier quiet Release `aecf224` also passed the same 48-check batch.
+Release disables the SD log sink, so its old SD log is stale; these results use
+fresh UDP capture and the version stamp, with best-effort delivery limitations.
+The logging change did not resolve LittleBigPlanet's observed multi-second
+frame gaps. Real-game timing collection is in progress; no performance fix is
+claimed from the owned cube result.
