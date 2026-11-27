@@ -53,11 +53,11 @@ and native objects: module-start joins do not prove resident workers stopped.
 A zero status establishes successful startup returns only, not full correctness.
 Close the title manually and reconnect USB to collect logs. Set the file to
 `normal` or remove it before ordinary probes or game entry. Absence means normal;
-malformed files fail before guest loading. No diagnostic game payload has yet
-been deployed or run. No proprietary code, assets, disassembly or keys are stored
-in this document.
+malformed files fail before guest loading. The first private diagnostic payload
+is now deployed; execution results remain pending. No proprietary code, assets,
+disassembly or keys are stored in this document.
 
-## First preload phase prepared
+## First preload phase deployed; hardware result pending
 
 The first private payload retains the unmodified audited main, libc and FIOS
 plaintext images, the reviewed source-bound libc TP sidecar, an explicit
@@ -71,6 +71,20 @@ Ult is deferred from this normal-preload phase.
 Skipping main entry does not prevent initializer-driven executable callbacks or
 constructors from running. Before activating this payload, verify the new
 startup-capable runtime with an owned kernel probe and its versioned log; an
-older runtime would ignore launch-mode.txt. The prepared game payload remains
-private and has not been transferred. Only the newer runtime NSP was staged;
-the active owned kernel probe was preserved and readback-verified.
+older runtime would ignore launch-mode.txt. The owned kernel probe has now passed on installed runtime 3dda5cf, including
+clean guest/process/launch/close returns. Its versioned log establishes that
+the installed runtime understands dependencies-only mode.
+
+The private main/libc/FIOS payload, reviewed libc TLS plan, module list and
+launch-mode file were then copied over USB/MTP and individually readback-checked
+against the private manifest. The previous kernel executable is preserved on
+the SD card under a timestamped backup filename. The game main executable was
+activated last, after its dependencies and launch mode were verified. No game
+assets were copied. This records deployment only: commercial initialization,
+actual fixed-address mapping and a game boot remain unverified.
+
+Source commit 9a7eb87 adds bounded first-use diagnostics for missing functions
+and separates those records from the binding inventory in report-imports.py.
+Host sanitizer tests and ARM builds pass, but this tracer has not been run on
+hardware and is not in the installed 3dda5cf runtime. The pending first startup
+run therefore provides binding/startup logs, without first-use call evidence.
