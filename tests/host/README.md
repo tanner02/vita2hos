@@ -200,14 +200,25 @@ report-imports.py separates binding inventory from runtime first-use records.
 Duplicates are log occurrences, not call counts; only the first caller per
 traced import/lifetime is recorded. Missing records do not prove an API was unused.
 
-Controller polling tests use deterministic native pad samples to check sampling
-mode transitions, invalid-mode preservation, digital centering, analog endpoint
-and center conversion, monotonic Y inversion, timestamp initialization, output
-bounds, and the one-sample return count. The polling backend returns one current
-sample even when count offers more room; it has no historical ring. Analog and
-analog-wide currently share the same normalized native stick range. Blocking
-reads, extended modes/ports, rapid fire, and firmware-specific analog response
-curves remain separate work. These host checks do not establish hardware input.
+Controller tests use a native pthread sampler driven by controlled timer ticks
+and deterministic pad states. Peek returns up to 64 actual cached samples;
+ReadBufferPositive waits for a fresh batch and consumes it. Both return newest
+first, matching the pinned reference's ordering. A count-one reader consumes
+older unrequested records so it cannot build an input backlog. Mode changes
+apply to subsequent samples; buffered history is retained. Sampling uses an
+independent approximately-60-Hz native waiter, so input does not depend on GPU
+presentation completing. Exact firmware cadence/history policy is unverified.
+
+Tests cover timestamps, bounds, mode/stick conversion, ring overrun, competing
+readers, non-consuming peeks, blocked-read cancellation, shutdown/restart epochs,
+thread create/start/wait/close failures and failed-cleanup retry ownership.
+Native sampler cleanup has a one-second join bound and never closes a thread
+without proof of exit. The bootstrap uses native process exit if that proof
+fails. Extended ports/modes, negative reads, rapid fire and firmware-specific
+analog response curves remain unsupported. Analog and analog-wide use the same
+normalized native stick range. Host tests do not establish hardware input.
+Native thread-close lifetime reference:
+https://github.com/switchbrew/libnx/blob/master/nx/source/kernel/thread.c .
 
 Network lifecycle tests model the bootstrap-owned native socket provider and
 NIFM service acquisition. They cover host-provider failure, Vita init parameters,
