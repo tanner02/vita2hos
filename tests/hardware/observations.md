@@ -2047,3 +2047,23 @@ a NULL-buffer size query is not supported by this linked method. No raw memory
 writer replacement was adopted. Current native phase diagnostics separate
 compiler construction/CompileGlsl from file output, validation, unlink and
 compiler destruction; the latter is not a pure SD-I/O measurement.
+
+
+## Cached texture staging hardware verification
+
+Frozen Release `5b97266` adds CPU-cached converted texture staging with a
+checked full-allocation cache flush before publication, retaining unchanged HLE
+`491e281`. The previous report was confirmed absent before launch. All 48
+owned cube v9 checks passed, including texture mutations, viewport directions,
+ring-buffer guards and 360 cube frames; process exit and loader cleanup were 0.
+HOME was observed and original LBP/modules/normal mode were restored by exact
+readback. Median framebuffer submission gap was 33,344 us, not physical scanout
+FPS. This verifies pixel correctness and flush API behavior in the batch, not
+a measured game speedup. The full host suite also passed, including separate
+CPU/GPU cache views and flush-failure cleanup.
+
+The preceding real-game b8519bb run progressed past the old native stack
+exhaustion location, then crashed in guest rendering reading NULL+0x30 after
+startup cleanup had freed a graphics-pool table. The Render Thread had a healthy
+1 MiB native stack. The first failed initializer remains unidentified; no
+interactive 3D boot or complete startup pass is claimed.
