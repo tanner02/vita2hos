@@ -104,7 +104,13 @@ int probe_cube(SceGxmContext *context, SceGxmVertexProgram *vertex,
         display.width = WIDTH; display.height = HEIGHT;
         CHECK_CUBE(sceDisplaySetFrameBuf(&display, SCE_DISPLAY_SETBUF_NEXTFRAME));
         /* Wait for presentation and retirement before reusing the other buffer. */
-        CHECK_CUBE(sceDisplayWaitVblankStart()); CHECK_CUBE(sceDisplayWaitVblankStart());
+        if (frame==0) {
+            CHECK_CUBE(sceDisplayWaitSetFrameBufMulti(0));
+            CHECK_CUBE(sceDisplayWaitSetFrameBufMulti(2));
+            hooks->record("PASS counted_framebuffer_wait\n");
+        } else {
+            CHECK_CUBE(sceDisplayWaitVblankStart()); CHECK_CUBE(sceDisplayWaitVblankStart());
+        }
         float next_sine = sine * 0.9998000f + cosine * 0.0199987f;
         cosine = cosine * 0.9998000f - sine * 0.0199987f; sine = next_sine;
         if ((frame + 1) % 120 == 0) hooks->result("cube_frames", frame + 1);

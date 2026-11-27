@@ -179,6 +179,56 @@ int probe_draw(SceGxmContext *context, SceGxmRenderTarget *target,
     }
     hooks->record("PASS color_surface_gamma_rgb_alpha_and_reset\n");
 
+    /* One draw over CPU-written background separates blend errors from depth
+     * occlusion. RGB and alpha intentionally use different blend factors. */
+    static const struct {
+        float source[4];
+        uint32_t expected;
+        const char *pass;
+    } blend_cases[] = {
+        {{0.8f,0.2f,0.4f,0.5f},0xe6804d80,"PASS blend_straight_alpha\n"},
+        {{0.4f,0.1f,0.2f,0.5f},0xe6804d80,"PASS blend_premultiplied_alpha\n"},
+        {{0.25f,0.125f,0.0625f,0.25f},0xffa98673,"PASS blend_additive\n"},
+        {{0.8f,0.2f,0.4f,0.5f},0xe6996680,"PASS blend_write_mask_ra\n"},
+    };
+    for (unsigned pass=0;pass<4;++pass) {
+        SceGxmBlendInfo blend={0};
+        blend.colorMask=pass==3 ? SCE_GXM_COLOR_MASK_R|SCE_GXM_COLOR_MASK_A : SCE_GXM_COLOR_MASK_ALL;
+        blend.colorFunc=blend.alphaFunc=SCE_GXM_BLEND_FUNC_ADD;
+        blend.colorSrc=pass==0 || pass==3 ? SCE_GXM_BLEND_FACTOR_SRC_ALPHA : SCE_GXM_BLEND_FACTOR_ONE;
+        blend.alphaSrc=SCE_GXM_BLEND_FACTOR_ONE;
+        blend.colorDst=blend.alphaDst=pass==2 ? SCE_GXM_BLEND_FACTOR_ONE : SCE_GXM_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+        CHECK(sceGxmShaderPatcherCreateFragmentProgram(patcher,fragment_id,
+            SCE_GXM_OUTPUT_REGISTER_FORMAT_UCHAR4,SCE_GXM_MULTISAMPLE_NONE,
+            &blend,vertex_source,&ms_fragment));
+        for (unsigned i=0;i<64*64;++i) pixels[i]=0xcc996633;
+        sceGxmSetFragmentProgram(context,ms_fragment);
+        sceGxmSetFrontDepthFunc(context,SCE_GXM_DEPTH_FUNC_ALWAYS);
+        sceGxmSetFrontDepthWriteEnable(context,SCE_GXM_DEPTH_WRITE_DISABLED);
+        CHECK(sceGxmBeginScene(context,0,target,NULL,NULL,NULL,surface,NULL));
+        CHECK(sceGxmSetVertexStream(context,0,vertices));
+        CHECK(color(context,clear_color,matrix,blend_cases[pass].source));
+        CHECK(sceGxmDraw(context,SCE_GXM_PRIMITIVE_TRIANGLES,SCE_GXM_INDEX_FORMAT_U16,indices,3));
+        CHECK(sceGxmEndScene(context,NULL,NULL));sceGxmFinish(context);
+        for (unsigned y=16;y<=48;y+=16) for (unsigned x=16;x<=48;x+=16) {
+            uint32_t actual=pixels[y*64+x],expected=blend_cases[pass].expected;
+            for (unsigned channel=0;channel<4;++channel) {
+                unsigned a=(actual>>(channel*8))&255,e=(expected>>(channel*8))&255;
+                if (a+2<e || a>e+2) {
+                    hooks->record("FAIL blend_pixel\n");hooks->result("blend_case",pass);
+                    hooks->result("actual",actual);hooks->result("expected",expected);
+                    ret=-1;goto done;
+                }
+            }
+        }
+        hooks->record(blend_cases[pass].pass);
+        sceGxmSetFragmentProgram(context,fragment);
+        CHECK(sceGxmShaderPatcherReleaseFragmentProgram(patcher,ms_fragment));
+        ms_fragment=NULL;
+    }
+    sceGxmSetFrontDepthWriteEnable(context,SCE_GXM_DEPTH_WRITE_ENABLED);
+    sceGxmSetFrontDepthFunc(context,SCE_GXM_DEPTH_FUNC_LESS);
+
     /* One batch covers real multisampled draws and a return to single-sample
      * coverage. Compile the fragment program for each matching target mode. */
     const SceGxmMultisampleMode ms_modes[3]={
