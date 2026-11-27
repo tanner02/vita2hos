@@ -2024,3 +2024,26 @@ instead of forwarding an unspecified upper half; the SDK remains unchanged.
 Host mocks now accept the full 64-bit argument and assert zero high bits.
 Those mocks do not establish the ARM register ABI or native hardware success;
 compiled call-site inspection and a fresh graphics batch are still required.
+
+
+## Native ABI correction hardware verification
+
+Frozen `b8519bb` retains unchanged HLE `491e281` and eight exact owned
+production paths through `4f15735`. The native ARM call site has r3=0 after
+successful threadCreate and preserves that value through handle/core/low-mask
+setup to SVC 0x0f. The previous report was confirmed absent before launch.
+The fresh owned cube v9 run passed all 48 checks, including 360 cube frames,
+returned process 0 and cleanup 0, and HOME was observed. Scene logs captured
+execution on native core 1. Original game/modules/normal mode were restored
+by exact readback. Median framebuffer submission gap was 33,378 us; this is
+not physical scanout FPS. The real game subsequently entered, with shader
+and scene records observed on cores 0, 1 and 2; it is still loading, so the
+previous late stack failure has not yet been proven cleared.
+
+The shader SDK's memory-output method was also inspected read-only with the
+SDK objdump fallback, not REA decompilation (provider unavailable). It writes
+through the supplied buffer unconditionally before returning the output size;
+a NULL-buffer size query is not supported by this linked method. No raw memory
+writer replacement was adopted. Current native phase diagnostics separate
+compiler construction/CompileGlsl from file output, validation, unlink and
+compiler destruction; the latter is not a pure SD-I/O measurement.
