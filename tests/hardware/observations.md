@@ -1,3 +1,36 @@
+## Offline FIOS empty-overlay path resolution (2026-11-27)
+
+- Added _sceFiosKernelOverlayResolveSync (0xE9AE60FB) and
+  _sceFiosKernelOverlayResolveWithRangeSync (0x8CCA471A). With no installed Vita
+  overlays, both return the input Vita path unchanged; host/device mapping stays
+  in the I/O layer. Foreign process IDs, invalid write/range selectors, null
+  pointers, unterminated inputs and insufficient copy capacity fail before writes.
+- The initialized packet prefix is explicitly 32-bit: output address at +0,
+  input/path capacity at +4, optional min/max order bytes at +8/+9, and independent
+  output-copy capacity at +12. Uninitialized reserved/trailing words are ignored.
+  Source SDK documentation also distinguishes validation and copy capacities:
+  https://github.com/vitasdk/vita-headers/blob/master/include/psp2/fios2kernel.h
+- Evidence: a private host-only replay applied the existing relocation code to
+  the user-supplied FIOS ELF before bounded Capstone inspection. The resolve
+  call at relocated 0x2801a7f6 follows stores of output at sp and capacities at sp+4/sp+12,
+  and calls raw stub 0x2801a984. Range wrapper 0x2801a800 supplies the same
+  fields at packet-relative offsets with min/max bytes +8/+9. No ARM guest code
+  was executed. The unrelocated image did not yield reliable direct-call refs.
+- REA tools/providers remain unavailable in this chat; this was the established
+  static fallback, not a native decompiler result. Private code/dumps remain
+  outside the repository. Thread-disable wrappers only pass the syscall result
+  through; their setter return semantics remain unresolved, so those exports
+  were not added based on guesses.
+- Runtime policy currently caps max_path at 4096 bytes, requires a full string
+  plus terminator to fit output capacity, and returns ILLEGAL_SIZE on failure.
+  Exact firmware error/truncation behavior and disabled-thread handling remain
+  unverified. Overlay registration and nonempty overlay rewriting are not added.
+- Host tests check NID dispatch, independent capacities, non-NUL/oversized paths,
+  range/PID/selector errors, unchanged output on failure, overlapping input/output,
+  and output overwriting the copied syscall packet. The full ASan/UBSan host
+  suite and ARM Debug/Release builds passed. Hardware startup is unverified;
+  the Switch installation and active executable remain untouched.
+
 ## Offline RTC imports for bundled FIOS (2026-11-27)
 
 - A fresh source/export-table comparison found 29 unresolved imports in the
