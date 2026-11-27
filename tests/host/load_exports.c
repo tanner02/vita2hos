@@ -49,6 +49,15 @@ int main(void)
     assert(!owned && exports.libraries == original);
     record(records, 101);
     put32(records + 12, 1); /* TLS is not an ordinary variable. */
+    ModuleGuestExports tls_exports={0};
+    assert(load_exports_register(&tls_exports, &owner, records, 32, read_memory, memory) == 0);
+    assert(module_guest_exports_find(&tls_exports, 101, MODULE_SYMBOL_FUNCTION, 11, NULL));
+    assert(tls_exports.libraries->count == 2); /* Trailing TLS entry is not published. */
+    module_guest_exports_clear(&tls_exports);
+    put32(records + 24, 0x10f8); /* Ordinary entries fit; trailing TLS entry does not. */
+    assert(load_exports_register(&exports, &owner, records, 32, read_memory, memory) < 0);
+    put32(records + 24, 0x1000);
+    put32(records + 12, UINT32_MAX);
     assert(load_exports_register(&exports, &owner, records, 32, read_memory, memory) < 0);
     record(records, 101);
     put32(records + 8, UINT32_MAX);

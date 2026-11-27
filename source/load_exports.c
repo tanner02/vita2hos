@@ -70,19 +70,22 @@ int load_exports_register(ModuleGuestExports *exports, const void *owner,
         uint32_t tls = read32(p + 12), library = read32(p + 16);
         /* Module lifecycle exports (library zero) are not public libraries.
          * Their addresses require a separate lifecycle decoder. */
-        if (tls) goto fail;
         if (library) {
-            uint64_t total = (uint64_t)functions + variables;
-            if (total > SIZE_MAX / sizeof(ModuleGuestSymbol) || total > UINT32_MAX / 4)
+            uint64_t ordinary = (uint64_t)functions + variables;
+            uint64_t total = ordinary + tls;
+            if (ordinary > SIZE_MAX / sizeof(ModuleGuestSymbol) ||
+                total > UINT32_MAX / 4 || total > SIZE_MAX / 4)
                 goto fail;
-            size_t count = (size_t)total;
+            size_t count = (size_t)ordinary, table_bytes = (size_t)total * 4;
             uint32_t nid_address = read32(p + 24), entry_address = read32(p + 28);
-            if (count && ((nid_address | entry_address) & 3)) goto fail;
-            if ((uint64_t)nid_address + count * 4 > UINT64_C(0x100000000) ||
-                (uint64_t)entry_address + count * 4 > UINT64_C(0x100000000)) goto fail;
-            const unsigned char *nids = count ? read(context, nid_address, count * 4, false) : NULL;
-            const unsigned char *entries = count ? read(context, entry_address, count * 4, false) : NULL;
-            if (count && (!nids || !entries)) goto fail;
+            if (total && ((nid_address | entry_address) & 3)) goto fail;
+            if ((uint64_t)nid_address + table_bytes > UINT64_C(0x100000000) ||
+                (uint64_t)entry_address + table_bytes > UINT64_C(0x100000000)) goto fail;
+            const unsigned char *nids = total ? read(context, nid_address, table_bytes, false) : NULL;
+            const unsigned char *entries = total ? read(context, entry_address, table_bytes, false) : NULL;
+            if (total && (!nids || !entries)) goto fail;
+            /* TLS entries follow ordinary symbols. Their values are not
+             * ordinary addresses and must never enter this registry. */
             ModuleGuestSymbol *symbols = count ? malloc(count * sizeof(*symbols)) : NULL;
             if (count && !symbols) goto fail;
             for (size_t i = 0; i < count; ++i) {

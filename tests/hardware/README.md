@@ -260,8 +260,9 @@ alone does not load or start those modules.
 
 The export decoder accepts relocated 32-byte public-library records through a
 bounded image-reader callback. It validates function targets as executable,
-preserves Thumb bits, and registers all libraries atomically. TLS exports are
-rejected. Library-zero lifecycle records are decoded separately into validated
+preserves Thumb bits, and registers all libraries atomically. Trailing TLS export
+entries are bounded with the complete table but are not registered as ordinary
+symbols. Any TLS imports fail binding explicitly. Library-zero lifecycle records are decoded separately into validated
 start, stop, and exit function addresses, without publishing those functions as
 ordinary library exports. Duplicate lifecycle functions are rejected. This is
 host-tested groundwork. The runtime registers the loaded image's public exports

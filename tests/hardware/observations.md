@@ -151,6 +151,30 @@
   now checks reserved regions explicitly and has bounded standalone-title layout
   retries. Fixed-address execution was subsequently confirmed below.
 
+## Host-only LittleBigPlanet table replay after ade07aa
+
+- Input: private plaintext SELF working copies of the supplied PCSF00516 main
+  executable and bundled libc, FIOS2, and Ult libraries. No target instructions
+  were executed; the Switch was not changed.
+- A static inventory found 6,124, 5,468, and 3,839 format-0 relocation records in
+  libc, FIOS2, and Ult respectively. Their explicit relocation codes were
+  ABS32 and Thumb MOVW/MOVT; the main fixed-address executable had no relocation
+  segments. The inventory alone does not validate instruction targets.
+- A host harness replayed the runtime's actual relocation and export-decoding
+  C sources under ASan/UBSan, using allocated writable buffers and simulated
+  32-bit guest addresses. All four images passed after the decoder correction.
+- The initial replay rejected libc because its public libraries include trailing
+  TLS exports. Ordinary exports can now register without publishing those TLS
+  entries; complete table bounds remain checked. Any TLS imports are explicitly
+  rejected, rather than being silently ignored.
+- Decoded ordinary public symbols: libc 1,441 across three libraries, FIOS2 149,
+  and Ult 62. All three libraries expose a startup function; FIOS2 and Ult also
+  expose stop functions. In particular, a zero metadata start offset does not
+  establish that FIOS2 lacks an exported startup entry.
+- This checks relocated tables only. It does not prove import binding, native
+  mappings, TLS, startup behavior, or commercial game boot. Private binaries and
+  replay inputs are not included in the repository.
+
 ## Runtime 15d400f48e5d3a3f5d811e2a67bd30a1388cc102
 
 - Standalone HOME title, owned fixed-address CPU probe SHA-256

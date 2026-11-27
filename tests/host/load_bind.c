@@ -68,6 +68,9 @@ int main(void)
     assert(load_image_close(&duplicate) == 0);
     assert(module_guest_exports_find(&process, 100, MODULE_SYMBOL_FUNCTION, 11, NULL) == (void *)0x9001);
     assert(load_image_bind(&first, &first.exports) < 0);
+    first_import.num_syms_tls_vars=1; memcpy(a, &first_import, sizeof(first_import));
+    assert(load_image_bind(&first, &process) < 0 && !first.bound && !transitions);
+    first_import.num_syms_tls_vars=0; memcpy(a, &first_import, sizeof(first_import));
     var_nid=0xffffffff; memcpy(a+72, &var_nid, 4);
     assert(load_image_bind(&first, &process) < 0 && !first.bound);
     var_nid=12; memcpy(a+72, &var_nid, 4);

@@ -14,6 +14,9 @@
 #define IMP_GET_VARS_COUNT(imp)                                                                    \
     (imp->size == sizeof(sce_module_imports_short_raw) ? imp->imports_short.num_syms_vars          \
                                                        : imp->imports.num_syms_vars)
+#define IMP_GET_TLS_COUNT(imp) \
+    (imp->size == sizeof(sce_module_imports_short_raw) ? imp->imports_short.num_syms_tls_vars \
+                                                       : imp->imports.num_syms_tls_vars)
 #define IMP_GET_NID(imp)                                                                           \
     (imp->size == sizeof(sce_module_imports_short_raw) ? imp->imports_short.library_nid            \
                                                        : imp->imports.library_nid)
@@ -104,6 +107,10 @@ static int resolve_imports(const segment_info_t *segments, int count, sce_module
     uint32_t nid;
     uint32_t *stub;
     uint32_t lib_nid = IMP_GET_NID(import);
+    if (IMP_GET_TLS_COUNT(import)) {
+        LOG("Unsupported TLS imports for library NID 0x%08" PRIx32, lib_nid);
+        return -1;
+    }
 
     const uint32_t num_funcs = IMP_GET_FUNC_COUNT(import);
     if (num_funcs && (((uintptr_t)IMP_GET_FUNC_TABLE(import) & 3) ||
