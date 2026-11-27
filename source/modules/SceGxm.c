@@ -118,6 +118,7 @@ typedef struct SceGxmShaderPatcher {
 
 typedef struct SceGxmVertexProgram {
     uint32_t default_uniform_count;
+    GxmUniformLayout uniform_layout;
     SceGxmVertexAttribute *attributes;
     unsigned int attributeCount;
     SceGxmVertexStream *streams;
@@ -127,6 +128,7 @@ typedef struct SceGxmVertexProgram {
 
 typedef struct SceGxmFragmentProgram {
     uint32_t default_uniform_count;
+    GxmUniformLayout uniform_layout;
     SceGxmOutputRegisterFormat outputFormat;
     SceGxmMultisampleMode multisampleMode;
     SceGxmBlendInfo blendInfo;
@@ -608,6 +610,10 @@ EXPORT(SceGxm, 0xB7BBA6D5, int, sceGxmShaderPatcherCreateVertexProgram,
 
     memset(vertex_program, 0, sizeof(*vertex_program));
     vertex_program->default_uniform_count = programId->programHeader->default_uniform_buffer_count;
+    if (!gxp_uniform_layout_c(programId->programHeader, &vertex_program->uniform_layout)) {
+        ret = SCE_GXM_ERROR_INVALID_VALUE;
+        goto fail;
+    }
     if (attributeCount) {
         vertex_program->attributes = calloc(attributeCount, sizeof(SceGxmVertexAttribute));
         if (!vertex_program->attributes) {
@@ -677,6 +683,10 @@ EXPORT(SceGxm, 0x4ED2E49D, int, sceGxmShaderPatcherCreateFragmentProgram,
 
     memset(fragment_program, 0, sizeof(*fragment_program));
     fragment_program->default_uniform_count = programId->programHeader->default_uniform_buffer_count;
+    if (!gxp_uniform_layout_c(programId->programHeader, &fragment_program->uniform_layout)) {
+        free(fragment_program);
+        return SCE_GXM_ERROR_INVALID_VALUE;
+    }
     fragment_program->outputFormat = outputFormat;
     fragment_program->multisampleMode = multisampleMode;
     if (blendInfo) {

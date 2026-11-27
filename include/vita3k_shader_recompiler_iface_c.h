@@ -1,9 +1,12 @@
 #ifndef VITA3K_SHADER_RECOMPILER_IFACE_C_H
 #define VITA3K_SHADER_RECOMPILER_IFACE_C_H
+#include "gxm/uniform_layout.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+bool gxp_uniform_layout_c(const SceGxmProgram *program, GxmUniformLayout *layout);
 
 bool convert_gxp_to_spirv_c(uint32_t **spirv, uint32_t *num_instr, const SceGxmProgram *program,
                             const char *shader_name, bool support_shader_interlock,

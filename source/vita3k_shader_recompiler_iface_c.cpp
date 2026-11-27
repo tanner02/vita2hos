@@ -3,10 +3,35 @@
 #include <limits>
 #include <shader/spirv_recompiler.h>
 #include <shader/usse_translator_types.h>
+#include <shader/gxp_parser.h>
 
 #include "vita3k_shader_recompiler_iface_c.h"
 
 extern "C" {
+
+bool gxp_uniform_layout_c(const SceGxmProgram *program, GxmUniformLayout *layout)
+{
+    if (!layout) return false;
+    *layout = {};
+    if (!program) return false;
+    try {
+        uint32_t counts[GXM_UNIFORM_LAYOUT_SLOTS] = {};
+        bool seen[GXM_UNIFORM_LAYOUT_SLOTS] = {};
+        for (const auto &buffer : shader::get_program_input(*program).uniform_buffers) {
+            // Match spirv_recompiler.cpp's convert_buffer_idx_to_host and map order.
+            // Internal literal/texture buffers are outside this storage container.
+            if (buffer.index >= GXM_UNIFORM_LAYOUT_SLOTS) continue;
+            unsigned slot = buffer.index < 14 ? buffer.index + 1 : 0;
+            if (!seen[slot]) {
+                counts[slot] = buffer.size;
+                seen[slot] = true;
+            }
+        }
+        return gxm_uniform_layout_build(counts, layout);
+    } catch (...) {
+        return false;
+    }
+}
 
 static shader::GeneratedShader
 convert_gxp_internal(const SceGxmProgram *program, const char *shader_name,

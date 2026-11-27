@@ -12,6 +12,17 @@ static void *test_malloc(size_t size) { return fail_allocation ? nullptr : std::
 int main()
 {
     SceGxmProgram program;
+    GxmUniformLayout layout;
+    assert(gxp_uniform_layout_c(&program, &layout));
+    assert(layout.bytes[0] == 12 && layout.bytes[1] == 4 && layout.bytes[4] == 20);
+    assert(layout.offsets[4] == 32 && layout.size == 64);
+    shader::test_conversion_mode = 1;
+    assert(gxp_uniform_layout_c(&program, &layout) && layout.size == 0);
+    shader::test_conversion_mode = 2;
+    assert(!gxp_uniform_layout_c(&program, &layout) && layout.size == 0);
+    assert(!gxp_uniform_layout_c(nullptr, &layout));
+    assert(!gxp_uniform_layout_c(&program, nullptr));
+    shader::test_conversion_mode = 0;
     uint32_t *spirv = nullptr, count = 0;
     char *glsl = nullptr;
     auto convert_spirv = [&] { return convert_gxp_to_spirv_c(&spirv, &count, &program,
