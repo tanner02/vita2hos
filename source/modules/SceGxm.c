@@ -18,6 +18,7 @@
 
 #include "gxm/gxm_to_dk.h"
 #include "gxm/util.h"
+#include "gxm/draw.h"
 #include "gxm/texture_layout.h"
 #include "gxm/texture_staging.h"
 #include "modules/SceSysmem.h"
@@ -1671,15 +1672,23 @@ EXPORT(SceGxm, 0xBC059AFC, int, sceGxmDraw, SceGxmContext *context, SceGxmPrimit
 
     LOG("sceGxmDraw: primType: 0x%x, indexCount: %d", primType, indexCount);
 
+    if (!context || !indexData)
+        return SCE_GXM_ERROR_INVALID_POINTER;
+
     index_block = SceSysmem_get_vita_memblock_info_for_addr(indexData);
     if (!index_block)
         return SCE_GXM_ERROR_INVALID_VALUE;
+
+    ret = gxm_validate_index_range(indexType, (uintptr_t)indexData,
+                                  (uintptr_t)index_block->base, index_block->size,
+                                  indexCount, &index_offset);
+    if (ret != 0)
+        return ret;
 
     ret = context_flush_dirty_state(context);
     if (ret != 0)
         return ret;
 
-    index_offset = (uintptr_t)indexData - (uintptr_t)index_block->base;
     dkCmdBufBindIdxBuffer(context->cmdbuf, gxm_to_dk_idx_format(indexType),
                           dkMemBlockGetGpuAddr(index_block->dk_memblock) + index_offset);
     dkCmdBufDrawIndexed(context->cmdbuf, gxm_to_dk_primitive(primType), indexCount, 1, 0, 0, 0);
