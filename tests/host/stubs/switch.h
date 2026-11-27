@@ -134,6 +134,7 @@ Result svcGetInfo(uint64_t *, u32, Handle, uint64_t);
 Result svcCreateCodeMemory(Handle *, void *, size_t);
 Result svcControlCodeMemory(Handle, u32, uint64_t, uint64_t, u32);
 Result svcCloseHandle(Handle);
+Result appletReportUserIsActive(void);
 void virtmemLock(void);
 void virtmemUnlock(void);
 VirtmemReservation *virtmemAddReservation(void *, size_t);

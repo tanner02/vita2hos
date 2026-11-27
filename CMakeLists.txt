@@ -51,6 +51,7 @@ target_compile_definitions(vita_mspace PRIVATE ONLY_MSPACES=1 USE_LOCKS=0
 add_executable(vita2hos
     source/guest_tls.c
     source/thread_events.c
+    source/power_tick.c
     source/guest_tp.c
     source/guest_tp_plan.c
     source/guest_tp_arm.c

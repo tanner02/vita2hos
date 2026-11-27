@@ -169,3 +169,10 @@ UID queries, invalid masks, snapshots, TLS and dependency inheritance. This is
 guest metadata only: native threadCreate still uses Horizon's default affinity.
 No native core pinning or change-affinity API is implemented by this change;
 processor identity and firmware edge cases remain unverified.
+
+Power-tick checks resolve the Processmgr NID and verify one-shot Horizon user
+activity reports for DEFAULT, translated native failures, and no native activity
+for unsupported selective timer modes or invalid values. DEFAULT maps to
+appletReportUserIsActive; it never enables persistent AutoSleepDisabled. Native
+idle/screen behavior still needs console observation. Selective suspend/off/dim
+ticks and power lock/unlock remain unsupported.
