@@ -1,3 +1,11 @@
+## 2026-11-27: static savedata failure path after 613762b startup
+
+Read-only inspection of the user-owned executable identifies the observed message-dialog call as system-message mode. The path selects the SDK no-space or no-memory-card message and retries MsgDialogInit on failure. The exact selected message has not been captured dynamically. The unsupported dialog return can therefore keep this path retrying without displaying its intended UI; an absent normal-exit marker does not prove a crash.
+
+The observed AppUtil NIDs 0x93f0d89f and 0x607647ba are SaveDataSlotGetParam and SaveDataDataSave, respectively. Static call sites inspect their results and record a save failure in per-thread error storage. These calls require real slot metadata and file persistence; returning success or fabricating free space would not establish a working save system. The next storage implementation needs a title-scoped root, checked file operations, accurate capacity/error translation and transactional metadata. No such backend or storage success is claimed here.
+
+Private source-bound static evidence is retained in startup-dialog-evidence.json. No proprietary instructions or assets are published. The febb799 hardware argument log remains pending and must distinguish the actual dynamic branch before a causal fix is claimed.
+
 ## 2026-11-27: LittleBigPlanet context and graphics initialization on e872799
 
 The collected versioned log records sceNpTrophyCreateContext returning zero, creation of SceGxmDisplayQueue and Render Thread, and allocation of graphics buffers and render targets. The user reports automatic exit without visuals or a visible error. The collected log has no normal process-exit, launch-result or image-close marker; a clean shutdown is therefore not established. No crash report for the dedicated title was found in the exposed atmosphere/crash_reports folder.
