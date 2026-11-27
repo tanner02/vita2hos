@@ -1,3 +1,9 @@
+## 2026-11-27: ABGR8 surface gamma on runtime 4d1233b — PASS
+
+User installed HOME title 4d1233b and ran visible_cube v3. Active guest SHA256 9f61826b2e5bcfebb0ff2788ef97fa5adaddf8090c0e6593d9b0144c74eb9d40 matches the transferred probe. Collected report passes color_surface_gamma_rgb_alpha_and_reset: nine interior pixel samples per pass check mid-gray RGB near 188 with linear alpha near 128 under BGR gamma, then RGB/alpha near 128 after switching to NONE on the same target (tolerance two). The report also passes driver memory, framebuffer switching, null color, shader red, depth-only occlusion, stencil replacement, texture changes/viewports and all 360 animated cube frames. Runtime log identifies 4d1233b, has no unresolved imports, and guest/process/launch/close return zero.
+
+This verifies the supported linear ABGR8 output gamma path and reset. It does not specifically verify destination blending with sRGB, selective GR gamma, other surface layouts/formats, commercial game execution, or commits after 4d1233b. No later runtime has been transferred.
+
 ## 2026-11-27: owned dependency probe on runtime 006d5c4 — PASS
 
 User ran module_probe v1 from source c3ee39d on the installed HOME title. Collected report passes main_tls, dependency_exit_thread_start, function_import, variable_import_alias, and final module_probe. Log identifies runtime 006d5c4, applies two reviewed TP sites, starts owned_dependency in a separate module_start thread, and returns guest/process/launch/close zero without unresolved imports. Active executable SHA256 05ab4d2942cb13791645696cf25736a8653944390772e14eb5fe2a85db595283 and TLS plan 461e99661fc7e840a09b91bdf91341a118539e7b0e9a4ff881ae7603d06f3b60 match the transferred payload.
