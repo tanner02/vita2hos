@@ -53,6 +53,7 @@ add_executable(vita2hos
     source/trophy_archive.c
     source/guest_tls.c
     source/thread_events.c
+    source/display_state.c
     source/power_tick.c
     source/guest_tp.c
     source/guest_tp_plan.c

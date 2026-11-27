@@ -5,6 +5,7 @@
 #include <switch.h>
 
 #include "modules/SceDisplay.h"
+#include "display_state.h"
 #include "deko_utils.h"
 #include "log.h"
 #include "module.h"
@@ -28,9 +29,6 @@ static uint32_t g_swapchain_image_width;
 static uint32_t g_swapchain_image_height;
 static Thread g_presenter_thread;
 static LEvent g_presenter_thread_run;
-static Mutex g_vblank_mutex;
-static CondVar g_vblank_condvar;
-static SceDisplayFrameBuf g_vita_conf_fb;
 
 static void create_swapchain(uint32_t width, uint32_t height)
 {
@@ -83,17 +81,18 @@ static void presenter_thread_func(void *arg)
     uint32_t width, height, stride;
     uint32_t pixelfmt;
     int slot;
+    SceDisplayFrameBuf framebuffer;
 
     while (leventTryWait(&g_presenter_thread_run)) {
         /* Make sure Vita has configured a framebuffer */
-        if (!g_vita_conf_fb.base)
+        if (!display_state_snapshot(&framebuffer) || !framebuffer.base)
             goto next_frame_sleep;
 
-        base = g_vita_conf_fb.base;
-        width = g_vita_conf_fb.width;
-        height = g_vita_conf_fb.height;
-        stride = g_vita_conf_fb.pitch;
-        pixelfmt = g_vita_conf_fb.pixelformat;
+        base = framebuffer.base;
+        width = framebuffer.width;
+        height = framebuffer.height;
+        stride = framebuffer.pitch;
+        pixelfmt = framebuffer.pixelformat;
 
         /* Reconfigure if sizes change and create the swapchain for the first time */
         if (!g_swapchain_created) {
@@ -133,7 +132,7 @@ static void presenter_thread_func(void *arg)
         dkFenceWait(&acquire_fence, -1);
 
         /* Notify that there has been a "VBlank" (new frame presented) */
-        condvarWakeAll(&g_vblank_condvar);
+        display_state_tick();
 
         /* Make sure the transfer has finished (this should have happened when the acquire fence got
          * signalled) */
@@ -146,6 +145,8 @@ static void presenter_thread_func(void *arg)
 
     next_frame_sleep:
         svcSleepThread(16666667ull);
+        /* Vblank waits must also progress before the first framebuffer. */
+        display_state_tick();
     }
 
     threadExit();
@@ -154,23 +155,23 @@ static void presenter_thread_func(void *arg)
 EXPORT(SceDisplayUser, 0x7A410B64, int, sceDisplaySetFrameBuf, const SceDisplayFrameBuf *pParam,
        SceDisplaySetBufSync sync)
 {
-    g_vita_conf_fb = *pParam;
-
-    return 0;
+    return display_state_set(pParam, sync);
 }
 
 EXPORT(SceDisplayUser, 0x42AE6BBC, int, sceDisplayGetFrameBuf, SceDisplayFrameBuf *pParam,
        SceDisplaySetBufSync sync)
 {
-    *pParam = g_vita_conf_fb;
-
-    return 0;
+    return display_state_get(pParam, sync);
 }
 
 EXPORT(SceDisplay, 0x5795E898, int, sceDisplayWaitVblankStart, void)
 {
-    condvarWait(&g_vblank_condvar, &g_vblank_mutex);
-    return 0;
+    return display_state_wait(false);
+}
+
+EXPORT(SceDisplay, 0x9423560C, int, sceDisplayWaitSetFrameBuf, void)
+{
+    return display_state_wait(true);
 }
 
 DECLARE_LIBRARY(SceDisplay, 0x5ed8f994);
@@ -204,19 +205,20 @@ int SceDisplay_init(DkDevice dk_device)
     dkCmdBufAddMemory(g_cmdbuf, g_cmdbuf_memblock, 0, CMDBUF_SIZE);
 
     leventInit(&g_presenter_thread_run, true, false);
-    mutexInit(&g_vblank_mutex);
-    condvarInit(&g_vblank_condvar);
+    display_state_start();
 
     g_swapchain_created = false;
 
     res = threadCreate(&g_presenter_thread, presenter_thread_func, NULL, NULL, 0x10000, 28, -2);
     if (R_FAILED(res)) {
+        display_state_stop();
         LOG("Error creating VSync thread: 0x%" PRIx32, res);
         return res;
     }
 
     res = threadStart(&g_presenter_thread);
     if (R_FAILED(res)) {
+        display_state_stop();
         LOG("Error starting VSync thread: 0x%" PRIx32, res);
         return res;
     }
@@ -229,7 +231,7 @@ int SceDisplay_finish(void)
     Result res;
 
     leventClear(&g_presenter_thread_run);
-    condvarWakeAll(&g_vblank_condvar);
+    display_state_stop();
 
     res = threadWaitForExit(&g_presenter_thread);
     if (R_FAILED(res)) {

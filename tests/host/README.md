@@ -307,3 +307,13 @@ icon size/query/copy/abort and full teardown. A private host run created a conte
 from the real archive: 84 trophies, four extra groups, and an 80429-byte game
 icon. No files were modified and no guest instructions executed. ARM context
 creation, progress APIs and game rendering still require hardware evidence.
+
+Display-state tests use real pthread condition variables with controlled presenter
+ticks. They verify next-vblank and last-set-relative waits, spurious-wake loops,
+multiple waiters, ticks without a framebuffer, coherent framebuffer snapshots,
+and shutdown/restart generations. GPU presentation, actual refresh timing and
+firmware behavior are not simulated. The presenter supplies approximate 60 Hz
+ticks when no framebuffer is available and presentation-driven ticks otherwise;
+GPU stalls can still delay these ticks. Immediate versus next-frame application
+and clearing the visible output when the framebuffer is disabled remain outside
+this synchronization change.
