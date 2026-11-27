@@ -2067,3 +2067,24 @@ exhaustion location, then crashed in guest rendering reading NULL+0x30 after
 startup cleanup had freed a graphics-pool table. The Render Thread had a healthy
 1 MiB native stack. The first failed initializer remains unidentified; no
 interactive 3D boot or complete startup pass is claimed.
+
+
+## Owned startup observer first-table verification
+
+An optional resident diagnostic module checks a private source-fingerprint-bound
+plan and every original callback word before publishing no-argument wrappers.
+It preserves raw callback results and leaves finalizers/instructions unchanged.
+The native module structure and four imports were audited; the full host suite
+passed, including malformed-plan/no-partial-write, source guard, callback result,
+nesting and report I/O failure coverage under ASan/UBSan.
+
+On runtime5b97266, its fresh GUARD was 0 and all 28 enabled callbacks in the
+initial 29-record table returned 1. This establishes success only for that
+table in this run. Read-only dispatcher/table analysis subsequently identified
+a linked second table with 33 additional initializers. The expanded 62-callback
+plan remains private and was not yet run at this checkpoint. Opening/autosave
+graphics appeared with existing alpha artifacts. Remote HOME did not visibly
+work despite successful tap responses; detach returned0x1c24ca. One operator
+recovery reboot was accepted, so this diagnostic run is neither a clean guest
+exit nor an independently observed crash. Source/source-table inspection used
+ordinary Capstone fallback, not REA decompilation or provider evidence.

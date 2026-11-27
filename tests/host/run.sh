@@ -45,6 +45,12 @@ esac
 "$build_dir/$test"
 done
 
+# Synthetic guest slots require low 32-bit addresses on the host.
+"${CC:-cc}" -std=gnu11 -O2 -Wall -Wextra -Werror -no-pie \
+    -fsanitize=address,undefined -fno-sanitize-recover=all \
+    -Itests/host/stubs tests/host/startup_observer.c -o "$build_dir/startup_observer"
+"$build_dir/startup_observer"
+
 "${CXX:-c++}" -std=c++17 -O2 -Wall -Wextra \
     -fsanitize=address,undefined -fno-sanitize-recover=all \
     -Itests/host/stubs -Iinclude tests/host/uam_compile.cpp -o "$build_dir/uam_compile"
