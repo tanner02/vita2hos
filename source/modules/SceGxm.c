@@ -613,8 +613,9 @@ static int translate_shader(DkShader *shader, const SceGxmProgram *program, pipe
     if (upload_result != 0) return upload_result;
     dkShaderMakerDefaults(&shader_maker, code, 0);
     dkShaderInitialize(shader, &shader_maker);
-    LOG("GXM_SHADER_TIMING program=%p size=%u stage=%s glsl_us=%" PRIu64 " uam_us=%" PRIu64,
-        program,program->size,prefix,armTicksToNs(glsl_ticks)/1000,armTicksToNs(uam_ticks)/1000);
+    LOG("GXM_SHADER_TIMING program=%p size=%u stage=%s glsl_us=%" PRIu64 " uam_us=%" PRIu64 " core=%u",
+        program,program->size,prefix,armTicksToNs(glsl_ticks)/1000,armTicksToNs(uam_ticks)/1000,
+        svcGetCurrentProcessorNumber());
 
     return 0;
 }
@@ -1396,12 +1397,12 @@ EXPORT(SceGxm, 0xFE300E2F, int, sceGxmEndScene, SceGxmContext *context,
     context->state.in_scene = false;
 
     LOG("GXM_SCENE_TIMING context=%p target=%p width=%u height=%u wall_us=%" PRIu64 " retire_wait_us=%" PRIu64
-        " retire_release_us=%" PRIu64 " textures_us=%" PRIu64 " uniforms_us=%" PRIu64 " draws=%u texture_batches=%u",
+        " retire_release_us=%" PRIu64 " textures_us=%" PRIu64 " uniforms_us=%" PRIu64 " draws=%u texture_batches=%u core=%u",
         context,render_target,render_target->params.width,render_target->params.height,
         armTicksToNs(armGetSystemTick()-context->timing.scene_start)/1000,
         armTicksToNs(context->timing.retire_wait)/1000,armTicksToNs(context->timing.retire_release)/1000,
         armTicksToNs(context->timing.textures)/1000,armTicksToNs(context->timing.uniforms)/1000,
-        context->timing.draws,context->timing.texture_batches);
+        context->timing.draws,context->timing.texture_batches,svcGetCurrentProcessorNumber());
 
     return 0;
 }

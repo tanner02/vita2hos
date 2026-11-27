@@ -10,6 +10,9 @@
 
 #include "uam_compiler_iface_c.h"
 #include "config.h"
+#ifdef __SWITCH__
+#include "log.h"
+#endif
 
 #ifndef UAM_TEMP_FILE_TEMPLATE
 #define UAM_TEMP_FILE_TEMPLATE VITA2HOS_ROOT_PATH "/.uam-XXXXXX"
@@ -26,10 +29,28 @@ static bool compile_alloc(pipeline_stage stage, const char *glsl_source, void **
         *size = 0;
     if (!glsl_source || !buffer || !size || !capacity)
         return false;
+#ifdef __SWITCH__
+    /* Destroyed after the compiler: output_cleanup includes the temporary
+     * file round trip, validation, unlink and compiler teardown. Both phases
+     * are wall times and can include preemption by other guest threads. */
+    struct PhaseTiming {
+        uint64_t start = armGetSystemTick(), compiled = 0;
+        bool success = false;
+        ~PhaseTiming() {
+            if (success)
+                LOG("UAM_PHASE_TIMING compile_us=%" PRIu64 " output_cleanup_us=%" PRIu64,
+                    armTicksToNs(compiled - start) / 1000,
+                    armTicksToNs(armGetSystemTick() - compiled) / 1000);
+        }
+    } timing;
+#endif
     DekoCompiler compiler{ stage };
     bool rc = compiler.CompileGlsl(glsl_source);
     if (!rc)
         return false;
+#ifdef __SWITCH__
+    timing.compiled = armGetSystemTick();
+#endif
 
     /* The installed UAM memory writer has no capacity parameter. Stage its
      * file output, validate the complete DKSH, then copy only a bounded result. */
@@ -59,6 +80,9 @@ static bool compile_alloc(pipeline_stage stage, const char *glsl_source, void **
         return false;
     *buffer = data.release();
     *size = (uint32_t)length;
+#ifdef __SWITCH__
+    timing.success = true;
+#endif
     return true;
 }
 
