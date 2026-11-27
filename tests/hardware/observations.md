@@ -1,3 +1,37 @@
+## 2026-11-27: latest saved startup crash and thread-pointer evidence
+
+After the user enabled Switch access, read-only collection retrieved three saved
+crashes with the same guest PC0x813a3f28, LR0x81044a01 and fault0x158. The latest
+log identifies runtime1c1c20c-dirty. Original game and SD runtime archive hashes
+were verified; HOME showed the title closed. No title input, launch, installation,
+SD write or held probe correction occurred. Hardware ownership was released.
+
+The latest DTI2 thread dump contains24 threads. A private bounded decoder based
+on Atmosphere1.8.0-prerelease checks unique IDs, exact EOF and every crashed-thread
+register against the text report. All checks pass. The upstream writer stores
+stack-trace count bytes rather than count times8 bytes; those partial trace bytes
+must not be interpreted as complete return addresses.
+
+Crashed native thread0x457 has saved TPIDR0x8e1058b0, distinct from the HOS TLS
+address0x12229800. Atmosphere's exception handler saves TPIDR_EL0, and the ARM32
+debug-context path copies its low32 bits. The value is nonzero and consistent
+with retargeted guest user TLS. This narrows a zero-register hypothesis but does
+not establish allocation/template, DTV or current-resource contents. No live
+memory at that pointer was captured. Resource readiness and TLS publication remain
+unresolved; no successful 3D-title boot is claimed.
+
+The SD native archive's build ID is nonzero while the crash native module ID is
+zero, so exact archive-to-crashed-code identity is not established by build ID.
+The archived code at the captured native accessor offset resembles the kernel TLS
+getter, but this alone cannot prove an executed symbol or a resolver defect.
+Codex thread/shader diagnostics remain undeployed. HLE integration stays with
+ZCode, and the unsafe unbound-stub scanner remains excluded.
+
+Format/ABI sources: [DTI2 writer](https://github.com/Atmosphere-NX/Atmosphere/blob/1.8.0-prerelease/stratosphere/creport/source/creport_threads.cpp),
+[context layout](https://github.com/Atmosphere-NX/Atmosphere/blob/1.8.0-prerelease/libraries/libvapours/include/vapours/svc/svc_types_common.hpp),
+[ARM32 debug context](https://github.com/Atmosphere-NX/Atmosphere/blob/1.8.0-prerelease/libraries/libmesosphere/source/arch/arm64/kern_k_debug.cpp),
+[exception register save](https://github.com/Atmosphere-NX/Atmosphere/blob/1.8.0-prerelease/mesosphere/kernel/source/arch/arm64/kern_exception_handlers_asm.s).
+
 ## 2026-11-27: high-ID sysmodule handoff audit (offline)
 
 The reviewed HLE sysmodule implementation tracks loaded stub modules in one
@@ -12,7 +46,7 @@ low-ID isolation across public IDs64..JSON; ASan/UBSan passes. This guards a lat
 integration. The private draft changes state representation only; it does not
 validate the handoff's stub-load whitelist or implement its services.
 
-HLE source ownership handoff is pending before editing/integrating ZCode's lane.
+The user keeps HLE edits and integration with ZCode; Codex leaves that lane untouched.
 Other review limits include inline fiber execution without real yield/context
 switching and dialogs reporting success without a corresponding host operation.
 No complete HLE integration or successful 3D-title boot is claimed. No hardware,
