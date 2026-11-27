@@ -62,6 +62,8 @@ int main(void)
     assert((uint32_t)gxm_validate_vertex_layout(attributes, 1, streams, 1) == SCE_GXM_ERROR_INVALID_VALUE);
     attributes[0].componentCount = 4;
     attributes[0].format = SCE_GXM_ATTRIBUTE_FORMAT_UNTYPED;
+    assert(gxm_validate_vertex_layout(attributes, 1, streams, 1) == 0);
+    attributes[0].format = SCE_GXM_ATTRIBUTE_FORMAT_UNTYPED + 1;
     assert((uint32_t)gxm_validate_vertex_layout(attributes, 1, streams, 1) == SCE_GXM_ERROR_INVALID_VALUE);
     attributes[0].format = SCE_GXM_ATTRIBUTE_FORMAT_F32;
     attributes[0].offset = 0x4000;
@@ -130,6 +132,47 @@ int main(void)
     /* Subtraction-based checks also work at the address-space boundary. */
     assert(gxm_validate_index_range(SCE_GXM_INDEX_FORMAT_U32, UINTPTR_MAX - 3,
                                     UINTPTR_MAX - 7, 8, 1, &offset) == 0 && offset == 4);
+    /* Native format enums are not sequential by component count. Check all
+     * widths, signedness/normalization classes and the raw 32-bit format. */
+    const struct { SceGxmAttributeFormat format; DkVtxAttribType type; unsigned width; } formats[] = {
+        {SCE_GXM_ATTRIBUTE_FORMAT_U8,DkVtxAttribType_Uint,0},
+        {SCE_GXM_ATTRIBUTE_FORMAT_S8,DkVtxAttribType_Sint,0},
+        {SCE_GXM_ATTRIBUTE_FORMAT_U16,DkVtxAttribType_Uint,1},
+        {SCE_GXM_ATTRIBUTE_FORMAT_S16,DkVtxAttribType_Sint,1},
+        {SCE_GXM_ATTRIBUTE_FORMAT_U8N,DkVtxAttribType_Unorm,0},
+        {SCE_GXM_ATTRIBUTE_FORMAT_S8N,DkVtxAttribType_Snorm,0},
+        {SCE_GXM_ATTRIBUTE_FORMAT_U16N,DkVtxAttribType_Unorm,1},
+        {SCE_GXM_ATTRIBUTE_FORMAT_S16N,DkVtxAttribType_Snorm,1},
+        {SCE_GXM_ATTRIBUTE_FORMAT_F16,DkVtxAttribType_Float,1},
+        {SCE_GXM_ATTRIBUTE_FORMAT_F32,DkVtxAttribType_Float,2},
+        {SCE_GXM_ATTRIBUTE_FORMAT_UNTYPED,DkVtxAttribType_Uint,2}
+    };
+    const DkVtxAttribSize sizes[3][4] = {
+        {DkVtxAttribSize_1x8,DkVtxAttribSize_2x8,DkVtxAttribSize_3x8,DkVtxAttribSize_4x8},
+        {DkVtxAttribSize_1x16,DkVtxAttribSize_2x16,DkVtxAttribSize_3x16,DkVtxAttribSize_4x16},
+        {DkVtxAttribSize_1x32,DkVtxAttribSize_2x32,DkVtxAttribSize_3x32,DkVtxAttribSize_4x32}
+    };
+    for (unsigned f=0;f<sizeof(formats)/sizeof(formats[0]);++f) {
+        for (unsigned components=1;components<=4;++components) {
+            DkVtxAttribType type=DkVtxAttribType_None;
+            DkVtxAttribSize size=DkVtxAttribSize_1x8;
+            assert(!gxm_translate_vertex_format(formats[f].format,components,&type,&size));
+            assert(type==formats[f].type && size==sizes[formats[f].width][components-1]);
+        }
+    }
+    DkVtxAttribType type=DkVtxAttribType_Snorm;
+    DkVtxAttribSize size=DkVtxAttribSize_3x8;
+    for (unsigned components=0;components<=5;components+=5) {
+        assert((uint32_t)gxm_translate_vertex_format(SCE_GXM_ATTRIBUTE_FORMAT_UNTYPED,components,&type,&size)==SCE_GXM_ERROR_INVALID_VALUE);
+        assert(type==DkVtxAttribType_Snorm && size==DkVtxAttribSize_3x8);
+    }
+    assert((uint32_t)gxm_translate_vertex_format((SceGxmAttributeFormat)-1,1,&type,&size)==SCE_GXM_ERROR_INVALID_VALUE);
+    assert((uint32_t)gxm_translate_vertex_format(SCE_GXM_ATTRIBUTE_FORMAT_UNTYPED+1,1,&type,&size)==SCE_GXM_ERROR_INVALID_VALUE);
+    assert(type==DkVtxAttribType_Snorm && size==DkVtxAttribSize_3x8);
+    assert((uint32_t)gxm_translate_vertex_format(SCE_GXM_ATTRIBUTE_FORMAT_F32,1,NULL,&size)==SCE_GXM_ERROR_INVALID_POINTER);
+    assert(size==DkVtxAttribSize_3x8);
+    assert((uint32_t)gxm_translate_vertex_format(SCE_GXM_ATTRIBUTE_FORMAT_F32,1,&type,NULL)==SCE_GXM_ERROR_INVALID_POINTER);
+    assert(type==DkVtxAttribType_Snorm);
     puts("GXM index range regression checks passed.");
     return 0;
 }

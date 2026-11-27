@@ -30,9 +30,42 @@ int gxm_validate_vertex_layout(const SceGxmVertexAttribute *attributes, unsigned
     for (unsigned int i = 0; i < attribute_count; ++i) {
         const SceGxmVertexAttribute *a = &attributes[i];
         if (a->streamIndex >= stream_count || !a->componentCount || a->componentCount > 4 ||
-            a->format > SCE_GXM_ATTRIBUTE_FORMAT_F32 || a->offset > 0x3fff)
+            a->format > SCE_GXM_ATTRIBUTE_FORMAT_UNTYPED || a->offset > 0x3fff)
             return SCE_GXM_ERROR_INVALID_VALUE;
     }
+    return 0;
+}
+
+int gxm_translate_vertex_format(SceGxmAttributeFormat format, unsigned int components,
+                                  DkVtxAttribType *type, DkVtxAttribSize *size)
+{
+    if (!type || !size) return SCE_GXM_ERROR_INVALID_POINTER;
+    if (!components || components > 4) return SCE_GXM_ERROR_INVALID_VALUE;
+    DkVtxAttribType result;
+    unsigned width;
+    switch (format) {
+    case SCE_GXM_ATTRIBUTE_FORMAT_U8: result = DkVtxAttribType_Uint; width = 0; break;
+    case SCE_GXM_ATTRIBUTE_FORMAT_S8: result = DkVtxAttribType_Sint; width = 0; break;
+    case SCE_GXM_ATTRIBUTE_FORMAT_U16: result = DkVtxAttribType_Uint; width = 1; break;
+    case SCE_GXM_ATTRIBUTE_FORMAT_S16: result = DkVtxAttribType_Sint; width = 1; break;
+    case SCE_GXM_ATTRIBUTE_FORMAT_U8N: result = DkVtxAttribType_Unorm; width = 0; break;
+    case SCE_GXM_ATTRIBUTE_FORMAT_S8N: result = DkVtxAttribType_Snorm; width = 0; break;
+    case SCE_GXM_ATTRIBUTE_FORMAT_U16N: result = DkVtxAttribType_Unorm; width = 1; break;
+    case SCE_GXM_ATTRIBUTE_FORMAT_S16N: result = DkVtxAttribType_Snorm; width = 1; break;
+    case SCE_GXM_ATTRIBUTE_FORMAT_F16: result = DkVtxAttribType_Float; width = 1; break;
+    case SCE_GXM_ATTRIBUTE_FORMAT_F32: result = DkVtxAttribType_Float; width = 2; break;
+    /* Untyped elements carry complete 32-bit register values, without
+     * normalization or float conversion during vertex fetch. */
+    case SCE_GXM_ATTRIBUTE_FORMAT_UNTYPED: result = DkVtxAttribType_Uint; width = 2; break;
+    default: return SCE_GXM_ERROR_INVALID_VALUE;
+    }
+    static const DkVtxAttribSize sizes[3][4] = {
+        {DkVtxAttribSize_1x8, DkVtxAttribSize_2x8, DkVtxAttribSize_3x8, DkVtxAttribSize_4x8},
+        {DkVtxAttribSize_1x16, DkVtxAttribSize_2x16, DkVtxAttribSize_3x16, DkVtxAttribSize_4x16},
+        {DkVtxAttribSize_1x32, DkVtxAttribSize_2x32, DkVtxAttribSize_3x32, DkVtxAttribSize_4x32}
+    };
+    *type = result;
+    *size = sizes[width][components - 1];
     return 0;
 }
 

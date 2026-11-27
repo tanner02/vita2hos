@@ -1,3 +1,18 @@
+## 2026-11-27: untyped vertex fetch support (offline, not deployed)
+
+Vertex layout admission now accepts SCE_GXM_ATTRIBUTE_FORMAT_UNTYPED. Its
+one-to-four components select32-bit integer fetch, preserving raw register
+values without normalized/float conversion at fetch time. Existing typed
+format mappings are retained. The raw32-bit treatment follows the pinned
+reference renderer's untyped integer input path.
+
+Vertex format conversion now returns SDK errors for invalid formats/counts or
+output pointers instead of invoking unsupported-format abort helpers. Host
+regressions cover all44 format/component combinations and output preservation.
+Shader-declared type/location mapping, packed register-format attributes and
+actual GPU fetch remain additional work; no commercial rendering is established.
+No probe update, deployment or console access occurred during this change.
+
 ## 2026-11-27: vertex sampler binding correction (offline, not deployed)
 
 The initial vertex-texture implementation used stage-local bindings0..15, but

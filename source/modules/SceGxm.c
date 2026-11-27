@@ -2077,9 +2077,13 @@ static int context_flush_dirty_state(SceGxmContext *context)
             vertex_attrib_state[i].bufferId = attributes[i].streamIndex;
             vertex_attrib_state[i].isFixed = 0;
             vertex_attrib_state[i].offset = attributes[i].offset;
-            vertex_attrib_state[i].size =
-                gxm_to_dk_vtx_attrib_size(attributes[i].format, attributes[i].componentCount);
-            vertex_attrib_state[i].type = gxm_to_dk_vtx_attrib_type(attributes[i].format);
+            DkVtxAttribSize size;
+            DkVtxAttribType type;
+            int ret = gxm_translate_vertex_format(attributes[i].format,
+                attributes[i].componentCount, &type, &size);
+            if (ret) return ret;
+            vertex_attrib_state[i].size = size;
+            vertex_attrib_state[i].type = type;
             vertex_attrib_state[i].isBgra = 0;
         }
 

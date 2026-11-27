@@ -2,6 +2,20 @@
 #define TEST_DEKO3D_H
 #include <stddef.h>
 #include <stdint.h>
+typedef enum {
+    DkVtxAttribSize_1x32=0x12, DkVtxAttribSize_2x32=0x04,
+    DkVtxAttribSize_3x32=0x02, DkVtxAttribSize_4x32=0x01,
+    DkVtxAttribSize_1x16=0x1b, DkVtxAttribSize_2x16=0x0f,
+    DkVtxAttribSize_3x16=0x05, DkVtxAttribSize_4x16=0x03,
+    DkVtxAttribSize_1x8=0x1d, DkVtxAttribSize_2x8=0x18,
+    DkVtxAttribSize_3x8=0x13, DkVtxAttribSize_4x8=0x0a
+} DkVtxAttribSize;
+typedef enum {
+    DkVtxAttribType_None=0, DkVtxAttribType_Snorm=1, DkVtxAttribType_Unorm=2,
+    DkVtxAttribType_Sint=3, DkVtxAttribType_Uint=4, DkVtxAttribType_Uscaled=5,
+    DkVtxAttribType_Sscaled=6, DkVtxAttribType_Float=7
+} DkVtxAttribType;
+
 typedef void *DkMemBlock;
 typedef void *DkDevice;
 typedef struct { float x, y, width, height, near, far; } DkViewport;

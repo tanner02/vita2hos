@@ -16,6 +16,8 @@ int gxm_instanced_counts(unsigned int total, unsigned int wrap,
                          uint32_t *indices, uint32_t *instances);
 int gxm_validate_vertex_layout(const SceGxmVertexAttribute *attributes, unsigned int attribute_count,
                                 const SceGxmVertexStream *streams, unsigned int stream_count);
+int gxm_translate_vertex_format(SceGxmAttributeFormat format, unsigned int components,
+                                  DkVtxAttribType *type, DkVtxAttribSize *size);
 
 int gxm_validate_index_range(SceGxmIndexFormat format, uintptr_t address,
                              uintptr_t block_base, size_t block_size,

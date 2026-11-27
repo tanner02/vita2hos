@@ -418,3 +418,7 @@ accuracy and commercial-title timestamp behavior remain unverified.
 Texture binding checks cover independent fragment/vertex descriptor snapshots,
 all 16 units per stage, rebinding and non-mutating invalid input rejection.
 They do not exercise GPU sampling; vertex-stage hardware validation is pending.
+
+Vertex format checks cover all eleven guest formats and component counts1..4,
+including untyped32-bit integer fetch. Invalid formats/counts/pointers preserve
+outputs. Shader type/location reflection and GPU fetch behavior need further checks.
