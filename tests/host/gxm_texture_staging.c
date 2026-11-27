@@ -64,6 +64,24 @@ int main(void)
     GxmTextureStaging *list = NULL;
     DkMemBlock block;
 
+    /* API-built strided descriptor must copy visible pixels from each row,
+     * ignoring source padding and clearing the Maxwell-aligned destination. */
+    unsigned char rows[40];memset(rows,0xee,sizeof(rows));
+    for (unsigned y=0;y<2;++y) for (unsigned x=0;x<12;++x) rows[y*20+x]=(unsigned char)(y*32+x);
+    assert(!sceGxmTextureInitLinearStrided(&texture,NULL,SCE_GXM_TEXTURE_FORMAT_U8U8U8U8_ABGR,3,2,20));
+    assert(!gxm_texture_get_linear_layout(inner,&layout));
+    assert(!gxm_texture_pack_linear(&layout,rows,sizeof(rows),destination,sizeof(destination)));
+    for (unsigned y=0;y<2;++y) {
+        assert(!memcmp(destination+y*32,rows+y*20,12));
+        for (unsigned x=12;x<32;++x) assert(!destination[y*32+x]);
+    }
+    assert(!sceGxmTextureSetWidth(&texture,2) && !sceGxmTextureSetHeight(&texture,1));
+    assert(!gxm_texture_get_linear_layout(inner,&layout));
+    assert(layout.source_pitch==20 && layout.source_size==20 && layout.size==32);
+    assert(!gxm_texture_pack_linear(&layout,rows,20,destination,sizeof(destination)));
+    assert(!memcmp(destination,rows,8));
+    for (unsigned x=8;x<32;++x) assert(!destination[x]);
+
     for (unsigned int width = 1; width <= 16; width *= 2) {
         for (unsigned int height = 1; height <= 16; height *= 2) {
             unsigned int cursor = 0;

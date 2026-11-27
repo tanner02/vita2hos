@@ -77,6 +77,35 @@ int main(void)
     assert((uint32_t)sceGxmTextureSetMipFilter(&texture, (SceGxmTextureMipFilter)1) == SCE_GXM_ERROR_INVALID_VALUE);
     assert(!memcmp(&texture, &mip_saved, sizeof(texture)));
     assert((uint32_t)sceGxmTextureSetMipmapCount(NULL, 1) == SCE_GXM_ERROR_INVALID_POINTER);
+    assert(!sceGxmTextureInitLinearStrided(&texture,(void *)(uintptr_t)0x2000,
+        SCE_GXM_TEXTURE_FORMAT_U8U8U8U8_ABGR,3,2,64));
+    uint32_t words[4];memcpy(words,&texture,sizeof(words));
+    assert(words[0]==0x00020e90 && inner->width==2 && inner->height==1);
+    assert(inner->data_addr==0x800 && inner->type==(SCE_GXM_TEXTURE_LINEAR_STRIDED>>29));
+    assert(!sceGxmTextureSetWidth(&texture,7) && !sceGxmTextureSetHeight(&texture,5));
+    memcpy(words,&texture,sizeof(words));assert(words[0]==0x00020e90);
+    assert(inner->width==6 && inner->height==4);
+    saved=texture;
+    const unsigned strides[]={0,2,6,32772,131076};
+    const uint32_t errors[]={SCE_GXM_ERROR_INVALID_VALUE,SCE_GXM_ERROR_INVALID_VALUE,
+        SCE_GXM_ERROR_INVALID_ALIGNMENT,SCE_GXM_ERROR_UNSUPPORTED,SCE_GXM_ERROR_INVALID_VALUE};
+    for (unsigned i=0;i<sizeof(strides)/sizeof(*strides);++i) {
+        assert((uint32_t)sceGxmTextureInitLinearStrided(&texture,NULL,
+            SCE_GXM_TEXTURE_FORMAT_R8,3,2,strides[i])==errors[i]);
+        assert(!memcmp(&texture,&saved,sizeof(texture)));
+    }
+    assert((uint32_t)sceGxmTextureSetWidth(&texture,0)==SCE_GXM_ERROR_INVALID_VALUE);
+    assert((uint32_t)sceGxmTextureSetHeight(&texture,4097)==SCE_GXM_ERROR_INVALID_VALUE);
+    assert(!memcmp(&texture,&saved,sizeof(texture)));
+    assert((uint32_t)sceGxmTextureSetWidth(NULL,1)==SCE_GXM_ERROR_INVALID_POINTER);
+    assert((uint32_t)sceGxmTextureInitLinearStrided(NULL,NULL,
+        SCE_GXM_TEXTURE_FORMAT_R8,3,2,64)==SCE_GXM_ERROR_INVALID_POINTER);
+    assert(!sceGxmTextureInitSwizzled(&texture,NULL,SCE_GXM_TEXTURE_FORMAT_R8,32,16,1));
+    assert(!_sceGxmTextureSetWidth(&texture,64) && !_sceGxmTextureSetHeight(&texture,8));
+    assert(inner->width_base2==6 && inner->height_base2==3);
+    saved=texture;
+    assert((uint32_t)sceGxmTextureSetHeight(&texture,3)==SCE_GXM_ERROR_INVALID_VALUE);
+    assert(!memcmp(&texture,&saved,sizeof(texture)));
     puts("GXM texture-state regression checks passed.");
     return 0;
 }

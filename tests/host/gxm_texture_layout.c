@@ -62,6 +62,19 @@ int main(void)
     GxmTextureLayout saved = layout;
     assert((uint32_t)gxm_texture_get_linear_layout(inner, &layout) == SCE_GXM_ERROR_UNSUPPORTED);
     assert(memcmp(&saved, &layout, sizeof(layout)) == 0);
+    const unsigned strides[]={4,12,64,512,4096,16384,32768};
+    for (unsigned i=0;i<sizeof(strides)/sizeof(*strides);++i) {
+        assert(!sceGxmTextureInitLinearStrided(&texture,NULL,SCE_GXM_TEXTURE_FORMAT_R8,
+                                               3,2,strides[i]));
+        assert(!gxm_texture_get_linear_layout(inner,&layout));
+        assert(layout.source_pitch==strides[i] && layout.source_size==strides[i]*2);
+        assert(layout.width==3 && layout.height==2);
+    }
+    uint32_t words[4];memcpy(words,&texture,sizeof(words));assert(words[0]==0x07fe0e90);
+    assert(!sceGxmTextureInitTiled(&texture,NULL,SCE_GXM_TEXTURE_FORMAT_R8,32,32,1));
+    assert(!sceGxmTextureSetWidth(&texture,33) && !sceGxmTextureSetHeight(&texture,17));
+    assert(!gxm_texture_get_linear_layout(inner,&layout));
+    assert(layout.width==33 && layout.height==17 && layout.source_width==64 && layout.source_height==32);
     puts("GXM texture-layout regression checks passed.");
     return 0;
 }

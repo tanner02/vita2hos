@@ -82,6 +82,67 @@ EXPORT(SceGxm, 0xFA695FD7, int, sceGxmTextureSetMagFilter, SceGxmTexture *textur
     return 0;
 }
 
+EXPORT(SceGxm, 0x6679BEF0, int, sceGxmTextureInitLinearStrided, SceGxmTexture *texture,
+       const void *data, SceGxmTextureFormat format, unsigned int width,
+       unsigned int height, unsigned int byteStride)
+{
+    if (!texture) return SCE_GXM_ERROR_INVALID_POINTER;
+    if (!width || !height || width > 4096 || height > 4096 ||
+        byteStride < 4 || byteStride > 131072) return SCE_GXM_ERROR_INVALID_VALUE;
+    if (byteStride & 3) return SCE_GXM_ERROR_INVALID_ALIGNMENT;
+    /* The pinned descriptor codec exposes 13 stride bits. Do not truncate
+     * larger API-valid strides until their additional encoding is known. */
+    if (byteStride > 32768) return SCE_GXM_ERROR_UNSUPPORTED;
+    SceGxmTexture result;
+    int ret=init_texture(&result,data,format,width,height,1,SCE_GXM_TEXTURE_LINEAR_STRIDED);
+    if (ret) return ret;
+    SceGxmTextureInner *inner=(SceGxmTextureInner *)&result;
+    uint32_t encoded=(byteStride >> 2)-1;
+    inner->mip_filter=encoded & 1;
+    inner->min_filter=(encoded >> 1) & 3;
+    inner->mip_count=(encoded >> 3) & 15;
+    inner->lod_bias=(encoded >> 7) & 63;
+    *texture=result;
+    return 0;
+}
+
+static int set_dimension(SceGxmTexture *texture, unsigned int value, bool width)
+{
+    if (!texture) return SCE_GXM_ERROR_INVALID_POINTER;
+    if (!value || value > 4096) return SCE_GXM_ERROR_INVALID_VALUE;
+    SceGxmTextureInner *inner=(SceGxmTextureInner *)texture;
+    uint32_t type=texture_type(inner);
+    if (type == SCE_GXM_TEXTURE_SWIZZLED) {
+        if (value & (value-1)) return SCE_GXM_ERROR_INVALID_VALUE;
+        unsigned int exponent=0;
+        while ((1U << exponent) < value) ++exponent;
+        if (width) inner->width_base2=exponent;
+        else inner->height_base2=exponent;
+    } else if (type == SCE_GXM_TEXTURE_LINEAR || type == SCE_GXM_TEXTURE_LINEAR_STRIDED ||
+               type == SCE_GXM_TEXTURE_SWIZZLED_ARBITRARY || type == SCE_GXM_TEXTURE_TILED) {
+        if (width) inner->width=value-1;
+        else inner->height=value-1;
+    } else return SCE_GXM_ERROR_UNSUPPORTED;
+    return 0;
+}
+
+EXPORT(SceGxm, 0x2EA178BE, int, sceGxmTextureSetWidth, SceGxmTexture *texture, unsigned int width)
+{
+    return set_dimension(texture,width,true);
+}
+EXPORT(SceGxm, 0xAEE7FDD1, int, sceGxmTextureSetHeight, SceGxmTexture *texture, unsigned int height)
+{
+    return set_dimension(texture,height,false);
+}
+EXPORT(SceGxm, 0x5A690B60, int, _sceGxmTextureSetWidth, SceGxmTexture *texture, unsigned int width)
+{
+    return set_dimension(texture,width,true);
+}
+EXPORT(SceGxm, 0x1B20D5DF, int, _sceGxmTextureSetHeight, SceGxmTexture *texture, unsigned int height)
+{
+    return set_dimension(texture,height,false);
+}
+
 EXPORT(SceGxm, 0x416764E3, int, sceGxmTextureSetMinFilter, SceGxmTexture *texture,
        SceGxmTextureFilter filter)
 {

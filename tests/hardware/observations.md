@@ -307,6 +307,19 @@
   reject invalid table offsets/counts, signed name offsets outside the program,
   and unterminated names. No new rendering result or game boot is established.
 
+## Host texture descriptor setup after 118acce
+
+- Added linear-strided initialization with four-byte stride alignment and the
+  pinned descriptor codec. Its 13 exposed stride bits represent 4..32768 bytes;
+  larger otherwise API-valid strides return unsupported instead of truncating.
+  Invalid dimensions/alignment leave the previous descriptor unchanged.
+- Added public/internal width and height setters for the supported 2D layouts.
+  Swizzled dimensions require powers of two; strided dimensions preserve the
+  shared sampler/stride fields. Cube setters remain unsupported.
+- Tests check packed descriptor words and row copying through the actual layout
+  and staging helpers, including padding removal/clearing and resized dimensions.
+  This is host evidence; no new scene or commercial title was run on the Switch.
+
 ## Runtime 15d400f48e5d3a3f5d811e2a67bd30a1388cc102
 
 - Standalone HOME title, owned fixed-address CPU probe SHA-256
