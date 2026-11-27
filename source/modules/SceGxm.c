@@ -5,6 +5,7 @@
 #include <psp2/kernel/error.h>
 #include <psp2/kernel/threadmgr.h>
 #include <stdlib.h>
+#include <stdatomic.h>
 #include <switch.h>
 
 #include "modules/SceGxm.h"
@@ -140,7 +141,7 @@ typedef struct {
     uint32_t display_queue_max_pending_count;
     SceGxmDisplayQueueCallback *display_queue_callback;
     uint32_t display_queue_callback_data_size;
-    uint32_t exit_thread;
+    atomic_bool exit_thread;
     SceUID thid;
     UEvent ready_evflag;
     UEvent pending_evflag;
@@ -240,7 +241,7 @@ EXPORT(SceGxm, 0xB0F1E4EC, int, sceGxmInitialize, const SceGxmInitializeParams *
     g_display_queue->display_queue_max_pending_count = params->displayQueueMaxPendingCount;
     g_display_queue->display_queue_callback = params->displayQueueCallback;
     g_display_queue->display_queue_callback_data_size = params->displayQueueCallbackDataSize;
-    g_display_queue->exit_thread = 0;
+    atomic_init(&g_display_queue->exit_thread, false);
     g_display_queue->thid = sceKernelCreateThread("SceGxmDisplayQueue", SceGxmDisplayQueue_thread,
                                                   64, 0x1000, 0, 0, NULL);
     assert(g_display_queue->thid > 0);
@@ -264,11 +265,19 @@ EXPORT(SceGxm, 0xB0F1E4EC, int, sceGxmInitialize, const SceGxmInitializeParams *
 
 EXPORT(SceGxm, 0xB627DE66, int, sceGxmTerminate)
 {
-    g_display_queue->exit_thread = 1;
+    if (!g_gxm_initialized)
+        return SCE_GXM_ERROR_UNINITIALIZED;
+    atomic_store(&g_display_queue->exit_thread, true);
     ueventSignal(&g_display_queue->pending_evflag);
-    sceKernelWaitThreadEnd(g_display_queue->thid, NULL, NULL);
+    int ret = sceKernelWaitThreadEnd(g_display_queue->thid, NULL, NULL);
+    if (ret != 0)
+        return ret;
+    ret = sceKernelDeleteThread(g_display_queue->thid);
+    if (ret != 0)
+        return ret;
 
     free(g_display_queue);
+    g_display_queue = NULL;
     /* Code can still be referenced by submitted command lists after its
      * program wrapper is released. Retain it until the queue is idle here. */
     dkQueueWaitIdle(g_render_queue);
@@ -276,7 +285,9 @@ EXPORT(SceGxm, 0xB627DE66, int, sceGxmTerminate)
     gxm_shader_code_clear(&g_shader_code_blocks);
     mutexUnlock(&g_shader_code_lock);
     dkMemBlockDestroy(g_notification_region_memblock);
+    g_notification_region_memblock = NULL;
     dkQueueDestroy(g_render_queue);
+    g_render_queue = NULL;
 
     g_gxm_initialized = false;
     return 0;
@@ -1038,9 +1049,9 @@ static int SceGxmDisplayQueue_thread(SceSize args, void *argp)
 
     ueventSignal(&queue->ready_evflag);
 
-    while (!queue->exit_thread) {
+    while (!atomic_load(&queue->exit_thread)) {
         while (CIRC_CNT(queue->head, queue->tail, queue->num_entries) > 0) {
-            if (queue->exit_thread)
+            if (atomic_load(&queue->exit_thread))
                 break;
 
             /* Get the first pending framebuffer swap */
@@ -1059,7 +1070,7 @@ static int SceGxmDisplayQueue_thread(SceSize args, void *argp)
             ueventSignal(&queue->ready_evflag);
         }
 
-        if (queue->exit_thread)
+        if (atomic_load(&queue->exit_thread))
             break;
 
         waitSingle(waiterForUEvent(&queue->pending_evflag), -1);
@@ -1828,5 +1839,5 @@ int SceGxm_init(DkDevice dk_device)
 
 int SceGxm_finish(void)
 {
-    return 0;
+    return g_gxm_initialized ? sceGxmTerminate() : 0;
 }

@@ -84,7 +84,11 @@ static int launch(SceKernelThreadEntry entry)
 
     LOG("SceKernelThreadMgr returned...");
 
-    SceGxm_finish();
+    int gxm_cleanup_result = SceGxm_finish();
+    if (gxm_cleanup_result != 0) {
+        LOG("GXM shutdown failed: 0x%x", gxm_cleanup_result);
+        return gxm_cleanup_result;
+    }
     SceDisplay_finish();
     SceKernelThreadMgr_finish();
 
