@@ -39,6 +39,7 @@ uintptr_t guest_tp_exchange(uintptr_t value)
 {
     uintptr_t previous=writable_tp;writable_tp=value;++tp_exchanges;return previous;
 }
+SceUID sceKernelGetProcessId(void) { return 77; }
 void log_printf(const char *format, ...) { (void)format; }
 SceUID SceSysmem_get_next_uid(void) { static SceUID next = 1; return next++; }
 UEvent *SceLibKernel_get_process_exit_uevent(void) { return &exit_event; }
@@ -50,6 +51,7 @@ Result threadCreate(Thread *thread, void (*entry)(void *), void *arg, void *stac
     (void)stack; (void)cpu;
     last_stack=size;last_priority=priority;++create_calls;
     thread->handle = 0x1234;
+    thread->stack_mirror=(void *)(uintptr_t)0x90000000;thread->stack_sz=size;
     thread->entry = entry;
     thread->argument = arg;
     return 0;
@@ -67,6 +69,8 @@ void threadExit(void) { longjmp(thread_return, 1); }
 static int entry(SceSize size, void *argument)
 {
     assert(size == 4 && memcmp(argument, "test", 4) == 0);
+    GuestThreadSnapshot running={.size=128};
+    assert(!sceKernelGetThreadInfo(0,(void *)&running) && running.status==SCE_THREAD_RUNNING);
     if (expect_guest_tp)
         assert(writable_tp == (uintptr_t)SceKernelThreadMgr_get_thread_info()->vita_user_tls);
     return 1234;
@@ -127,6 +131,23 @@ int main(void)
     priority_result=0;
     assert(change2(uid,SCE_KERNEL_DEFAULT_PRIORITY+3)==65 && raw_priority()==163);
     assert(!change(uid,160));
+    GuestThreadSnapshot snapshot;
+    memset(&snapshot,0xcc,sizeof(snapshot));snapshot.size=128;
+    int (*query)(SceUID,SceKernelThreadInfo *)=(void *)module_get_func_export(0xcae9ace6,0x8D9C5461);
+    int (*raw_query)(SceUID,SceKernelThreadInfo *)=(void *)module_get_func_export(0x859a24b1,0xB373D8A1);
+    assert(query && raw_query);
+    assert(!query(0,(void *)&snapshot));
+    assert(snapshot.process_id==77 && !strcmp(snapshot.name,"worker"));
+    assert(snapshot.entry==(uint32_t)(uintptr_t)entry && snapshot.stack==0x90000000);
+    assert(snapshot.stack_size==4096 && snapshot.initial_priority==160 && snapshot.current_priority==160);
+    assert(snapshot.status==SCE_THREAD_DORMANT && snapshot.current_cpu==-1 && !snapshot.run_clocks);
+    GuestThreadSnapshot saved_snapshot=snapshot;
+    snapshot.size=127;GuestThreadSnapshot bad=snapshot;
+    assert((uint32_t)raw_query(uid,(void *)&snapshot)==SCE_KERNEL_ERROR_INVALID_ARGUMENT_SIZE);
+    assert(!memcmp(&bad,&snapshot,sizeof(snapshot)));
+    assert((uint32_t)query(uid,NULL)==SCE_KERNEL_ERROR_ILLEGAL_ADDR);
+    assert((uint32_t)query(-1,(void *)&snapshot)==SCE_KERNEL_ERROR_UNKNOWN_THREAD_ID);
+    snapshot=saved_snapshot;
     tls_value=NULL;
 
     assert(*(uint32_t *)get_thread_info_for_uid(other)->vita_user_tls == 0x12345678);
@@ -143,6 +164,9 @@ int main(void)
     if (setjmp(thread_return) == 0)
         info->thread.entry(info->thread.argument);
     assert(info->return_status == 1234);
+    snapshot.size=128;
+    assert(!query(uid,(void *)&snapshot));
+    assert(snapshot.status==SCE_THREAD_DORMANT && snapshot.exit_status==1234);
     assert(tp_exchanges == 0);
     assert(sceKernelGetThreadCurrentPriority() == 160 && raw_priority()==160);
     int status = -1;

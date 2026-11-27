@@ -20,6 +20,7 @@ static atomic_bool process_exit;
 static bool exit_process;
 static SceUID parent_uid;
 static UEvent process_event;
+SceUID sceKernelGetProcessId(void) { return 77; }
 void log_printf(const char *format,...) { (void)format; }
 SceUID SceSysmem_get_next_uid(void) { static atomic_int uid=1;return atomic_fetch_add(&uid,1); }
 UEvent *SceLibKernel_get_process_exit_uevent(void) { return &process_event; }
@@ -140,6 +141,11 @@ static void *change_until_deleted(void *argument)
         int result=sceKernelChangeThreadPriority(uid,100);
         if ((uint32_t)result==SCE_KERNEL_ERROR_UNKNOWN_THREAD_ID) break;
         assert(!result);
+        GuestThreadSnapshot snapshot={.size=128};
+        result=_sceKernelGetThreadInfo(uid,(void *)&snapshot);
+        if ((uint32_t)result==SCE_KERNEL_ERROR_UNKNOWN_THREAD_ID) break;
+        assert(!result && snapshot.current_priority==100 && snapshot.initial_priority==100);
+        assert(snapshot.status==SCE_THREAD_DORMANT);
         atomic_fetch_add(&priority_successes,1);
     }
     return NULL;

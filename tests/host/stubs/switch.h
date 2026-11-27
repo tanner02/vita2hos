@@ -33,9 +33,9 @@ typedef int UEvent;
 #ifdef TEST_THREAD_RUNTIME_PTHREAD
 #include <pthread.h>
 typedef struct { void (*entry)(void *); void *argument; pthread_t native;
-                 bool started, joined; uint32_t handle; } Thread;
+                 bool started, joined; uint32_t handle; void *stack_mirror; size_t stack_sz; } Thread;
 #else
-typedef struct { void (*entry)(void *); void *argument; uint32_t handle; } Thread;
+typedef struct { void (*entry)(void *); void *argument; uint32_t handle; void *stack_mirror; size_t stack_sz; } Thread;
 #endif
 #else
 typedef int Thread;

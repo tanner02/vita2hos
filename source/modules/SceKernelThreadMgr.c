@@ -1,5 +1,6 @@
 #include <m-dict.h>
 #include <psp2/kernel/error.h>
+#include <psp2/kernel/processmgr.h>
 #include <psp2/kernel/threadmgr.h>
 #include <stdlib.h>
 #include <switch.h>
@@ -107,10 +108,13 @@ static SceUID create_thread(const char *name, SceKernelThreadEntry entry, int in
 
     memset(ti, 0, sizeof(*ti));
     atomic_init(&ti->started, false);
+    atomic_init(&ti->completed, false);
+    atomic_init(&ti->return_status, 0);
     ti->uid = SceSysmem_get_next_uid();
     strncpy(ti->name, name, sizeof(ti->name) - 1);
     ti->entry = entry;
     atomic_init(&ti->priority, resolve_vita_priority(initPriority));
+    ti->initial_priority = atomic_load(&ti->priority);
     ti->vita_tls = guest_tls_allocate(&g_main_tls);
     if (!ti->vita_tls) {
         free(ti);
@@ -229,6 +233,7 @@ void SceKernelThreadMgr_prepare_current_exit(int status)
         thread_events_dispatch(VITA_THREAD_EVENT_EXIT,ti->uid,&ti->event_frames);
     }
     thread_events_abandon(&ti->event_frames);
+    atomic_store(&ti->completed, true);
 }
 
 EXPORT(SceLibKernel, 0x6D8C0F13, SceUID, sceKernelRegisterThreadEventHandler,
@@ -362,6 +367,73 @@ EXPORT(SceLibKernel, 0xC53A9848, int, sceKernelGetThreadCurrentPriority)
 {
     VitaThreadInfo *thread = SceKernelThreadMgr_get_thread_info();
     return thread ? thread->priority : (int)SCE_KERNEL_ERROR_UNKNOWN_THREAD_ID;
+}
+
+/* Fixed guest ABI: native host pointers must not widen this snapshot. */
+typedef struct {
+    uint32_t size;
+    int32_t process_id;
+    char name[32];
+    uint32_t attr, status, entry, stack;
+    int32_t stack_size, initial_priority, current_priority;
+    int32_t initial_affinity, current_affinity, current_cpu, last_cpu;
+    uint32_t wait_type;
+    int32_t wait_id, exit_status;
+    uint64_t run_clocks;
+    uint32_t interrupt_preempts, thread_preempts, releases;
+    int32_t cpu_changes, notify_callback, reserved;
+} GuestThreadSnapshot;
+static_assert(sizeof(GuestThreadSnapshot)==128, "Guest thread info ABI");
+static_assert(offsetof(GuestThreadSnapshot,entry)==48, "Guest thread entry offset");
+static_assert(offsetof(GuestThreadSnapshot,run_clocks)==96, "Guest thread clocks offset");
+#if UINTPTR_MAX == UINT32_MAX
+static_assert(sizeof(SceKernelThreadInfo)==sizeof(GuestThreadSnapshot), "SDK thread info ABI");
+static_assert(offsetof(SceKernelThreadInfo,stack)==52, "SDK thread stack offset");
+#endif
+
+EXPORT(SceThreadmgr, 0xB373D8A1, int, _sceKernelGetThreadInfo, SceUID thid,
+       SceKernelThreadInfo *info)
+{
+    VitaThreadInfo *caller=SceKernelThreadMgr_get_thread_info();
+    if (!thid) {
+        if (!caller) return SCE_KERNEL_ERROR_UNKNOWN_THREAD_ID;
+        thid=caller->uid;
+    }
+    rwlockReadLock(&g_vita_thread_infos_lock);
+    VitaThreadInfo **entry=vita_thread_info_dict_get(g_vita_thread_infos,thid);
+    VitaThreadInfo *thread=entry ? *entry : NULL;
+    int result=0;
+    uint32_t size;
+    if (!thread) result=SCE_KERNEL_ERROR_UNKNOWN_THREAD_ID;
+    else if (!info) result=SCE_KERNEL_ERROR_ILLEGAL_ADDR;
+    else {
+        memcpy(&size,info,sizeof(size));
+        if (size!=sizeof(GuestThreadSnapshot)) result=SCE_KERNEL_ERROR_INVALID_ARGUMENT_SIZE;
+        else {
+            bool completed=atomic_load(&thread->completed);
+            GuestThreadSnapshot snapshot={
+                .size=sizeof(snapshot), .process_id=sceKernelGetProcessId(),
+                .status=completed || !atomic_load(&thread->started) ? SCE_THREAD_DORMANT :
+                        (thread==caller ? SCE_THREAD_RUNNING : SCE_THREAD_READY),
+                .entry=(uint32_t)(uintptr_t)thread->entry,
+                .stack=(uint32_t)(uintptr_t)thread->thread.stack_mirror,
+                .stack_size=thread->thread.stack_sz,
+                .initial_priority=thread->initial_priority,
+                .current_priority=atomic_load(&thread->priority),
+                .current_cpu=-1, .last_cpu=-1,
+                .exit_status=completed ? atomic_load(&thread->return_status) : 0,
+            };
+            memcpy(snapshot.name,thread->name,sizeof(snapshot.name));
+            memcpy(info,&snapshot,sizeof(snapshot));
+        }
+    }
+    rwlockReadUnlock(&g_vita_thread_infos_lock);
+    return result;
+}
+EXPORT(SceLibKernel, 0x8D9C5461, int, sceKernelGetThreadInfo, SceUID thid,
+       SceKernelThreadInfo *info)
+{
+    return _sceKernelGetThreadInfo(thid,info);
 }
 
 /* Priority 0 selects the caller's current priority, even for another target.

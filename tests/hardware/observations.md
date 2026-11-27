@@ -1,3 +1,29 @@
+## Offline thread-info snapshots (2026-11-27)
+
+- Added public sceKernelGetThreadInfo (SceLibKernel 0x8D9C5461) and raw
+  _sceKernelGetThreadInfo (SceThreadmgr 0xB373D8A1). Both accept a thread ID
+  (zero selects the caller) and a pointer to the fixed 128-byte guest structure.
+  Invalid size, unknown ID and null output fail without overwriting the output.
+- The snapshot includes the process UID, bounded name, guest entry address,
+  native executable stack mirror/usable size, original resolved Vita priority,
+  current priority and published exit result. Fixed-width layout assertions cover
+  size and pointer/clock offsets on host; ARM also checks the SDK structure.
+- Stack selection follows libnx threadCreate: it passes the mapped stack mirror
+  to svcCreateThread and reserves entry bookkeeping above its usable stack size.
+  Source: https://github.com/switchbrew/libnx/blob/master/nx/source/kernel/thread.c
+- Snapshot lookup/copy shares the thread-registry lock with priority changes and
+  deletion. Exit result and completion publication are atomic. Host tests cover
+  both NIDs, descriptor size, pointer offsets, running/completed lifecycle,
+  output preservation, and querying while priority changes race with deletion.
+- Status is a coarse lifecycle view: unstarted/completed threads are DORMANT,
+  the querying live thread is RUNNING, and other live threads are READY. Detailed
+  wait/suspend state, CPU placement, affinity and scheduler counters are not
+  tracked: CPU IDs are -1 and other unsupported fields are zero. Attribute and
+  affinity creation options remain unsupported rather than newly implemented.
+  This query does not prove full scheduler introspection or hardware startup.
+- The full ASan/UBSan host suite and ARM Debug/Release builds passed.
+  No Switch files were transferred or tests requested while the user was asleep.
+
 ## Offline thread-priority changes (2026-11-27)
 
 - Added SceThreadmgr sceKernelChangeThreadPriority (0xBD0139F2) and

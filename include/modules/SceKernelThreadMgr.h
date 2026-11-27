@@ -15,11 +15,12 @@ typedef struct {
     SceKernelThreadEntry entry;
     SceSize arglen;
     void *argp;
-    int return_status;
+    atomic_int return_status;
+    int initial_priority;
     atomic_int priority; /* Resolved Vita priority, before mapping to Horizon. */
     uint32_t *vita_tls;
     void *vita_user_tls;
-    atomic_bool started;
+    atomic_bool started, completed;
     bool exit_notified;
     VitaThreadEventFrame *event_frames;
 } VitaThreadInfo;
