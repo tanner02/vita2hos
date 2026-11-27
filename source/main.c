@@ -22,6 +22,7 @@
 #include "modules/SceDisplay.h"
 #include "modules/SceGxm.h"
 #include "modules/SceKernelThreadMgr.h"
+#include "modules/SceKernelTime.h"
 #include "modules/SceLibKernel.h"
 #include "modules/SceSysmem.h"
 #include "modules/SceTouch.h"
@@ -54,6 +55,7 @@ static int launch(SceKernelThreadEntry entry)
     dk_device = dkDeviceCreate(&device_maker);
 
     /* Init modules */
+    SceKernelTime_start_process();
     ret = SceSysmem_init(dk_device);
     if (ret != 0)
         goto done;

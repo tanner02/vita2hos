@@ -81,6 +81,11 @@ work areas contain owner/count/attribute/UID fields, rather than a native Switch
 mutex. Ceiling attributes, priority inheritance, callback-aware waits, and mutex
 information queries are not implemented.
 
+The kernel system clock reports monotonic microseconds. Process-time imports
+report elapsed microseconds from runtime module initialization, before guest
+threads start; the Low variant returns the low 32 bits. These clocks do not
+represent calendar time or per-thread CPU usage.
+
 ## Building from Source
 
 1. **Clone the Repository with Submodules:**
