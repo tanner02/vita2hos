@@ -2008,3 +2008,19 @@ large requests, invalid sizes before allocation/query/create, and unchanged
 thread/affinity/TLS ownership. The change increases memory per small guest
 thread. Hardware verification beyond the observed failing shader is pending;
 1 MiB is not a proven maximum compiler stack requirement.
+
+
+## ARM32 native core-mask ABI
+
+The first `f0f591a` owned graphics run did not enter the guest: setting native
+mask 7 returned Horizon `0xe201` (InvalidCoreId), followed by process failure
+and successful loader cleanup. Its previous graphics report was stale; after
+removing that backed-up report, a fresh retry confirmed the same native error.
+It is not a 48-check pass. The installed libnx32 header declares a 32-bit
+mask, while its linked stub consists of SVC 0x0f and return, forwarding r0-r3.
+Atmosphere's pinned 64From32 service consumes a 64-bit mask. A local declaration
+with the correct 64-bit argument and the same assembly symbol initializes r3
+instead of forwarding an unspecified upper half; the SDK remains unchanged.
+Host mocks now accept the full 64-bit argument and assert zero high bits.
+Those mocks do not establish the ARM register ABI or native hardware success;
+compiled call-site inspection and a fresh graphics batch are still required.

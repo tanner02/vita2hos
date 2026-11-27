@@ -21,12 +21,13 @@ Result svcGetInfo(u64 *value,u32 type,Handle handle,u64 sub_id)
     assert(type==InfoType_CoreMask && handle==CUR_PROCESS_HANDLE && !sub_id);
     *value=7;return atomic_exchange(&fail_query,0) ? 1 : 0;
 }
-Result svcSetThreadCoreMask(uint32_t handle,int32_t cpu,uint32_t mask)
+Result svcSetThreadCoreMask(uint32_t handle,int32_t cpu,uint64_t mask)
 {
     VitaThreadInfo *info=pending_native_info;
     assert(info && handle==info->thread.handle && !info->thread.started);
     assert(!vita_thread_info_dict_get(g_vita_thread_infos,info->uid));
-    unsigned expected=info->affinity_mask ? (unsigned)info->affinity_mask>>16 : 7;
+    uint64_t expected=info->affinity_mask ? (unsigned)info->affinity_mask>>16 : 7;
+    assert(!(mask>>32)); /* The native ABI consumes both halves. */
     assert(mask==expected && cpu>=0 && (mask&(1U<<cpu)));
     for(int core=0;core<cpu;++core)assert(!(mask&(1U<<core)));
     return atomic_exchange(&fail_mask,0) ? 1 : 0;

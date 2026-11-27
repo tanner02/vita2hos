@@ -92,7 +92,7 @@ Result threadCreate(Thread *, void (*)(void *), void *, void *, size_t, int, int
 Result threadStart(Thread *);
 Result threadClose(Thread *);
 Result svcSetThreadPriority(uint32_t, uint32_t);
-Result svcSetThreadCoreMask(uint32_t, int32_t, uint32_t);
+Result svcSetThreadCoreMask(uint32_t, int32_t, uint64_t);
 int threadTlsAlloc(void (*)(void *));
 void threadTlsFree(int);
 void threadTlsSet(int, void *);

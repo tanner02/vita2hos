@@ -16,6 +16,15 @@
 #include "modules/SceLibKernel.h"
 #include "modules/SceSysmem.h"
 
+#ifdef __SWITCH__
+/* libnx32 declares a 32-bit mask, but its raw SVC stub forwards r0-r3 and
+ * Horizon consumes a 64-bit mask in r2:r3. This ABI-correct alias ensures
+ * the upper half is initialized instead of passing a caller-clobbered r3. */
+extern Result hos_thread_set_core_mask(Handle, s32, u64) __asm__("svcSetThreadCoreMask");
+#else
+#define hos_thread_set_core_mask svcSetThreadCoreMask
+#endif
+
 #define SCE_KERNEL_HIGHEST_PRIORITY_USER               64
 #define SCE_KERNEL_LOWEST_PRIORITY_USER                191
 #define SCE_KERNEL_DEFAULT_PRIORITY                    ((SceInt32)0x10000100)
@@ -179,7 +188,7 @@ static SceUID create_thread_with_affinity(const char *name, SceKernelThreadEntry
         return SCE_KERNEL_ERROR_THREAD_ERROR;
     }
 
-    res = svcSetThreadCoreMask(ti->thread.handle, preferred_core, native_mask);
+    res = hos_thread_set_core_mask(ti->thread.handle, preferred_core, (u64)native_mask);
     if (R_FAILED(res)) {
         LOG("Error configuring thread core mask 0x%x: 0x%" PRIx32, native_mask, res);
         threadClose(&ti->thread);

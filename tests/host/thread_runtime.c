@@ -36,7 +36,7 @@ static void *track_thread_alloc(size_t size)
 static u64 allowed_cores=7;
 static Result query_result, mask_result;
 static int last_cpu, mask_cpu;
-static u32 last_mask;
+static uint64_t last_mask;
 static VitaThreadInfo *native_info;
 static void *failed_info, *failed_tls;
 static unsigned failed_info_frees, failed_tls_frees;
@@ -51,11 +51,12 @@ Result svcGetInfo(u64 *value,u32 type,Handle handle,u64 sub_id)
     assert(type==InfoType_CoreMask && handle==CUR_PROCESS_HANDLE && !sub_id);
     ++query_calls;*value=allowed_cores;return query_result;
 }
-Result svcSetThreadCoreMask(uint32_t handle,int32_t cpu,uint32_t mask)
+Result svcSetThreadCoreMask(uint32_t handle,int32_t cpu,uint64_t mask)
 {
     assert(handle==0x1234 && native_info && !atomic_load(&native_info->started));
     assert(!vita_thread_info_dict_get(g_vita_thread_infos,native_info->uid));
-    assert(cpu==last_cpu && mask && (mask&(1U<<cpu)));
+    assert(!(mask>>32)); /* Observe the complete native ABI mask argument. */
+    assert(cpu==last_cpu && mask && (mask&(UINT64_C(1)<<cpu)));
     for(int core=0;core<cpu;++core) assert(!(mask&(1U<<core)));
     ++mask_calls;mask_cpu=cpu;last_mask=mask;
     if(mask_result) {failed_info=native_info;failed_tls=native_info->vita_tls;}
