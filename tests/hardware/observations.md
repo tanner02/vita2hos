@@ -2111,3 +2111,15 @@ and all16 fallback. Seven pinned real GXP fixtures and32 derived named samplers
 across both stages passed actual translator/reflection inclusion checks. Full
 host suite and native compilation are pending at this checkpoint; no hardware
 performance or rendering pass is claimed for this candidate.
+
+
+The texture-usage candidate subsequently passed the full host suite and a
+native Release build. Frozen composite09047b8 retains unchanged HLE491e281
+plus12 exact owned paths; its CMake change is one additive source entry on the
+owner build list, preserving all HLE entries. Archive/source/version/ARM32 and
+three content archives were verified. This runtime is PC-only and not installed.
+The candidate requires hardware validation with shaders in a known guest
+allocation (so narrowed masks are actually used), inactive invalid bindings,
+and stage switches without rebinding. Static fixture spans deliberately fall
+back to all16, so an unchanged static-shader smoke pass alone would not exercise
+the optimization. No game speedup, cleared alpha artifacts or 3D boot is claimed.
