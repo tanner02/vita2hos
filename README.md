@@ -102,6 +102,12 @@ Temporary files are removed after each attempt.
 This path requires writable SD storage and adds filesystem I/O during shader
 compilation; a capacity-aware in-memory UAM writer remains a future improvement.
 
+Fragment programs apply separate color/alpha blend equations and factors,
+including source-alpha transparency, additive/subtractive blending, and min/max.
+Destination-alpha saturation is explicitly unsupported by the native mapping.
+The translation is host-tested; transparent rendering still needs hardware
+validation.
+
 ## Building from Source
 
 1. **Clone the Repository with Submodules:**

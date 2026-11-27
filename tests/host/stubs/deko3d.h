@@ -4,6 +4,17 @@
 #include <stdint.h>
 typedef void *DkMemBlock;
 typedef void *DkDevice;
+typedef enum { DkBlendOp_Add = 1, DkBlendOp_Sub, DkBlendOp_RevSub, DkBlendOp_Min, DkBlendOp_Max } DkBlendOp;
+typedef enum {
+    DkBlendFactor_Zero = 1, DkBlendFactor_One, DkBlendFactor_SrcColor, DkBlendFactor_InvSrcColor,
+    DkBlendFactor_SrcAlpha, DkBlendFactor_InvSrcAlpha, DkBlendFactor_DstAlpha,
+    DkBlendFactor_InvDstAlpha, DkBlendFactor_DstColor, DkBlendFactor_InvDstColor,
+    DkBlendFactor_SrcAlphaSaturate,
+} DkBlendFactor;
+typedef struct {
+    uint32_t colorBlendOp : 3, srcColorBlendFactor : 6, dstColorBlendFactor : 6;
+    uint32_t alphaBlendOp : 3, srcAlphaBlendFactor : 6, dstAlphaBlendFactor : 6;
+} DkBlendState;
 typedef enum {
     DkPrimitive_Points = 0, DkPrimitive_Lines = 1, DkPrimitive_Triangles = 4,
     DkPrimitive_TriangleStrip = 5, DkPrimitive_TriangleFan = 6,

@@ -20,6 +20,7 @@
 #include "gxm/gxm_to_dk.h"
 #include "gxm/util.h"
 #include "gxm/draw.h"
+#include "gxm/blend.h"
 #include "gxm/shader_code.h"
 #include "gxm/program_registry.h"
 #include "gxm/texture_layout.h"
@@ -58,6 +59,7 @@ typedef struct SceGxmContext {
         bool two_sided_mode;
         DkRasterizerState rasterizer;
         DkColorState color;
+        DkBlendState blend;
         DkColorWriteState color_write;
         DkDepthStencilState depth_stencil;
         struct {
@@ -85,6 +87,7 @@ typedef struct SceGxmContext {
                 uint32_t vertex_default_uniform : 1;
                 uint32_t fragment_default_uniform : 1;
                 uint32_t vertex_streams : 1;
+                uint32_t blend : 1;
             } bit;
             uint32_t raw;
         } dirty;
@@ -121,6 +124,7 @@ typedef struct SceGxmFragmentProgram {
     SceGxmOutputRegisterFormat outputFormat;
     SceGxmMultisampleMode multisampleMode;
     SceGxmBlendInfo blendInfo;
+    GxmBlendState blend;
     DkShader dk_shader;
 } SceGxmFragmentProgram;
 
@@ -686,6 +690,11 @@ EXPORT(SceGxm, 0x4ED2E49D, int, sceGxmShaderPatcherCreateFragmentProgram,
         };
     }
 
+    ret = gxm_translate_blend(&fragment_program->blendInfo, &fragment_program->blend);
+    if (ret != 0) {
+        free(fragment_program);
+        return ret;
+    }
     ret = translate_shader(&fragment_program->dk_shader, programId->programHeader,
                            pipeline_stage_fragment, "frag",
                            NULL, 0);
@@ -1169,6 +1178,9 @@ EXPORT(SceGxm, 0xAD2F48D9, void, sceGxmSetFragmentProgram, SceGxmContext *contex
 
     dkColorWriteStateSetMask(&context->state.color_write, 0, mask);
     context->state.dirty.bit.color_write = true;
+    context->state.blend = fragmentProgram->blend.state;
+    dkColorStateSetBlendEnable(&context->state.color, 0, fragmentProgram->blend.enabled);
+    context->state.dirty.bit.blend = true;
 
     context->state.fragment_program = fragmentProgram;
     context->state.dirty.bit.fragment_shader = true;
@@ -1735,6 +1747,11 @@ static int context_flush_dirty_state(SceGxmContext *context)
 
     if (context->state.dirty.bit.color_write)
         dkCmdBufBindColorWriteState(context->cmdbuf, &context->state.color_write);
+
+    if (context->state.dirty.bit.blend) {
+        dkCmdBufBindColorState(context->cmdbuf, &context->state.color);
+        dkCmdBufBindBlendStates(context->cmdbuf, 0, &context->state.blend, 1);
+    }
 
     if (context->state.dirty.bit.fragment_textures) {
         int ret = upload_fragment_texture_descriptors(context);
