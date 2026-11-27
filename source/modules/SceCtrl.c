@@ -1,5 +1,7 @@
 #include <psp2/ctrl.h>
 #include <stdlib.h>
+#include <string.h>
+#include <psp2/kernel/processmgr.h>
 #include <switch.h>
 
 #include "log.h"
@@ -7,13 +9,52 @@
 #include "util.h"
 
 static PadState g_pad;
+static Mutex g_ctrl_lock;
+static SceCtrlPadInputMode g_sampling_mode=SCE_CTRL_MODE_DIGITAL;
+
+EXPORT(SceCtrl,0xA497B150,int,sceCtrlSetSamplingMode,SceCtrlPadInputMode mode)
+{
+    if((unsigned)mode>(unsigned)SCE_CTRL_MODE_ANALOG_WIDE)
+        return (int)SCE_CTRL_ERROR_INVALID_ARG;
+    mutexLock(&g_ctrl_lock);
+    int previous=g_sampling_mode;
+    g_sampling_mode=mode;
+    mutexUnlock(&g_ctrl_lock);
+    return previous;
+}
+EXPORT(SceCtrl,0xEC752AAF,int,sceCtrlGetSamplingMode,SceCtrlPadInputMode *mode)
+{
+    if(!mode)return (int)SCE_CTRL_ERROR_INVALID_ARG;
+    mutexLock(&g_ctrl_lock);
+    *mode=g_sampling_mode;
+    mutexUnlock(&g_ctrl_lock);
+    return 0;
+}
+/* Normalize the native signed stick with clamped endpoints and exact center.
+ * Both Vita analog modes currently use this full-range native mapping. */
+static uint8_t ctrl_axis(int32_t value,bool invert)
+{
+    if(value < -32768)value=-32768;
+    if(value > 32767)value=32767;
+    if(invert) {
+        value=-value;
+        if(value>32767)value=32767;
+    }
+    return (uint8_t)(((uint32_t)(value+32768)*255+32767)/65535);
+}
 
 EXPORT(SceCtrl, 0xA9C3CED6, int, sceCtrlPeekBufferPositive, int port, SceCtrlData *pad_data,
        int count)
 {
-    u64 buttons;
+    if(port!=0 || !pad_data || count<1 || count>64)
+        return (int)SCE_CTRL_ERROR_INVALID_ARG;
+    SceCtrlData sample={0};
+    sample.lx=sample.ly=sample.rx=sample.ry=128;
+    mutexLock(&g_ctrl_lock);
+    sample.timeStamp=sceKernelGetProcessTimeWide();
+    uint64_t buttons;
     HidAnalogStickState analog_stick_l, analog_stick_r;
-    u32 vita_buttons = 0;
+    uint32_t vita_buttons = 0;
 
     padUpdate(&g_pad);
     buttons = padGetButtons(&g_pad);
@@ -53,24 +94,29 @@ EXPORT(SceCtrl, 0xA9C3CED6, int, sceCtrlPeekBufferPositive, int port, SceCtrlDat
     if (buttons & HidNpadButton_Y)
         vita_buttons |= SCE_CTRL_SQUARE;
 
-    pad_data->buttons = vita_buttons;
-
-    pad_data->lx = (255 * (analog_stick_l.x - JOYSTICK_MIN)) / (JOYSTICK_MAX - JOYSTICK_MIN);
-    pad_data->ly =
-        (255 * ((255 - analog_stick_l.y) - JOYSTICK_MIN)) / (JOYSTICK_MAX - JOYSTICK_MIN);
-    pad_data->rx = (255 * (analog_stick_r.x - JOYSTICK_MIN)) / (JOYSTICK_MAX - JOYSTICK_MIN);
-    pad_data->ry =
-        (255 * ((255 - analog_stick_r.y) - JOYSTICK_MIN)) / (JOYSTICK_MAX - JOYSTICK_MIN);
-
-    return 0;
+    sample.buttons = vita_buttons;
+    if(g_sampling_mode!=SCE_CTRL_MODE_DIGITAL) {
+        sample.lx=ctrl_axis(analog_stick_l.x,false);
+        sample.ly=ctrl_axis(analog_stick_l.y,true);
+        sample.rx=ctrl_axis(analog_stick_r.x,false);
+        sample.ry=ctrl_axis(analog_stick_r.y,true);
+    }
+    mutexUnlock(&g_ctrl_lock);
+    /* This polling implementation returns one current sample, even when the
+     * caller offers more space. It does not invent a historical sample ring. */
+    memcpy(pad_data,&sample,sizeof(sample));
+    return 1;
 }
 
 DECLARE_LIBRARY(SceCtrl, 0xD197E3C7);
 
 int SceCtrl_init(void)
 {
+    mutexLock(&g_ctrl_lock);
+    g_sampling_mode=SCE_CTRL_MODE_DIGITAL;
     padConfigureInput(1, HidNpadStyleSet_NpadStandard);
     padInitializeAny(&g_pad);
+    mutexUnlock(&g_ctrl_lock);
 
     return 0;
 }

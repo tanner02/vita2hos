@@ -199,3 +199,12 @@ save/restore; native execution remains a hardware test requirement.
 report-imports.py separates binding inventory from runtime first-use records.
 Duplicates are log occurrences, not call counts; only the first caller per
 traced import/lifetime is recorded. Missing records do not prove an API was unused.
+
+Controller polling tests use deterministic native pad samples to check sampling
+mode transitions, invalid-mode preservation, digital centering, analog endpoint
+and center conversion, monotonic Y inversion, timestamp initialization, output
+bounds, and the one-sample return count. The polling backend returns one current
+sample even when count offers more room; it has no historical ring. Analog and
+analog-wide currently share the same normalized native stick range. Blocking
+reads, extended modes/ports, rapid fire, and firmware-specific analog response
+curves remain separate work. These host checks do not establish hardware input.
