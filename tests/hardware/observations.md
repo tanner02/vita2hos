@@ -1,4 +1,19 @@
-## Runtime 006d5c495f2265d877cc14a94ab63b8843136cbf — owned cube v2
+## Runtime 006d5c495f2265d877cc14a94ab63b8843136cbf — owned TLS v1
+
+- User completed the probe; current report/log were collected via USB/MTP.
+  Guest SHA-256 277f0b0bb34f5a342582f07582631bba2842bca0202f0f23b27e2ef706082aba,
+  plan SHA-256 5441186979d3e98c77e3758b5b2942d8b6db162c7058a6a522d65588448e55ea.
+- Report: PASS main_tls, PASS worker_tls, PASS thread_isolation, PASS tls_probe.
+  The owned test checks ARM/Thumb thread-pointer reads, initialized TLS/BSS,
+  native calls/yields, separate worker TLS and main pointer after worker join.
+- Runtime log identifies 006d5c4, applies exactly two reviewed owned patch sites,
+  and reports guest/process/launch exit 0 and load_process_close 0. No unresolved
+  imports were observed. The earlier cube report/log remain preserved.
+- This verifies the opt-in source-bound TPIDRURW path for this owned workload on
+  the physical Switch. It does not validate commercial libc/other module starts,
+  unreviewed TLS instructions, dynamic TLS or LittleBigPlanet boot.
+
+## Runtime 006d5c495f2265d877cc14a94ab63b8843136cbf â€” owned cube v2
 
 - User completed the test; report and runtime logs were collected over USB/MTP.
   Executable SHA-256: 6ed20aab2a8cae81531906923b3d0c92dc2fc31720dcc56cb889f3c69d74652c.
