@@ -1,5 +1,7 @@
+#include <psp2/sysmodule.h>
 #include <switch.h>
 #include "module.h"
+#include "modules/SceSysmodule.h"
 #include "log.h"
 
 /* Small system providers that LBP probes once: LiveArea status, BGM port
@@ -88,6 +90,10 @@ EXPORT(ScePower,0x3CE187B6,int,scePowerSetConfigurationMode,unsigned int mode)
 EXPORT(SceShutterSound,0x7FFB6D79,int,sceShutterSoundPlay,unsigned int type)
 {
     LOG("sceShutterSoundPlay type=%u (silent)",(unsigned)type);
+    /* Service lifecycle: play succeeds only while the shutter module is
+     * loaded; LittleBigPlanet gates startup on that module being loadable. */
+    if(!SceSysmodule_stub_id_loaded(SCE_SYSMODULE_SHUTTER_SOUND))
+        return (int)SCE_SYSMODULE_ERROR_UNLOADED;
     return 0;
 }
 

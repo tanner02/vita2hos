@@ -1,5 +1,6 @@
 #include <switch.h>
 #include <psp2/sysmodule.h>
+#include <stdbool.h>
 #include <string.h>
 #include "module.h"
 #include "log.h"
@@ -29,6 +30,8 @@ static bool stub_loadable_module(SceSysmoduleModuleId id)
     case SCE_SYSMODULE_NP_MESSAGE:     /* 0x26 */
     case SCE_SYSMODULE_NEAR_UTIL:      /* 0x2B */
     case SCE_SYSMODULE_NP_SIGNALING:   /* 0x46 */
+    case SCE_SYSMODULE_SHUTTER_SOUND:  /* 0x27: LBP's ShutterSound init stage
+        * returns false (fatal startup failure) when this load fails */
         return true;
     default:
         return false;
@@ -90,4 +93,12 @@ EXPORT(SceSysmodule,0x31D87805,int,sceSysmoduleUnloadModule,SceSysmoduleModuleId
     mutexUnlock(&sysmodule_lock);
     return result;
 }
+bool SceSysmodule_stub_id_loaded(SceSysmoduleModuleId id)
+{
+    mutexLock(&sysmodule_lock);
+    bool loaded = (unsigned)id <= (unsigned)SCE_SYSMODULE_JSON && stub_loaded[id];
+    mutexUnlock(&sysmodule_lock);
+    return loaded;
+}
+
 DECLARE_LIBRARY(SceSysmodule,0x03FCF19D);
