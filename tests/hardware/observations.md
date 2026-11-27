@@ -1,3 +1,35 @@
+## 2026-11-27: automated real-title run past LIVEAREA, guest crash captured
+
+Using authenticated sys-autopilot1.6.0, installed the provided ZCode42bf233
+HOME package after verifying its full package and three NCA hashes. Installation
+returned the dedicated title ID0100f27432680000. Source remains unmerged; the
+package's dialog success stubs remain an explicit compatibility limitation.
+The original guest/assets/modules were preserved.
+
+The title found a compatible layout after21 restarts. LIVEAREA load returned
+success and the game created resource-loading, main and glyph threads beyond
+the prior teardown point. No first-use unsupported call, shader compilation or
+scene submission was logged after guest entry. An unchanged log did not prove
+that threads were still waiting: Atmosphere recorded a guest Data Abort and
+later displayed its software-closed error screen.
+
+Private crash report PC813a3f28 reads a halfword at r0+0x108 with r0=0x50.
+Read-only source-bound Thumb decoding traces the caller through the real
+libc __tls_get_addr import; the resulting thread-local object pointer is null.
+This identifies the failing use, not the reason the object was uninitialized.
+An owned real-libc TLS address/initialization/isolation probe is the next check;
+raw thread-pointer tests alone cannot validate this library path.
+
+Default-layer screenshots work while the screenshot layer can return0xe0ce.
+After the crash, virtual-controller updates returned0x1c24ca; detach failed,
+and attach alone did not restore input. Remote reboot was accepted, but the
+server did not return within the first minute. Bootloader recovery was requested
+and console ownership released to the user. This is a limitation of the current
+remote-control setup, not proof that every recovery can be automated.
+
+Evidence: private `sys-autopilot-setup/run-42bf233/`, 45018-byte final runtime
+log and 130101-byte Atmosphere report; no proprietary bytes published.
+
 ## 2026-11-27: vertex-stage texture bindings
 
 The runtime previously exposed only fragment texture binding. It now exports
