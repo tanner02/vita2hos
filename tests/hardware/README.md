@@ -115,6 +115,12 @@ installer, then select the vita2hos HOME tile. No existing game or global hbmenu
 configuration needs replacement. The installer and hardware launch remain
 separate from packaging validation.
 
+The first `f55edbf` standalone package installed but did not launch. Its runtime
+configuration enabled two mutually exclusive debug capabilities. The corrected
+configuration requests only `allow_debug`; `check-runtime-npdm.py` now rejects
+incompatible generated descriptors before publication. The corrected package
+still requires a successful hardware launch before this route is validated.
+
 The packager validates the input bundle, preserves the runtime NSO, validates
 content filenames against their SHA-256 digests, and records an output manifest.
 Packaging keys stay local and are excluded from outputs. The default JPEG is

@@ -27,6 +27,28 @@ def fixture():
 
 
 class TitleProfileTests(unittest.TestCase):
+    def test_debug_capabilities_are_mutually_exclusive(self):
+        original = bytearray(fixture())
+        start, _ = tool.pfs_files(original)["main.npdm"]
+        # Both access-control regions must satisfy the loader's flag invariant.
+        for base, fields, offset in ((0x80, 0x230, 0x238), (0x2c0, 0x30, 0x38)):
+            for flags in range(8):
+                candidate = original.copy()
+                struct.pack_into("<II", candidate, start + base + fields, offset, 4)
+                struct.pack_into("<I", candidate, start + base + offset, 0xffff | flags << 17)
+                if flags.bit_count() <= 1:
+                    tool.retarget(candidate, 0x0100f27432680000)
+                else:
+                    with self.assertRaisesRegex(ValueError, "mutually exclusive"):
+                        tool.retarget(candidate, 0x0100f27432680000)
+
+    def test_runtime_config_requests_only_one_debug_flag(self):
+        config = json.loads((Path(__file__).parents[2] / "vita2hos.json").read_text())
+        values = [entry["value"] for entry in config["kernel_capabilities"] if entry["type"] == "debug_flags"]
+        self.assertEqual(len(values), 1)
+        self.assertEqual(sum(bool(values[0].get(name)) for name in
+                             ("allow_debug", "force_debug_prod", "force_debug")), 1)
+
     def test_retarget_preserves_everything_except_ids(self):
         source = fixture()
         patched = tool.retarget(source, 0x0100152000022000)

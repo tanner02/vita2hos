@@ -58,6 +58,16 @@ def retarget(data, title_id):
         raise ValueError("Invalid NPDM access-control regions")
     if any(meta[acid:acid + 0x100]):
         raise ValueError("Refusing to modify a signed NPDM")
+    for base, size, fields in ((aci, aci_size, 0x30), (acid, acid_size, 0x230)):
+        offset, length = struct.unpack_from("<II", meta, base + fields)
+        if length % 4 or (length and (offset < fields + 8 or offset + length > size)):
+            raise ValueError("Invalid NPDM kernel-capability region")
+        for position in range(base + offset, base + offset + length, 4):
+            capability = struct.unpack_from("<I", meta, position)[0]
+            if capability & 0x1ffff == 0xffff:
+                flags = capability >> 17
+                if flags > 7 or flags.bit_count() > 1:
+                    raise ValueError("NPDM enables mutually exclusive debug capabilities")
     result = bytearray(data)
     for offset in (aci + 0x10, acid + 0x210, acid + 0x218):
         struct.pack_into("<Q", result, start + offset, title_id)

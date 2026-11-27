@@ -163,7 +163,7 @@
             "type": "debug_flags",
             "value": {
                 "allow_debug": true,
-                "force_debug": true
+                "force_debug": false
             }
         }
     ]

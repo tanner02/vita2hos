@@ -44,6 +44,9 @@ jobs:
       - name: Build
         run: cmake --build --preset ${{ matrix.build_type }}
 
+      - name: Validate generated runtime metadata
+        run: python3 -B tools/check-runtime-npdm.py build/${{ matrix.build_type }}/vita2hos.nsp
+
       # Diagnostic ELF only: relaxing this check identifies the remaining
       # read-only relocations. It is never uploaded as a runnable NSP.
       - name: Diagnose failed Debug link

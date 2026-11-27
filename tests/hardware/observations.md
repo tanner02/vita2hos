@@ -14,6 +14,15 @@
   modified. Normal game launch after rollback still needs user confirmation.
 - Treat this title-replacement route as failed on this setup; it is not a
   validated deployment method. Investigate a standalone installable title.
+- The standalone title `0100f27432680000` installed successfully, but the user
+  reported **"Could not start the software"** with no error code on launch.
+  No runtime/probe report was found afterward. Installation is therefore
+  demonstrated; runtime execution is not.
+- Source inspection found `allow_debug=true` and `force_debug=true` in the NPDM
+  configuration. Atmosphere's current `CapabilityDebugFlags::IsValid` rejects
+  multiple enabled debug flags; its hbloader path explicitly rewrites them.
+  This is a concrete metadata defect and a candidate explanation, not proof
+  that no other startup problem exists.
 
 ## Runtime 221600951699dcad7f0592fab00efac8a30132a8
 
