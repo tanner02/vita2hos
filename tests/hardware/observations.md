@@ -281,6 +281,19 @@
   limitations. Automatic preload selection, names, attributes, and affinity remain
   unfinished. No ARM guest execution or Switch changes were performed.
 
+## Host app-bundled preload selection after 53aee8c
+
+- Supported modern process metadata now selects existing app-bundled libc and
+  FIOS2, in that order, while respecting their separate preload-disable bits.
+  An explicit modules.txt, even empty, overrides automatic selection. Legacy or
+  missing metadata retains single-image loading.
+- Discovery is limited to those two filenames. No firmware search, Ult preload,
+  dynamic sysmodule support, or execution compatibility is implied. Present
+  malformed modules fail preparation rather than silently selecting HLE.
+- Host tests exercise ordered discovery, missing files, each disable bit,
+  legacy metadata, explicit overrides, discovery failure, and preparation
+  rollback. No Switch files were changed and no commercial code was executed.
+
 ## Runtime 15d400f48e5d3a3f5d811e2a67bd30a1388cc102
 
 - Standalone HOME title, owned fixed-address CPU probe SHA-256

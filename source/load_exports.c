@@ -107,6 +107,7 @@ int load_process_parameters_read(LoadProcessParameters *parameters, uint32_t add
         if (libc_size < 4 || !read(context, libc_address, libc_size, false)) return -1;
     }
     decoded.libc_address=libc_address;
+    decoded.version=version;
     *parameters=decoded;
     return 0;
 }

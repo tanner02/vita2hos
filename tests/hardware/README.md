@@ -326,10 +326,17 @@ For explicit dependency loading, `/vita2hos/modules.txt` contains one app-relati
 (normally `/vita2hos`). For example, `sce_module/libc.suprx` selects the bundled
 libc file. Duplicate entries, absolute paths, `.`/`..` segments, backslashes,
 device prefixes, embedded NUL bytes, oversized paths, and more than 32 modules
-are rejected. A missing list preserves the single-executable launch; an invalid
-or unreadable list fails loading. This explicit list does not infer Vita preload
-flags or initialization dependencies. Do not treat its availability as evidence
-that bundled commercial libraries or TLS already work.
+are rejected. An invalid or unreadable list fails loading. A present list,
+including an empty one, overrides automatic selection and preserves its exact
+startup order. Without a list, supported version-5/6 process parameters enable
+discovery of `sce_module/libc.suprx`, then `sce_module/libfios2.suprx`, under the
+app root. Preload-disable bits `0x00010000` and `0x00200000` respectively exclude
+those files. Missing files are skipped; a present nonregular or unloadable file
+fails loading and rolls back all images. Missing or legacy process parameters
+preserve single-image loading. This does not search firmware, preload Ult,
+implement dynamic SceSysmodule loading, or infer other initialization dependencies.
+Do not treat its availability as evidence that bundled commercial libraries or
+TLS already work on hardware.
 
 The main executable's module metadata can also supply `NID_PROCESS_PARAM`.
 For supported version-5/6 parameter structures, the loader validates the structure
@@ -340,8 +347,8 @@ libc's variable import to bind without a placeholder structure. Optional main
 priority, main stack size, and preload-disable values are read indirectly through
 bounded guest pointers. Main-thread creation now uses the requested priority and
 stack size; absent fields keep the existing defaults. Zero or overflowing main
-stack sizes fail before native thread creation. Preload flags are captured for
-future module discovery but are not yet applied automatically. Thread names,
+stack sizes fail before native thread creation. Preload flags control the limited
+app-bundled discovery described above. Thread names,
 attributes, and affinity are not configured from these fields.
 
 Native variable exports now have a separate typed descriptor table. Guest

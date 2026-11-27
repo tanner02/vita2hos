@@ -170,9 +170,7 @@ int main(int argc, char *argv[])
     if (load_module_paths_file(&modules, VITA2HOS_MODULES_FILE, VITA2HOS_APP0_PATH) < 0)
         fatal_error("Error reading guest module list.",
                     "Check /vita2hos/modules.txt and /vita2hos/log.txt.");
-    const char *module_paths[LOAD_PROCESS_MAX_MODULES];
-    for (size_t i=0; i<modules.count; ++i) module_paths[i]=modules.paths[i];
-    ret = load_process_load(&process, VITA2HOS_EXE_FILE, module_paths, modules.count);
+    ret = load_process_load_app(&process, VITA2HOS_EXE_FILE, VITA2HOS_APP0_PATH, &modules);
     if (ret == LOAD_LAYOUT_CONFLICT) {
         u64 program_id = 0;
         LoadRetryPacket next;
