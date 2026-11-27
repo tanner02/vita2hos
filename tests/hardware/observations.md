@@ -1905,3 +1905,22 @@ scene setup; full scaling is retained. Sanitized host export/copy/mask/empty/
 bounds/unsupported checks pass; cube9/draw12 compile with warnings as errors.
 Seven pixel-readback cases are prepared, bringing the cube batch to47checks.
 Hardware execution remains pending until the verified runtime is installed.
+
+## Cube v9 hardware result: 48 checks passed
+
+Frozen runtime4574c20 (unchanged owner073 HLE plus eight Codex production paths)
+and corrected guestd0f375e passed all48checks. Seven color clip tests verify
+unaligned inclusive bounds, a single pixel, empty rectangles,12-bit masking,
+full reset, scene descriptor snapshots and region-clip intersection. An eighth
+case uses forcedDF32depth readback to verify0.75 at64points inside and outside
+the color clip under an explicit identityZ viewport. All earlier40checks pass,
+including360cube frames/guards; log records process0 and cleanup0, HOMEobserved.
+Original game/modules/normal mode restored exactly after the test.
+
+First guest4e6ecf5 expected0.75 under defaultZoffset0.5/scale0.5 and failed its
+depth check after all seven color cases passed. Default viewport maps that
+position to0.875; the corrected diagnostic explicitly requestsZoffset0/scale1.
+The runtime was unchanged between these two runs. Private initial/final reports
+are retained. Public owned-scene report and verification receipt list all48tags.
+These results establish our implementation on Switch; they do not substitute
+for an on-Vita clipping oracle or prove LittleBigPlanet boots correctly.
