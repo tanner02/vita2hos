@@ -11,6 +11,8 @@ typedef struct {
     uint64_t source_tag;
     void *entry;
     bool bound;
+    bool run_started;
+    size_t modules_started;
 } LoadProcess;
 
 /* Initialize to zero and keep at a stable address. Paths are consumed during
@@ -22,5 +24,10 @@ typedef struct {
 int load_process_load(LoadProcess *process, const char *executable,
                        const char *const *modules, size_t module_count);
 Result load_process_close(LoadProcess *process);
+/* Call once on an initialized guest thread. Startup entries run in explicit
+ * dependency-list order with zero arguments. Only resident success (0) is
+ * supported. Failure prevents entry into main. This does not run stop callbacks
+ * or stop threads created by guest modules. */
+int load_process_run(LoadProcess *process, uint32_t args, void *argp);
 
 #endif

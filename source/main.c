@@ -5,6 +5,7 @@
 #include <deko3d.h>
 #include <elf.h>
 #include <psp2/kernel/threadmgr.h>
+#include <psp2/kernel/processmgr.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -42,7 +43,18 @@ static void dk_debug_callback(void *userData, const char *context, DkResult resu
     }
 }
 
-static int launch(SceKernelThreadEntry entry)
+static int guest_process_entry(SceSize args, void *argp)
+{
+    LoadProcess *process = NULL;
+    if (args == sizeof(process) && argp) memcpy(&process, argp, sizeof(process));
+    int result = load_process_run(process, 0, NULL);
+    /* A returning main or startup failure must also wake the process waiter.
+     * A guest calling sceKernelExitProcess itself never returns here. */
+    sceKernelExitProcess(result);
+    return result;
+}
+
+static int launch(LoadProcess *process)
 {
     DkDeviceMaker device_maker;
     DkDevice dk_device;
@@ -81,7 +93,7 @@ static int launch(SceKernelThreadEntry entry)
 
     LOG("Entering SceKernelThreadMgr...");
 
-    ret = SceKernelThreadMgr_main_entry(entry, 0, NULL);
+    ret = SceKernelThreadMgr_main_entry(guest_process_entry, sizeof(process), &process);
 
     LOG("SceKernelThreadMgr returned...");
 
@@ -129,7 +141,6 @@ int main(int argc, char *argv[])
     time_t now;
     char timestr[32];
     LoadProcess process = {0};
-    void *entry;
     int ret;
     LoadRetryPacket previous_retry = read_layout_retry();
 
@@ -154,7 +165,6 @@ int main(int argc, char *argv[])
     LOG("Starting at %s", timestr);
 
     ret = load_process_load(&process, VITA2HOS_EXE_FILE, NULL, 0);
-    entry = process.entry;
     if (ret == LOAD_LAYOUT_CONFLICT) {
         u64 program_id = 0;
         LoadRetryPacket next;
@@ -178,7 +188,7 @@ int main(int argc, char *argv[])
         LOG("Launching PlayStation Vita executable!");
 
         /* Jump to Vita's executable entrypoint */
-        ret = launch(entry);
+        ret = launch(&process);
 
         LOG("Returned from launch with result: %d", ret);
 

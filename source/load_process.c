@@ -6,6 +6,8 @@ Result load_process_close(LoadProcess *process)
 {
     if (!process) return MAKERESULT(Module_Libnx, LibnxError_BadInput);
     process->bound = false;
+    process->run_started = false;
+    process->modules_started = 0;
     process->entry = NULL;
     Result result = 0;
     for (size_t i = process->count; i > 0; --i) {

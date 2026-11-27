@@ -286,7 +286,7 @@ an absent lifecycle start with metadata start 0 or `0xffffffff` remains null.
 An exported lifecycle start takes precedence over the metadata offset. Main
 executables retain support for a valid entry at segment offset zero, and the
 single-executable `load_file` rejects an image with no entry. Lifecycle decoding
-does not invoke constructors or implement module-start/stop orchestration.
+does not itself invoke lifecycle functions.
 
 `load_process_load` owns a main image and an explicit list of up to 32 module
 paths. It prepares all images, publishes every provider into a shared registry,
@@ -306,6 +306,17 @@ table cannot alter its own subsequent records. Missing variable providers,
 malformed tables, unsupported records, and out-of-range targets fail binding.
 These paths are covered by host tests, including cross-image variable binding;
 they have not yet been tested with bundled commercial libraries on hardware.
+
+`load_process_run` runs on the initialized guest main thread. It invokes module
+startup entries in the explicitly supplied dependency order, skips absent
+startup functions, and enters the main executable only after every initializer
+returns resident success (0). Nonresident success (1) is currently rejected
+because unloading/rebinding that module is not implemented. Startup is attempted
+only once per loaded process. A returning main or startup failure signals the
+normal process-exit event through the guest-thread wrapper. Host tests verify
+ordering, failure gating, missing entries, repeat-call rejection, and preservation
+of the main result. Automatic module discovery, stop/exit callback orchestration,
+and termination of all guest worker threads remain unfinished.
 
 ### Experimental title-specific launch profile
 
