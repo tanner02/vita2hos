@@ -188,6 +188,37 @@ int main(void)
     assert(size==DkVtxAttribSize_3x8);
     assert((uint32_t)gxm_translate_vertex_format(SCE_GXM_ATTRIBUTE_FORMAT_F32,1,true,&type,NULL)==SCE_GXM_ERROR_INVALID_POINTER);
     assert(type==DkVtxAttribType_Snorm);
+    SceGxmVertexAttribute reordered[3] = {
+        {.streamIndex=1,.offset=12,.format=SCE_GXM_ATTRIBUTE_FORMAT_U8,.componentCount=3},
+        {.streamIndex=0,.offset=8,.format=SCE_GXM_ATTRIBUTE_FORMAT_F32,.componentCount=2},
+        {.streamIndex=0,.offset=16,.format=SCE_GXM_ATTRIBUTE_FORMAT_S16,.componentCount=4}
+    };
+    uint32_t locations[3] = {5, UINT32_MAX, 0};
+    DkVtxAttribState state[SCE_GXM_MAX_VERTEX_ATTRIBUTES];
+    assert(!gxm_build_vertex_attribute_state(reordered,3,locations,1U<<2,state));
+    assert(!state[5].isFixed && state[5].bufferId==1 && state[5].offset==12 &&
+           state[5].type==DkVtxAttribType_Uscaled && state[5].size==DkVtxAttribSize_3x8);
+    assert(!state[0].isFixed && state[0].type==DkVtxAttribType_Sint &&
+           state[0].size==DkVtxAttribSize_4x16 && state[0].offset==16);
+    for (unsigned i=1;i<SCE_GXM_MAX_VERTEX_ATTRIBUTES;++i)
+        if (i!=5) assert(state[i].isFixed);
+    DkVtxAttribState preserved[SCE_GXM_MAX_VERTEX_ATTRIBUTES];
+    memcpy(preserved,state,sizeof(state));
+    locations[2]=5;
+    assert((uint32_t)gxm_build_vertex_attribute_state(reordered,3,locations,0,state)==SCE_GXM_ERROR_INVALID_VALUE);
+    assert(!memcmp(preserved,state,sizeof(state)));
+    locations[2]=SCE_GXM_MAX_VERTEX_ATTRIBUTES;
+    assert((uint32_t)gxm_build_vertex_attribute_state(reordered,3,locations,0,state)==SCE_GXM_ERROR_INVALID_VALUE);
+    assert(!memcmp(preserved,state,sizeof(state)));
+    assert((uint32_t)gxm_build_vertex_attribute_state(NULL,1,locations,0,state)==SCE_GXM_ERROR_INVALID_POINTER);
+    assert(!memcmp(preserved,state,sizeof(state)));
+    assert((uint32_t)gxm_build_vertex_attribute_state(reordered,3,NULL,0,state)==SCE_GXM_ERROR_INVALID_POINTER);
+    assert((uint32_t)gxm_build_vertex_attribute_state(reordered,3,locations,0,NULL)==SCE_GXM_ERROR_INVALID_POINTER);
+    assert((uint32_t)gxm_build_vertex_attribute_state(reordered,SCE_GXM_MAX_VERTEX_ATTRIBUTES+1,locations,0,state)==SCE_GXM_ERROR_INVALID_VALUE);
+    assert(!memcmp(preserved,state,sizeof(state)));
+    /* A new program with no supplied attributes must clear every stale fetch. */
+    assert(!gxm_build_vertex_attribute_state(NULL,0,NULL,0,state));
+    for (unsigned i=0;i<SCE_GXM_MAX_VERTEX_ATTRIBUTES;++i) assert(state[i].isFixed);
     puts("GXM index range regression checks passed.");
     return 0;
 }

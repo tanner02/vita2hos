@@ -10,17 +10,24 @@
 
 extern "C" {
 
-bool gxp_vertex_attribute_integer_c(const SceGxmProgram *program, uint32_t reg_index,
-                                     bool *integer_input)
+bool gxp_vertex_input_c(const SceGxmProgram *program, uint32_t reg_index,
+                        uint32_t hint_index, GxmVertexInput *input)
 {
-    if (!program || !integer_input || program->is_fragment()) return false;
+    if (!program || !input || program->is_fragment()) return false;
     try {
         shader::usse::AttributeInformationMap inputs;
         shader::usse::get_attribute_informations(*program, inputs);
         const auto found = inputs.find(reg_index);
-        const bool result = found == inputs.end() ? !inputs.empty() :
-            found->second.is_integer || found->second.regformat;
-        *integer_input = result;
+        GxmVertexInput result;
+        if (inputs.empty()) {
+            result = {hint_index, false};
+        } else if (found == inputs.end()) {
+            result = {UINT32_MAX, true};
+        } else {
+            result = {found->second.location,
+                      found->second.is_integer || found->second.regformat};
+        }
+        *input = result;
         return true;
     } catch (...) {
         return false;

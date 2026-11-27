@@ -90,5 +90,18 @@ raw-register input declarations against the runtime input classifier. Raw U8/S8
 and U16/S16 attributes use numeric float conversion for floating shader inputs;
 integer and raw-register inputs retain integer fetch. Host tests separately
 cover the deko3d format mapping and stripped-shader fallback. These checks do
-not establish rendered geometry; input locations and packed registers still
+not establish rendered geometry; packed registers and matrix inputs still
 need further compatibility work.
+
+## Vertex input locations
+
+For each named input in the pinned vertex fixtures, SPIR-V reflection now checks
+the input's name and location against the metadata used by runtime vertex fetch.
+Host checks pass attributes in a different order, include an unused attribute,
+and verify sparse locations, fixed unused slots, duplicate/range rejection and
+output preservation on failure. Stripped shaders retain hint-list locations.
+The runtime caches the resulting native attribute state at program creation.
+A stripped-symbol derivative with reversed hint order also compares its actual
+SPIR-V input locations and floating types with the runtime fallback metadata.
+Packed attributes and matrix/array expansion remain further compatibility work;
+these checks do not establish GPU fetch or rendered geometry.

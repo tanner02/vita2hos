@@ -7,11 +7,15 @@ extern "C" {
 #endif
 
 bool gxp_uniform_layout_c(const SceGxmProgram *program, GxmUniformLayout *layout);
-/* Select integer fetch for integer/register-packed shader inputs. Stripped
- * shaders use the translator's float-input hint fallback. Extra, unreferenced
- * attributes in named shaders retain integer fetch. Failure preserves output. */
-bool gxp_vertex_attribute_integer_c(const SceGxmProgram *program, uint32_t reg_index,
-                                     bool *integer_input);
+typedef struct GxmVertexInput {
+    /* UINT32_MAX means an unreferenced attribute in a named shader. */
+    uint32_t location;
+    bool integer_input;
+} GxmVertexInput;
+/* Named inputs use shader declaration locations; stripped shaders use the
+ * attribute hint index and float conversion. Failure preserves output. */
+bool gxp_vertex_input_c(const SceGxmProgram *program, uint32_t reg_index,
+                        uint32_t hint_index, GxmVertexInput *input);
 
 bool convert_gxp_to_spirv_c(uint32_t **spirv, uint32_t *num_instr, const SceGxmProgram *program,
                             const char *shader_name, bool support_shader_interlock,

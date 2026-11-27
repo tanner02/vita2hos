@@ -131,7 +131,8 @@ typedef struct SceGxmShaderPatcher {
 } SceGxmShaderPatcher;
 
 typedef struct SceGxmVertexProgram {
-    uint32_t integer_attributes;
+    DkVtxAttribState dk_attributes[SCE_GXM_MAX_VERTEX_ATTRIBUTES];
+    uint32_t used_streams;
     const SceGxmProgram *program; /* Caller-owned GXP, independent of registration ID. */
     GxmProgramRef ref;
     uint32_t default_uniform_count;
@@ -633,15 +634,24 @@ EXPORT(SceGxm, 0xB7BBA6D5, int, sceGxmShaderPatcherCreateVertexProgram,
         memcpy(vertex_program->attributes, attributes, attributeCount * sizeof(SceGxmVertexAttribute));
     }
     vertex_program->attributeCount = attributeCount;
+    uint32_t locations[SCE_GXM_MAX_VERTEX_ATTRIBUTES];
+    uint32_t integer_mask = 0;
     for (unsigned i = 0; i < attributeCount; ++i) {
-        bool integer_input;
-        if (!gxp_vertex_attribute_integer_c(programId->programHeader, attributes[i].regIndex,
-                                             &integer_input)) {
+        GxmVertexInput input;
+        if (!gxp_vertex_input_c(programId->programHeader, attributes[i].regIndex, i, &input) ||
+            (input.location != UINT32_MAX && input.location >= SCE_GXM_MAX_VERTEX_ATTRIBUTES)) {
             ret = SCE_GXM_ERROR_INVALID_VALUE;
             goto fail;
         }
-        if (integer_input) vertex_program->integer_attributes |= 1U << i;
+        locations[i] = input.location;
+        if (input.integer_input) integer_mask |= 1U << i;
     }
+    ret = gxm_build_vertex_attribute_state(attributes, attributeCount, locations, integer_mask,
+                                            vertex_program->dk_attributes);
+    if (ret) goto fail;
+    for (unsigned i = 0; i < SCE_GXM_MAX_VERTEX_ATTRIBUTES; ++i)
+        if (!vertex_program->dk_attributes[i].isFixed)
+            vertex_program->used_streams |= 1U << vertex_program->dk_attributes[i].bufferId;
     if (streamCount) {
         vertex_program->streams = calloc(streamCount, sizeof(SceGxmVertexStream));
         if (!vertex_program->streams) {
@@ -2054,16 +2064,12 @@ static int context_flush_dirty_state(SceGxmContext *context)
     const DkShader *shaders[2];
     const SceGxmVertexProgram *vertex_program = context->state.vertex_program;
     const SceGxmFragmentProgram *fragment_program = context->state.fragment_program;
-    const SceGxmVertexAttribute *attributes = vertex_program->attributes;
     const SceGxmVertexStream *streams = vertex_program->streams;
-    DkVtxAttribState vertex_attrib_state[SCE_GXM_MAX_VERTEX_ATTRIBUTES];
     DkVtxBufferState vertex_buffer_state[SCE_GXM_MAX_VERTEX_STREAMS];
     uint32_t i, shader_count = 0, shader_stage_mask = 0;
 
     if (context->state.dirty.bit.vertex_streams || context->state.dirty.bit.vertex_shader) {
-        uint32_t used_streams = 0;
-        for (i = 0; i < vertex_program->attributeCount; ++i)
-            used_streams |= 1U << attributes[i].streamIndex;
+        const uint32_t used_streams = vertex_program->used_streams;
         for (i = 0; i < vertex_program->streamCount; ++i) {
             if (!(used_streams & (1U << i)))
                 continue;
@@ -2081,23 +2087,6 @@ static int context_flush_dirty_state(SceGxmContext *context)
     }
 
     if (context->state.dirty.bit.vertex_shader && vertex_program) {
-        memset(vertex_attrib_state, 0,
-               vertex_program->attributeCount * sizeof(*vertex_attrib_state));
-        for (i = 0; i < vertex_program->attributeCount; i++) {
-            vertex_attrib_state[i].bufferId = attributes[i].streamIndex;
-            vertex_attrib_state[i].isFixed = 0;
-            vertex_attrib_state[i].offset = attributes[i].offset;
-            DkVtxAttribSize size;
-            DkVtxAttribType type;
-            int ret = gxm_translate_vertex_format(attributes[i].format,
-                attributes[i].componentCount, (vertex_program->integer_attributes & (1U << i)) != 0,
-                &type, &size);
-            if (ret) return ret;
-            vertex_attrib_state[i].size = size;
-            vertex_attrib_state[i].type = type;
-            vertex_attrib_state[i].isBgra = 0;
-        }
-
         for (i = 0; i < vertex_program->streamCount; i++) {
             vertex_buffer_state[i].stride = streams[i].stride;
             uint32_t divisor;
@@ -2107,8 +2096,8 @@ static int context_flush_dirty_state(SceGxmContext *context)
             vertex_buffer_state[i].divisor = divisor;
         }
 
-        dkCmdBufBindVtxAttribState(context->cmdbuf, vertex_attrib_state,
-                                   vertex_program->attributeCount);
+        dkCmdBufBindVtxAttribState(context->cmdbuf, vertex_program->dk_attributes,
+                                   SCE_GXM_MAX_VERTEX_ATTRIBUTES);
         dkCmdBufBindVtxBufferState(context->cmdbuf, vertex_buffer_state,
                                    vertex_program->streamCount);
     }

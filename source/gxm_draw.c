@@ -1,4 +1,40 @@
 #include "gxm/draw.h"
+#include <string.h>
+
+int gxm_build_vertex_attribute_state(const SceGxmVertexAttribute *attributes, unsigned count,
+    const uint32_t *locations, uint32_t integer_mask, DkVtxAttribState *state)
+{
+    if (!state || (count && (!attributes || !locations)))
+        return SCE_GXM_ERROR_INVALID_POINTER;
+    if (count > SCE_GXM_MAX_VERTEX_ATTRIBUTES) return SCE_GXM_ERROR_INVALID_VALUE;
+    DkVtxAttribState result[SCE_GXM_MAX_VERTEX_ATTRIBUTES] = {0};
+    uint32_t used = 0;
+    for (unsigned i = 0; i < SCE_GXM_MAX_VERTEX_ATTRIBUTES; ++i) {
+        result[i].isFixed = 1;
+        result[i].size = DkVtxAttribSize_4x32;
+        result[i].type = DkVtxAttribType_Float;
+    }
+    for (unsigned i = 0; i < count; ++i) {
+        const uint32_t location = locations[i];
+        if (location == UINT32_MAX) continue;
+        if (location >= SCE_GXM_MAX_VERTEX_ATTRIBUTES || (used & (1U << location)) ||
+            attributes[i].streamIndex >= SCE_GXM_MAX_VERTEX_STREAMS || attributes[i].offset > 0x3fff)
+            return SCE_GXM_ERROR_INVALID_VALUE;
+        DkVtxAttribType type;
+        DkVtxAttribSize size;
+        int ret = gxm_translate_vertex_format(attributes[i].format, attributes[i].componentCount,
+            (integer_mask & (1U << i)) != 0, &type, &size);
+        if (ret) return ret;
+        result[location].bufferId = attributes[i].streamIndex;
+        result[location].offset = attributes[i].offset;
+        result[location].isFixed = 0;
+        result[location].type = type;
+        result[location].size = size;
+        used |= 1U << location;
+    }
+    memcpy(state, result, sizeof(result));
+    return 0;
+}
 
 int gxm_translate_cull(SceGxmCullMode mode, DkFace *translated)
 {

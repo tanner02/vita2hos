@@ -18,6 +18,10 @@ int gxm_validate_vertex_layout(const SceGxmVertexAttribute *attributes, unsigned
                                 const SceGxmVertexStream *streams, unsigned int stream_count);
 int gxm_translate_vertex_format(SceGxmAttributeFormat format, unsigned int components, bool integer_input,
                                   DkVtxAttribType *type, DkVtxAttribSize *size);
+/* locations use UINT32_MAX for unused attributes. Output has MAX_VERTEX_ATTRIBUTES
+ * entries; unused locations are fixed to avoid stale buffer fetches. */
+int gxm_build_vertex_attribute_state(const SceGxmVertexAttribute *attributes, unsigned count,
+    const uint32_t *locations, uint32_t integer_mask, DkVtxAttribState *state);
 
 int gxm_validate_index_range(SceGxmIndexFormat format, uintptr_t address,
                              uintptr_t block_base, size_t block_size,

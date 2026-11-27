@@ -424,4 +424,8 @@ including untyped32-bit integer fetch and numeric float conversion for raw
 U8/S8/U16/S16 shader inputs. Invalid formats/counts/pointers preserve outputs. Shader
 metadata checks cover integer/raw-register inputs, stripped float fallback,
 unused attributes and failure output preservation.
-Input location mapping, packed registers and GPU fetch behavior need further checks.
+Input metadata also supplies declaration locations, with hint-list locations for
+stripped shaders and an unused marker for unmatched registers. Native attribute
+state tests cover reordered inputs, sparse locations, unused fixed slots,
+duplicate/out-of-range locations, empty programs and failure output preservation.
+Packed registers and GPU fetch behavior need further checks.

@@ -1,3 +1,24 @@
+## 2026-11-27: declared vertex input locations (offline, not deployed)
+
+Vertex fetch now uses the shader declaration location associated with each guest
+register rather than the caller's attribute-list position. Unmatched attributes
+in named shaders are skipped. Stripped shaders retain hint-list positions and
+float-input conversion. Native attribute state is checked and cached at program
+creation; unused slots are fixed, and only referenced streams require buffers.
+Duplicate and out-of-range locations fail without publishing partial state.
+
+Real pinned GXP/SPIR-V reflection verifies input names and locations. A controlled
+stripped derivative with reversed hints verifies fallback locations and float
+input types. Host sanitizer tests cover reordered/sparse bindings, unused slots,
+empty programs and error preservation. Native Debug/Release builds pass. These
+are declaration/state checks, not GPU execution; packed registers, matrices and
+arrays need further work. No commercial-title boot or rendering is established.
+User probe hold and ZCode hardware ownership remain active: no console access,
+probe correction, payload change or deployment occurred.
+
+The unused-slot strategy follows deko3d's fixed-attribute fallback:
+https://github.com/devkitPro/deko3d/blob/master/source/maxwell/gpu_3d_vbo.cpp
+
 ## 2026-11-27: numeric vertex attribute conversion (offline, not deployed)
 
 Raw U8/S8/U16/S16 vertex attributes now use deko3d numeric float conversion

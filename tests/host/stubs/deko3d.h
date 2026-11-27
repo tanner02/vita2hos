@@ -16,6 +16,10 @@ typedef enum {
     DkVtxAttribType_Sscaled=6, DkVtxAttribType_Float=7
 } DkVtxAttribType;
 
+typedef struct DkVtxAttribState {
+    uint32_t bufferId:5, reserved0:1, isFixed:1, offset:14, size:6, type:3, reserved1:1, isBgra:1;
+} DkVtxAttribState;
+
 typedef void *DkMemBlock;
 typedef void *DkDevice;
 typedef struct { float x, y, width, height, near, far; } DkViewport;

@@ -1,6 +1,7 @@
 #include <gxm/types.h>
 #include <shader/spirv_recompiler.h>
 #include <spirv_glsl.hpp>
+#include <algorithm>
 #include <cstdlib>
 #include <cstring>
 #include <cstddef>
@@ -22,6 +23,14 @@ static unsigned check_vertex_inputs(SceGxmProgram *program)
     unsigned checked = 0;
     auto *parameters = const_cast<SceGxmProgramParameter *>(program->program_parameters());
     auto *varyings = const_cast<SceGxmProgramVertexVaryings *>(program->vertex_varyings());
+    uint32_t *words = nullptr, count = 0;
+    require(convert_gxp_to_spirv_c(&words, &count, program, "vertex-locations",
+        false, false, false, false, nullptr, 0, false, false, nullptr),
+        "vertex location translation failed");
+    std::vector<uint32_t> spirv(words, words + count);
+    free(words);
+    spirv_cross::Compiler reflection(spirv);
+    const auto resources = reflection.get_shader_resources();
     for (unsigned i = 0; i < program->parameter_count; ++i) {
         auto &parameter = parameters[i];
         if (parameter.category != SCE_GXM_PARAMETER_CATEGORY_ATTRIBUTE) continue;
@@ -29,24 +38,74 @@ static unsigned check_vertex_inputs(SceGxmProgram *program)
         const auto original_type = parameter.type;
         const auto original_regs = varyings->untyped_pa_regs;
         const uint64_t bit = uint64_t{1} << parameter.resource_index;
-        bool integer = true;
+        GxmVertexInput input;
+        require(gxp_vertex_input_c(program, parameter.resource_index, 99, &input),
+                "vertex input metadata failed");
+        bool found = false;
+        const auto *name = reinterpret_cast<const char *>(&parameter) + parameter.name_offset;
+        for (const auto &resource : resources.stage_inputs) {
+            if (reflection.get_name(resource.id) == name &&
+                reflection.get_decoration(resource.id, spv::DecorationLocation) == input.location)
+                found = true;
+        }
+        require(found, "runtime vertex location disagrees with translated SPIR-V");
         // Metadata-only derivatives: neither guest instructions nor GPU code run.
         varyings->untyped_pa_regs &= ~bit;
         parameter.type = SCE_GXM_PARAMETER_TYPE_F32;
-        require(gxp_vertex_attribute_integer_c(program, parameter.resource_index, &integer) && !integer,
+        require(gxp_vertex_input_c(program, parameter.resource_index, i, &input) && !input.integer_input,
                 "floating vertex input requires numeric fetch conversion");
         parameter.type = SCE_GXM_PARAMETER_TYPE_S16;
-        require(gxp_vertex_attribute_integer_c(program, parameter.resource_index, &integer) && integer,
+        require(gxp_vertex_input_c(program, parameter.resource_index, i, &input) && input.integer_input,
                 "integer vertex input requires integer fetch");
         parameter.type = SCE_GXM_PARAMETER_TYPE_F32;
         varyings->untyped_pa_regs |= bit;
-        require(gxp_vertex_attribute_integer_c(program, parameter.resource_index, &integer) && integer,
+        require(gxp_vertex_input_c(program, parameter.resource_index, i, &input) && input.integer_input,
                 "register-format vertex input requires integer fetch");
         parameter.type = original_type;
         varyings->untyped_pa_regs = original_regs;
         ++checked;
     }
     return checked;
+}
+
+static void check_stripped_inputs(SceGxmProgram *program)
+{
+    std::vector<SceGxmVertexAttribute> hints;
+    for (unsigned i = 0; i < program->parameter_count; ++i) {
+        const auto &parameter = program->program_parameters()[i];
+        if (parameter.category != SCE_GXM_PARAMETER_CATEGORY_ATTRIBUTE) continue;
+        SceGxmVertexAttribute hint{};
+        hint.regIndex = parameter.resource_index;
+        hint.componentCount = 4;
+        hints.push_back(hint);
+    }
+    require(!hints.empty(), "expected vertex fixture attributes");
+    // Reverse hint order to distinguish hint locations from register order.
+    std::reverse(hints.begin(), hints.end());
+    const auto original_count = program->parameter_count;
+    program->parameter_count = 0;
+    uint32_t *words = nullptr, count = 0;
+    require(convert_gxp_to_spirv_c(&words, &count, program, "stripped-inputs",
+        false, false, false, false, hints.data(), hints.size(), false, false, nullptr),
+        "stripped shader hint translation failed");
+    std::vector<uint32_t> spirv(words, words + count);
+    free(words);
+    spirv_cross::Compiler reflection(spirv);
+    const auto resources = reflection.get_shader_resources();
+    for (unsigned i = 0; i < hints.size(); ++i) {
+        GxmVertexInput input;
+        require(gxp_vertex_input_c(program, hints[i].regIndex, i, &input) &&
+                !input.integer_input && input.location == i, "stripped metadata fallback failed");
+        bool found = false;
+        for (const auto &resource : resources.stage_inputs) {
+            if (reflection.get_name(resource.id) == "attribute" + std::to_string(i) &&
+                reflection.get_decoration(resource.id, spv::DecorationLocation) == input.location &&
+                reflection.get_type(resource.base_type_id).basetype == spirv_cross::SPIRType::Float)
+                found = true;
+        }
+        require(found, "stripped runtime location/type disagrees with translated SPIR-V");
+    }
+    program->parameter_count = original_count;
 }
 
 static bool check_sampler_bindings(SceGxmProgram *program)
@@ -218,6 +277,7 @@ int main(int argc, char **argv)
         unsigned named_checked = 0;
         unsigned misaligned_checked = 0;
         unsigned vertex_inputs_checked = 0;
+        bool stripped_checked = false;
         bool sampler_checked[2] = {};
         for (const auto &entry : std::filesystem::directory_iterator(argv[1])) {
             if (entry.path().extension() != ".gxp") continue;
@@ -230,6 +290,10 @@ int main(int argc, char **argv)
             // fixture blobs. These validate container declarations, not rendering.
             auto *mutable_program = reinterpret_cast<SceGxmProgram *>(data.data());
             vertex_inputs_checked += check_vertex_inputs(mutable_program);
+            if (!program->is_fragment() && !stripped_checked) {
+                check_stripped_inputs(mutable_program);
+                stripped_checked = true;
+            }
             const unsigned stage = program->is_fragment() ? 0 : 1;
             if (!sampler_checked[stage]) sampler_checked[stage] = check_sampler_bindings(mutable_program);
             auto *parameters = const_cast<SceGxmProgramParameter *>(mutable_program->program_parameters());
