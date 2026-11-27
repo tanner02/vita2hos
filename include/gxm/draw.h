@@ -4,6 +4,9 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <psp2/gxm.h>
+#include <deko3d.h>
+
+int gxm_translate_primitive(SceGxmPrimitiveType primitive, DkPrimitive *translated);
 
 int gxm_validate_index_range(SceGxmIndexFormat format, uintptr_t address,
                              uintptr_t block_base, size_t block_size,

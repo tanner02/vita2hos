@@ -266,26 +266,6 @@ static inline DkVtxAttribSize gxm_to_dk_vtx_attrib_size(SceGxmAttributeFormat fo
     }
 }
 
-static inline DkPrimitive gxm_to_dk_primitive(SceGxmPrimitiveType prim)
-{
-    switch (prim) {
-    case SCE_GXM_PRIMITIVE_TRIANGLES:
-        return DkPrimitive_Triangles;
-    case SCE_GXM_PRIMITIVE_LINES:
-        return DkPrimitive_Lines;
-    case SCE_GXM_PRIMITIVE_POINTS:
-        return DkPrimitive_Lines;
-    case SCE_GXM_PRIMITIVE_TRIANGLE_STRIP:
-        return DkPrimitive_TriangleStrip;
-    case SCE_GXM_PRIMITIVE_TRIANGLE_FAN:
-        return DkPrimitive_TriangleFan;
-    case SCE_GXM_PRIMITIVE_TRIANGLE_EDGES:
-        return DkPrimitive_Triangles;
-    default:
-        UNREACHABLE("Unsupported SceGxmPrimitiveType");
-    }
-}
-
 static inline DkIdxFormat gxm_to_dk_idx_format(SceGxmIndexFormat format)
 {
     switch (format) {

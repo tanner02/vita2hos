@@ -1,5 +1,24 @@
 #include "gxm/draw.h"
 
+int gxm_translate_primitive(SceGxmPrimitiveType primitive, DkPrimitive *translated)
+{
+    if (!translated) return SCE_GXM_ERROR_INVALID_POINTER;
+    DkPrimitive result;
+    switch (primitive) {
+    case SCE_GXM_PRIMITIVE_POINTS: result = DkPrimitive_Points; break;
+    case SCE_GXM_PRIMITIVE_LINES: result = DkPrimitive_Lines; break;
+    case SCE_GXM_PRIMITIVE_TRIANGLES: result = DkPrimitive_Triangles; break;
+    case SCE_GXM_PRIMITIVE_TRIANGLE_STRIP: result = DkPrimitive_TriangleStrip; break;
+    case SCE_GXM_PRIMITIVE_TRIANGLE_FAN: result = DkPrimitive_TriangleFan; break;
+    /* Preserve the existing triangle-edges fallback; its edge semantics
+     * still need a dedicated implementation and hardware validation. */
+    case SCE_GXM_PRIMITIVE_TRIANGLE_EDGES: result = DkPrimitive_Triangles; break;
+    default: return SCE_GXM_ERROR_INVALID_VALUE;
+    }
+    *translated = result;
+    return 0;
+}
+
 int gxm_validate_index_range(SceGxmIndexFormat format, uintptr_t address,
                              uintptr_t block_base, size_t block_size,
                              unsigned int count, uint32_t *offset)

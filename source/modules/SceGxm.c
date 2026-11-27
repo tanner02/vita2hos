@@ -1668,12 +1668,17 @@ EXPORT(SceGxm, 0xBC059AFC, int, sceGxmDraw, SceGxmContext *context, SceGxmPrimit
 {
     VitaMemBlockInfo *index_block;
     uint32_t index_offset;
+    DkPrimitive primitive;
     int ret;
 
     LOG("sceGxmDraw: primType: 0x%x, indexCount: %d", primType, indexCount);
 
     if (!context || !indexData)
         return SCE_GXM_ERROR_INVALID_POINTER;
+
+    ret = gxm_translate_primitive(primType, &primitive);
+    if (ret != 0)
+        return ret;
 
     index_block = SceSysmem_get_vita_memblock_info_for_addr(indexData);
     if (!index_block)
@@ -1691,7 +1696,7 @@ EXPORT(SceGxm, 0xBC059AFC, int, sceGxmDraw, SceGxmContext *context, SceGxmPrimit
 
     dkCmdBufBindIdxBuffer(context->cmdbuf, gxm_to_dk_idx_format(indexType),
                           dkMemBlockGetGpuAddr(index_block->dk_memblock) + index_offset);
-    dkCmdBufDrawIndexed(context->cmdbuf, gxm_to_dk_primitive(primType), indexCount, 1, 0, 0, 0);
+    dkCmdBufDrawIndexed(context->cmdbuf, primitive, indexCount, 1, 0, 0, 0);
 
     return 0;
 }

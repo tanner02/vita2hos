@@ -4,6 +4,23 @@
 
 int main(void)
 {
+    const struct { SceGxmPrimitiveType vita; DkPrimitive gpu; } primitives[] = {
+        {SCE_GXM_PRIMITIVE_POINTS, DkPrimitive_Points},
+        {SCE_GXM_PRIMITIVE_LINES, DkPrimitive_Lines},
+        {SCE_GXM_PRIMITIVE_TRIANGLES, DkPrimitive_Triangles},
+        {SCE_GXM_PRIMITIVE_TRIANGLE_STRIP, DkPrimitive_TriangleStrip},
+        {SCE_GXM_PRIMITIVE_TRIANGLE_FAN, DkPrimitive_TriangleFan},
+    };
+    for (size_t i = 0; i < sizeof(primitives) / sizeof(primitives[0]); ++i) {
+        DkPrimitive gpu;
+        assert(gxm_translate_primitive(primitives[i].vita, &gpu) == 0);
+        assert(gpu == primitives[i].gpu);
+    }
+    DkPrimitive gpu = DkPrimitive_TriangleFan;
+    assert((uint32_t)gxm_translate_primitive((SceGxmPrimitiveType)123, &gpu) ==
+           SCE_GXM_ERROR_INVALID_VALUE && gpu == DkPrimitive_TriangleFan);
+    assert((uint32_t)gxm_translate_primitive(SCE_GXM_PRIMITIVE_POINTS, NULL) ==
+           SCE_GXM_ERROR_INVALID_POINTER);
     uint32_t offset = 123;
     assert(gxm_validate_index_range(SCE_GXM_INDEX_FORMAT_U16, 0x1002, 0x1000, 10, 4, &offset) == 0);
     assert(offset == 2);

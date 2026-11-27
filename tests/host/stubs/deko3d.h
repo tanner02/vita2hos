@@ -5,6 +5,10 @@
 typedef void *DkMemBlock;
 typedef void *DkDevice;
 typedef enum {
+    DkPrimitive_Points = 0, DkPrimitive_Lines = 1, DkPrimitive_Triangles = 4,
+    DkPrimitive_TriangleStrip = 5, DkPrimitive_TriangleFan = 6,
+} DkPrimitive;
+typedef enum {
     DkImageFormat_R8_Unorm, DkImageFormat_R8_Snorm,
     DkImageFormat_R16_Unorm, DkImageFormat_R16_Snorm, DkImageFormat_R16_Float,
     DkImageFormat_R32_Float, DkImageFormat_RG8_Unorm, DkImageFormat_RG8_Snorm,
