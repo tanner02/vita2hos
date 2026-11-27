@@ -368,7 +368,7 @@ records across shutdown; bootstrap cleanup resets service state after guests sto
 Missing metadata/directories, missing/duplicate slots and unsupported explicit
 mount-point arguments return errors. Only the default single-user storage context
 is supported. Tests use a temporary root and owned SFO data, never the Switch.
-File-payload saves, savedata0 file-I/O mounting, quotas, slot search, custom mounts,
+Savedata0 file-I/O mounting, quotas, slot search, custom mounts,
 boot-parameter synthesis and sysmodule lifecycle support remain unimplemented.
 Do not infer a complete savedata service or successful game startup from slot tests.
 
