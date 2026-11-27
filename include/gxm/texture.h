@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <psp2/gxm.h>
+#include "gxm/texture_binding.h"
 
 /* This internal bit-field view aliases the public SceGxmTexture descriptor. */
 typedef struct __attribute__((may_alias)) {
@@ -53,7 +54,7 @@ typedef struct __attribute__((may_alias)) {
 static_assert(sizeof(SceGxmTextureInner) == sizeof(SceGxmTexture), "Incorrect size");
 
 /* Fragment and vertex stages share a descriptor table, with distinct ranges. */
-#define GXM_TEXTURE_BINDING_COUNT (2 * SCE_GXM_MAX_TEXTURE_UNITS)
+static_assert(GXM_TEXTURE_STAGE_UNITS == SCE_GXM_MAX_TEXTURE_UNITS, "Texture binding count mismatch");
 int gxm_texture_set_binding(SceGxmTextureInner bindings[GXM_TEXTURE_BINDING_COUNT],
                             bool vertex, unsigned int unit, const SceGxmTexture *texture);
 

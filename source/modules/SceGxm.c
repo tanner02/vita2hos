@@ -1964,10 +1964,12 @@ static int upload_texture_descriptors(SceGxmContext *context)
         dkImageViewDefaults(&image_view, &image);
         memcpy(image_view.swizzle, texture_layout.swizzle, sizeof(image_view.swizzle));
         dkImageDescriptorInitialize(&descriptors.images[i], &image_view, false, false);
-        /* Shader units are local to a stage; descriptor handles are global. */
+        /* Preserve the translator's vertex binding offset (16..31). */
+        const bool vertex = i >= SCE_GXM_MAX_TEXTURE_UNITS;
         dkCmdBufBindTexture(context->cmdbuf,
-            i < SCE_GXM_MAX_TEXTURE_UNITS ? DkStage_Fragment : DkStage_Vertex,
-            i % SCE_GXM_MAX_TEXTURE_UNITS, dkMakeTextureHandle(i, i));
+            vertex ? DkStage_Vertex : DkStage_Fragment,
+            gxm_texture_binding_index(vertex, i % SCE_GXM_MAX_TEXTURE_UNITS),
+            dkMakeTextureHandle(i, i));
     }
 
     /* Each recorded update owns immutable descriptor storage until scene

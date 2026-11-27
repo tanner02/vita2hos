@@ -11,9 +11,47 @@
 #include <stdexcept>
 #include <vector>
 #include "vita3k_shader_recompiler_iface_c.h"
+#include "gxm/texture_binding.h"
 
 static void require(bool value, const char *message)
 { if (!value) throw std::runtime_error(message); }
+
+static bool check_sampler_bindings(SceGxmProgram *program)
+{
+    auto *parameters = const_cast<SceGxmProgramParameter *>(program->program_parameters());
+    for (unsigned i = 0; i < program->parameter_count; ++i) {
+        if (parameters[i].category != SCE_GXM_PARAMETER_CATEGORY_UNIFORM) continue;
+        const auto original = parameters[i];
+        const std::string sampler_name = std::string(program->is_fragment() ? "fragTex_" : "vertTex_") +
+            (reinterpret_cast<const char *>(&parameters[i]) + parameters[i].name_offset);
+        parameters[i].category = SCE_GXM_PARAMETER_CATEGORY_SAMPLER;
+        parameters[i].array_size = 1;
+        // Declaration-only derivatives: no texture-sampling instructions are
+        // added and these controlled copies are never used for rendering.
+        for (unsigned unit = 0; unit < SCE_GXM_MAX_TEXTURE_UNITS; ++unit) {
+            parameters[i].resource_index = unit;
+            uint32_t *words = nullptr, count = 0;
+            require(convert_gxp_to_spirv_c(&words, &count, program, "sampler-bindings",
+                false, false, false, false, nullptr, 0, false, false, nullptr),
+                "sampler binding translation failed");
+            std::vector<uint32_t> spirv(words, words + count);
+            free(words);
+            spirv_cross::Compiler reflection(spirv);
+            const auto resources = reflection.get_shader_resources();
+            const auto expected = gxm_texture_binding_index(!program->is_fragment(), unit);
+            bool found = false;
+            for (const auto &sampler : resources.sampled_images) {
+                if (reflection.get_name(sampler.id) == sampler_name &&
+                    reflection.get_decoration(sampler.id, spv::DecorationBinding) == expected)
+                    found = true;
+            }
+            require(found, "runtime sampler slot disagrees with translated SPIR-V");
+        }
+        parameters[i] = original;
+        return true;
+    }
+    return false;
+}
 
 static GxmUniformLayout check_layout(const SceGxmProgram *program, const std::string &name, unsigned misalignment = 0)
 {
@@ -146,6 +184,7 @@ int main(int argc, char **argv)
         unsigned checked = 0;
         unsigned named_checked = 0;
         unsigned misaligned_checked = 0;
+        bool sampler_checked[2] = {};
         for (const auto &entry : std::filesystem::directory_iterator(argv[1])) {
             if (entry.path().extension() != ".gxp") continue;
             std::ifstream input(entry.path(), std::ios::binary);
@@ -156,6 +195,8 @@ int main(int argc, char **argv)
             // Controlled derivatives exercise named slots without adding opaque
             // fixture blobs. These validate container declarations, not rendering.
             auto *mutable_program = reinterpret_cast<SceGxmProgram *>(data.data());
+            const unsigned stage = program->is_fragment() ? 0 : 1;
+            if (!sampler_checked[stage]) sampler_checked[stage] = check_sampler_bindings(mutable_program);
             auto *parameters = const_cast<SceGxmProgramParameter *>(mutable_program->program_parameters());
             for (unsigned i = 0; i < program->parameter_count; ++i) {
                 if (parameters[i].category != SCE_GXM_PARAMETER_CATEGORY_UNIFORM) continue;
@@ -188,6 +229,7 @@ int main(int argc, char **argv)
         }
         require(checked >= 7, "expected seven pinned real GXP fixtures");
         require(misaligned_checked >= 3, "expected all misaligned uniform lanes");
+        require(sampler_checked[0] && sampler_checked[1], "expected both stages' sampler binding coverage");
         require(named_checked >= 2, "expected derived named-buffer coverage");
     } catch (const std::exception &error) {
         std::cerr << error.what() << '\n'; return 1;

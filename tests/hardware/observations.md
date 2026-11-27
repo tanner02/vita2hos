@@ -1,3 +1,22 @@
+## 2026-11-27: vertex sampler binding correction (offline, not deployed)
+
+The initial vertex-texture implementation used stage-local bindings0..15, but
+the pinned GLSL translator declares vertex samplers at16..31. Corrected native
+binding calls to retain that offset and share the same index calculation as the
+descriptor snapshots. Fragment bindings remain0..15. This fixes a mismatch in
+Codex's earlier vertex-texture implementation; no GPU pass was claimed for it.
+
+Pinned shader integration now checks all16 named sampler declarations for both
+stages against the shared runtime index. Controlled copies are declaration-only.
+Separately, host UAM1.1.0 compiled owned shaders that actually sample at vertex
+bindings16/31 and fragment0/15; TGSI retains the corresponding sampler/view
+indices. This verifies compiler acceptance and the binding contract, not pixels.
+The ordinary texture ownership/bounds host regression passes.
+
+No console access, probe update, package installation or target launch occurred.
+The correction is intended for a later combined hardware batch after ZCode's
+current work. Additional vertex format/reflection compatibility remains open.
+
 ## 2026-11-27: automated real-title run past LIVEAREA, guest crash captured
 
 Using authenticated sys-autopilot1.6.0, installed the provided ZCode42bf233

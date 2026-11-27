@@ -9,7 +9,7 @@ int gxm_texture_set_binding(SceGxmTextureInner bindings[GXM_TEXTURE_BINDING_COUN
 {
     if (!bindings || !texture) return SCE_GXM_ERROR_INVALID_POINTER;
     if (unit >= SCE_GXM_MAX_TEXTURE_UNITS) return SCE_GXM_ERROR_INVALID_VALUE;
-    unsigned index = unit + (vertex ? SCE_GXM_MAX_TEXTURE_UNITS : 0);
+    unsigned index = gxm_texture_binding_index(vertex, unit);
     memcpy(&bindings[index], texture, sizeof(*texture));
     return 0;
 }

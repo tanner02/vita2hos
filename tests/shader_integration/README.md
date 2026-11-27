@@ -70,3 +70,15 @@ using proprietary inputs. Keep it and the reports outside the repository.
 This uses the selected host UAM executable. It does not execute GPU code or
 prove identical behavior from the ARM compiler library, vertex binding hints,
 correct pixels, or game boot. DKSH header checks are structural checks only.
+
+## Sampler binding contract
+
+Declaration-only copies of pinned vertex and fragment fixtures turn an existing
+uniform into a sampler at each guest unit0..15. SPIR-V reflection checks the
+named sampler against the shared runtime mapping: fragment0..15, vertex16..31.
+The uploaded texture handle and the shader binding retain the vertex offset
+when binding through deko3d, even though that call also selects a shader stage.
+
+These copies do not add texture-sampling instructions and are never rendered.
+They validate binding declarations, alongside the existing uniform/layout tests.
+Actual vertex-stage sampling still needs a later hardware batch.
