@@ -3,6 +3,7 @@
 #include "draw_probe.h"
 #include "draw_shaders.h"
 #include <stddef.h>
+#include <string.h>
 
 static const ProbeHooks *callbacks;
 static void *host_allocate(void *user, SceSize size) { (void)user; return callbacks->allocate(size); }
