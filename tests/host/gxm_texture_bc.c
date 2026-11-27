@@ -6,16 +6,21 @@
 int main(void)
 {
     const SceGxmTextureFormat formats[] = {SCE_GXM_TEXTURE_FORMAT_UBC1_ABGR,
-        SCE_GXM_TEXTURE_FORMAT_UBC2_ABGR, SCE_GXM_TEXTURE_FORMAT_UBC3_ABGR};
-    const DkImageFormat native[] = {DkImageFormat_RGBA_BC1, DkImageFormat_RGBA_BC2, DkImageFormat_RGBA_BC3};
+        SCE_GXM_TEXTURE_FORMAT_UBC2_ABGR, SCE_GXM_TEXTURE_FORMAT_UBC3_ABGR,
+        SCE_GXM_TEXTURE_FORMAT_UBC4_R, SCE_GXM_TEXTURE_FORMAT_SBC4_R,
+        SCE_GXM_TEXTURE_FORMAT_UBC5_GR, SCE_GXM_TEXTURE_FORMAT_SBC5_GR};
+    const DkImageFormat native[] = {DkImageFormat_RGBA_BC1, DkImageFormat_RGBA_BC2, DkImageFormat_RGBA_BC3,
+        DkImageFormat_R_BC4_Unorm, DkImageFormat_R_BC4_Snorm,
+        DkImageFormat_RG_BC5_Unorm, DkImageFormat_RG_BC5_Snorm};
+    const unsigned sizes[] = {8, 16, 16, 8, 8, 16, 16};
     const unsigned orders[2][8] = {{0,4,1,5,2,6,3,7}, {0,2,1,3,4,6,5,7}};
     SceGxmTexture texture;
     SceGxmTextureInner *inner = (SceGxmTextureInner *)&texture;
     GxmTextureLayout layout;
     GxmTextureMipChain chain;
     unsigned char source[512], destination[512];
-    for (unsigned f = 0; f < 3; ++f) {
-        unsigned bytes = f ? 16 : 8;
+    for (unsigned f = 0; f < sizeof(formats) / sizeof(formats[0]); ++f) {
+        unsigned bytes = sizes[f];
         for (unsigned shape = 0; shape < 2; ++shape) {
             unsigned width = shape ? 8 : 16, height = shape ? 16 : 8;
             assert(!sceGxmTextureInitSwizzled(&texture, NULL, formats[f], width, height, 1));
@@ -55,6 +60,16 @@ int main(void)
     assert(!sceGxmTextureInitSwizzled(&texture, NULL, SCE_GXM_TEXTURE_FORMAT_UBC1_1BGR, 1, 1, 1));
     assert(!gxm_texture_get_linear_layout(inner, &layout));
     assert(layout.source_size == 8 && layout.swizzle[3] == DkImageSwizzle_One);
+    assert(!sceGxmTextureInitSwizzled(&texture, NULL, SCE_GXM_TEXTURE_FORMAT_SBC4_RRRR, 4, 4, 1));
+    assert(!gxm_texture_get_linear_layout(inner, &layout));
+    assert(layout.format == DkImageFormat_R_BC4_Snorm);
+    for (unsigned i = 0; i < 4; ++i) assert(layout.swizzle[i] == DkImageSwizzle_Red);
+    assert(!sceGxmTextureInitSwizzled(&texture, NULL, SCE_GXM_TEXTURE_FORMAT_UBC5_GR, 4, 4, 1));
+    assert(!gxm_texture_get_linear_layout(inner, &layout));
+    assert(layout.swizzle[0] == DkImageSwizzle_Red && layout.swizzle[1] == DkImageSwizzle_Green);
+    assert(layout.swizzle[2] == DkImageSwizzle_Zero && layout.swizzle[3] == DkImageSwizzle_One);
+    inner->swizzle_format = 7;
+    assert((uint32_t)gxm_texture_get_linear_layout(inner, &layout) == SCE_GXM_ERROR_INVALID_VALUE);
     assert(!sceGxmTextureInitTiled(&texture, NULL, formats[0], 32, 32, 1));
     assert((uint32_t)gxm_texture_get_linear_layout(inner, &layout) == SCE_GXM_ERROR_UNSUPPORTED);
     puts("BC texture format, block order, padding and mip-tail checks passed.");

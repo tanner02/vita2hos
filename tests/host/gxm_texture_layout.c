@@ -58,7 +58,7 @@ int main(void)
     inner->type = SCE_GXM_TEXTURE_CUBE >> 29;
     assert((uint32_t)gxm_texture_get_linear_layout(inner, &layout) == SCE_GXM_ERROR_UNSUPPORTED);
     assert((uint32_t)gxm_texture_get_linear_layout(NULL, &layout) == SCE_GXM_ERROR_INVALID_POINTER);
-    assert(sceGxmTextureInitLinear(&texture, NULL, SCE_GXM_TEXTURE_FORMAT_UBC4_R, 32, 32, 1) == 0);
+    assert(sceGxmTextureInitLinear(&texture, NULL, SCE_GXM_TEXTURE_FORMAT_PVRT2BPP_ABGR, 32, 32, 1) == 0);
     GxmTextureLayout saved = layout;
     assert((uint32_t)gxm_texture_get_linear_layout(inner, &layout) == SCE_GXM_ERROR_UNSUPPORTED);
     assert(memcmp(&saved, &layout, sizeof(layout)) == 0);

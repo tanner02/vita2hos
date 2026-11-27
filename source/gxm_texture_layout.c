@@ -90,6 +90,14 @@ int gxm_texture_get_linear_layout(const SceGxmTextureInner *texture, GxmTextureL
         result.format = DkImageFormat_RGBA_BC2; bytes = 16; components = 4; result.block_bytes = 16; break;
     case SCE_GXM_TEXTURE_BASE_FORMAT_UBC3:
         result.format = DkImageFormat_RGBA_BC3; bytes = 16; components = 4; result.block_bytes = 16; break;
+    case SCE_GXM_TEXTURE_BASE_FORMAT_UBC4:
+        result.format = DkImageFormat_R_BC4_Unorm; bytes = 8; components = 1; result.block_bytes = 8; break;
+    case SCE_GXM_TEXTURE_BASE_FORMAT_SBC4:
+        result.format = DkImageFormat_R_BC4_Snorm; bytes = 8; components = 1; result.block_bytes = 8; break;
+    case SCE_GXM_TEXTURE_BASE_FORMAT_UBC5:
+        result.format = DkImageFormat_RG_BC5_Unorm; bytes = 16; components = 2; result.block_bytes = 16; break;
+    case SCE_GXM_TEXTURE_BASE_FORMAT_SBC5:
+        result.format = DkImageFormat_RG_BC5_Snorm; bytes = 16; components = 2; result.block_bytes = 16; break;
 #undef FORMAT
     default:
         return SCE_GXM_ERROR_UNSUPPORTED;
