@@ -26,6 +26,7 @@ typedef struct {
     bool module; /* Dependency preparation permits an absent module start. */
     LoadLifecycle lifecycle;
     GuestTlsTemplate tls;
+    bool guest_tp_retargeted;
 } LoadImage;
 
 enum { LOAD_LAYOUT_CONFLICT = -2 };

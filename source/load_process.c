@@ -8,6 +8,7 @@ Result load_process_close(LoadProcess *process)
     process->bound = false;
     process->run_started = false;
     process->modules_started = 0;
+    process->guest_tp_retargeted = false;
     process->entry = NULL;
     Result result = 0;
     for (size_t i = process->count; i > 0; --i) {
@@ -51,6 +52,8 @@ int load_process_load(LoadProcess *process, const char *executable,
         if (load_image_publish(&process->images[i], &process->exports) < 0) goto fail;
     for (size_t i = 0; i < process->count; ++i)
         if (load_image_bind(&process->images[i], &process->exports) < 0) goto fail;
+    for (size_t i = 0; i < process->count; ++i)
+        process->guest_tp_retargeted |= process->images[i].guest_tp_retargeted;
     process->entry = process->images[0].entry;
     process->bound = true;
     return 0;

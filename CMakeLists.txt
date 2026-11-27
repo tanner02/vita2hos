@@ -46,6 +46,8 @@ add_subdirectory(external)
 add_executable(vita2hos
     source/guest_tls.c
     source/guest_tp.c
+    source/guest_tp_plan.c
+    source/guest_tp_arm.c
     source/gxm_uniform.c
     source/gxm_uniform_layout.c
     source/gxm_uniform_staging.c

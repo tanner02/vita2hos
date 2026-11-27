@@ -228,6 +228,26 @@
   Guest register retargeting and dynamic module TLS are not implemented. No target
   code was executed, and the Switch was not modified.
 
+## Host thread-pointer plan integration after 110de44
+
+- Added optional source-bound `.tlsplan` sidecars and an explicit-site generator.
+  No plans are discovered, generated, installed, or deployed automatically.
+  Plans match the original file's size/FNV-1a fingerprint and original instruction
+  words. FNV-1a is an accidental-change check, not authentication.
+- A local plan for the previously inspected libc Thumb site at segment 0,
+  offset `0x56ac`, matched plaintext SELF SHA-256
+  `2c089f1ffb1ed62a42a2eaace23a55b126bd9efa29b02a0908ba67aede0a5ae8`.
+  The host replay changed word `0x0f70ee1d` to `0x0f50ee1d`; a mismatched
+  source fingerprint failed without writes. All four images still completed
+  mechanical binding afterward, with the same native-function-stub limitations.
+- The opt-in process path exchanges TPIDRURW for each thread's user TLS pointer
+  before guest entry and restores its previous value on normal return. Host
+  mocks verify opt-in behavior and restoration. ARM disassembly verifies that
+  the exchange uses MRC/MCR opcode 2 and does not write Horizon TPIDRURO.
+- This has not executed on Switch hardware. Context-switch preservation,
+  native callbacks, module initialization, dynamic TLS, and title boot remain
+  unverified. The local plan and private target binaries were not deployed.
+
 ## Runtime 15d400f48e5d3a3f5d811e2a67bd30a1388cc102
 
 - Standalone HOME title, owned fixed-address CPU probe SHA-256

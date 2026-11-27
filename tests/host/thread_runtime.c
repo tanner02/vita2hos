@@ -11,6 +11,13 @@ static void *tls_value;
 static Result start_result, wait_result;
 static UEvent exit_event;
 static int process_exit_status;
+static uintptr_t writable_tp;
+static unsigned tp_exchanges;
+static bool expect_guest_tp;
+uintptr_t guest_tp_exchange(uintptr_t value)
+{
+    uintptr_t previous=writable_tp;writable_tp=value;++tp_exchanges;return previous;
+}
 void log_printf(const char *format, ...) { (void)format; }
 SceUID SceSysmem_get_next_uid(void) { static SceUID next = 1; return next++; }
 UEvent *SceLibKernel_get_process_exit_uevent(void) { return &exit_event; }
@@ -36,6 +43,8 @@ void threadExit(void) { longjmp(thread_return, 1); }
 static int entry(SceSize size, void *argument)
 {
     assert(size == 4 && memcmp(argument, "test", 4) == 0);
+    if (expect_guest_tp)
+        assert(writable_tp == (uintptr_t)SceKernelThreadMgr_get_thread_info()->vita_user_tls);
     return 1234;
 }
 
@@ -44,7 +53,7 @@ int main(void)
     GuestTlsTemplate tls={0}; uint32_t seed=0x12345678;
     assert(guest_tls_template_create(&tls, &seed, 4, 16) == 0);
     seed=0; /* Threads use the immutable snapshot, not mutable source storage. */
-    assert(SceKernelThreadMgr_init(&tls) == 0);
+    assert(SceKernelThreadMgr_init(&tls, false) == 0);
     assert((uint32_t)sceKernelGetThreadCurrentPriority() == SCE_KERNEL_ERROR_UNKNOWN_THREAD_ID);
     assert(resolve_vita_priority(SCE_KERNEL_DEFAULT_PRIORITY) == 160);
     assert(resolve_vita_priority(SCE_KERNEL_DEFAULT_PRIORITY + 3) == 163);
@@ -81,6 +90,7 @@ int main(void)
     if (setjmp(thread_return) == 0)
         info->thread.entry(info->thread.argument);
     assert(info->return_status == 1234);
+    assert(tp_exchanges == 0);
     assert(sceKernelGetThreadCurrentPriority() == 160);
     int status = -1;
     assert(sceKernelWaitThreadEnd(uid, &status, NULL) == 0 && status == 1234);
@@ -99,6 +109,15 @@ int main(void)
     }
     start_result = 1;
     assert((uint32_t)SceKernelThreadMgr_main_entry(entry, 0, NULL) == SCE_KERNEL_ERROR_THREAD_ERROR);
+    assert(SceKernelThreadMgr_finish() == 0);
+    assert(SceKernelThreadMgr_init(&tls, true) == 0);
+    start_result=0;writable_tp=0x12345678;expect_guest_tp=true;
+    uid=create_thread("retargeted TLS", entry, 160, 4096);assert(uid > 0);
+    info=get_thread_info_for_uid(uid);
+    assert(start_thread(uid, 4, "test") == 0);
+    if (setjmp(thread_return) == 0) info->thread.entry(info->thread.argument);
+    assert(tp_exchanges == 2 && writable_tp == 0x12345678);
+    assert(sceKernelDeleteThread(uid) == 0);
     assert(SceKernelThreadMgr_finish() == 0);
     guest_tls_template_clear(&tls);
     puts("Thread runtime regression checks passed.");

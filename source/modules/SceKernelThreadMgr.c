@@ -7,6 +7,7 @@
 #include "log.h"
 #include "module.h"
 #include "util.h"
+#include "guest_tp_plan.h"
 
 #include "modules/SceKernelThreadMgr.h"
 #include "modules/SceLibKernel.h"
@@ -25,6 +26,7 @@
 
 static s32 g_vita_thread_info_tls_slot_id;
 static GuestTlsTemplate g_main_tls; /* Borrowed from the live process image. */
+static bool g_retarget_thread_pointer;
 
 DICT_DEF2(vita_thread_info_dict, SceUID, M_DEFAULT_OPLIST, VitaThreadInfo *, M_POD_OPLIST)
 static vita_thread_info_dict_t g_vita_thread_infos;
@@ -72,7 +74,11 @@ static void NORETURN thread_entry_wrapper(void *arg)
 
     threadTlsSet(g_vita_thread_info_tls_slot_id, ti);
 
+    uintptr_t previous=0;
+    bool retarget=g_retarget_thread_pointer;
+    if (retarget) previous=guest_tp_exchange((uintptr_t)ti->vita_user_tls);
     ret = ti->entry(ti->arglen, ti->argp);
+    if (retarget) guest_tp_exchange(previous);
     ti->return_status = ret;
 
     LOG("Thread 0x%x returned with: 0x%x", ti->uid, ret);
@@ -306,10 +312,11 @@ EXPORT(SceThreadmgr, 0xBACA6891, void *, sceKernelGetThreadTLSAddr, SceUID thid,
 DECLARE_LIBRARY(SceThreadmgr, 0x859a24b1);
 DECLARE_LIBRARY(SceThreadmgrCoredumpTime, 0x5E8D0E22);
 
-int SceKernelThreadMgr_init(const GuestTlsTemplate *main_tls)
+int SceKernelThreadMgr_init(const GuestTlsTemplate *main_tls, bool retarget_thread_pointer)
 {
     g_main_tls = main_tls ? *main_tls : (GuestTlsTemplate){0};
     if (!guest_tls_template_valid(&g_main_tls)) return SCE_KERNEL_ERROR_ILLEGAL_ADDR;
+    g_retarget_thread_pointer=retarget_thread_pointer;
     g_vita_thread_info_tls_slot_id = threadTlsAlloc(NULL);
     vita_thread_info_dict_init(g_vita_thread_infos);
     rwlockInit(&g_vita_thread_infos_lock);
@@ -320,6 +327,7 @@ int SceKernelThreadMgr_init(const GuestTlsTemplate *main_tls)
 int SceKernelThreadMgr_finish(void)
 {
     g_main_tls = (GuestTlsTemplate){0};
+    g_retarget_thread_pointer=false;
     threadTlsFree(g_vita_thread_info_tls_slot_id);
     vita_thread_info_dict_clear(g_vita_thread_infos);
 

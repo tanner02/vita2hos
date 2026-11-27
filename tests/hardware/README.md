@@ -353,18 +353,39 @@ kernel TLS area followed by the main TLS template and zero-filled TLS BSS. Kerne
 TLS slots use 32-bit words on both the host tests and ARM build. Allocation,
 snapshot isolation, initialization, BSS, and cleanup are covered by host tests.
 The thread manager borrows the image's immutable snapshot until guest threads
-stop; image cleanup releases it. This implements storage initialization only:
-guest thread-pointer reads have not been retargeted, CPU register virtualization
-is not implemented, and dynamic module TLS remains unsupported.
+stop; image cleanup releases it. Storage initialization alone does not retarget
+guest thread-pointer reads. The explicit experimental plans below connect those
+reads to user TLS. Dynamic module TLS remains unsupported, and register
+preservation has not been hardware-tested.
 
 `guest_tp_patch` is an explicit-site ARM/Thumb instruction-retargeting primitive.
 It requires independently established instruction boundaries and matching original
 words, validates executable file-backed ranges and non-overlapping write targets,
 and changes TPIDRURO reads into TPIDRURW reads only after every site validates.
 It preserves supported destination registers and ARM conditions. It neither scans
-images nor changes CPU registers, and is not yet called by the runtime loader.
+images nor changes CPU registers directly. The runtime calls it only through a
+matching explicit sidecar plan.
 Host tests check encodings, transactional failure, overlaps, and address bounds;
 Horizon register preservation still requires a future owned hardware probe.
+
+An optional `IMAGE.tlsplan` sidecar opts that image into experimental thread-pointer
+retargeting. Generate it with `tools/make-tls-plan.py IMAGE --site
+SEGMENT:OFFSET:arm` (or `:thumb`), using independently reviewed instruction sites.
+The tool supports Vita ELF and plaintext SELF, including compressed segments;
+it performs no decryption and never discovers instruction boundaries. The default
+output is adjacent to the image; `--output` selects a staging path. The original
+image is never modified. Plans encode a version, full source size, FNV-1a source
+fingerprint, and explicit original instruction words. FNV-1a detects accidental
+input changes and is not authentication. Malformed, stale, oversized, or mismatched
+plans fail image preparation and roll back mappings before execution. An absent
+plan leaves thread-register behavior unchanged.
+
+If any process image uses a plan, each guest thread sets TPIDRURW to its user TLS
+area before entering guest code and restores the previous value if guest code
+returns. TPIDRURO remains Horizon-owned. Cache finalization still occurs at import
+binding. Register exchange is verified with host mocks and ARM disassembly only;
+context-switch preservation and behavior across native calls need hardware testing.
+No patch plans are installed by default or deployed automatically.
 
 ### Experimental title-specific launch profile
 

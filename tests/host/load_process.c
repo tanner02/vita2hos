@@ -37,6 +37,7 @@ static int prepare_image(LoadImage *image, const char *path, bool module)
     image->entry = index == 0 && !missing_main_entry ? (void *)0x81000000 : NULL;
     if (index == fail_prepare) return LOAD_LAYOUT_CONFLICT;
     image->prepared = true; image->module = module;
+    image->guest_tp_retargeted = module;
     ModuleGuestSymbol symbol = {11, MODULE_SYMBOL_FUNCTION, (void *)(uintptr_t)(0x1001 + index * 4)};
     assert(module_guest_exports_register(&image->exports, image, 100 + index, &symbol, 1) == 0);
     return 0;
@@ -80,6 +81,7 @@ int main(void)
     assert(load_process_load(&process, "eboot.bin", modules, 2) == 0);
     assert(process.bound && process.count == 3 && process.entry == (void *)0x81000000);
     assert(process.source_tag == 0x1234 && bindings == 3);
+    assert(process.guest_tp_retargeted);
     assert(load_process_load(&process, "eboot.bin", NULL, 0) < 0);
     assert(load_process_close(&process) == 0); empty(&process);
     assert(closed == 3 && close_order[0] == 2 && close_order[1] == 1 && close_order[2] == 0);
@@ -105,6 +107,7 @@ int main(void)
     empty(&process);
     reset(1);
     assert(load_process_load(&process, "eboot.bin", NULL, 0) == 0);
+    assert(!process.guest_tp_retargeted);
     assert(load_process_close(&process) == 0); empty(&process);
     assert(load_process_load(&process, "eboot.bin", NULL, 1) < 0);
     assert(load_process_load(&process, "eboot.bin", modules, LOAD_PROCESS_MAX_MODULES+1) < 0);

@@ -13,6 +13,7 @@ typedef struct {
     bool bound;
     bool run_started;
     size_t modules_started;
+    bool guest_tp_retargeted;
 } LoadProcess;
 
 /* Initialize to zero and keep at a stable address. Paths are consumed during

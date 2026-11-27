@@ -21,7 +21,7 @@ typedef struct {
 } VitaThreadInfo;
 
 /* The immutable template is borrowed until all guest threads have stopped. */
-int SceKernelThreadMgr_init(const GuestTlsTemplate *main_tls);
+int SceKernelThreadMgr_init(const GuestTlsTemplate *main_tls, bool retarget_thread_pointer);
 int SceKernelThreadMgr_finish(void);
 VitaThreadInfo *SceKernelThreadMgr_get_thread_info(void);
 int SceKernelThreadMgr_main_entry(SceKernelThreadEntry entry, int args, void *argp);

@@ -10,6 +10,7 @@
 #include "load_layout.h"
 #include "load_format.h"
 #include "load_retry.h"
+#include "guest_tp_plan.h"
 #include "load_segment.h"
 #include "log.h"
 #include "module.h"
@@ -142,6 +143,19 @@ static int load_file_prepare_kind(LoadImage *image, const char *filename, bool m
     image->source_tag = load_source_tag(data, size);
     ret = load_detect_format(data, size) == LOAD_FORMAT_INVALID ?
         load_vpk(image, data, size, &entry) : load_executable(image, data, size, &entry);
+    if (ret == 0) {
+        int patched=guest_tp_plan_file(image->segments, image->segment_count,
+                                      image->source_tag, size, filename);
+        if (patched < 0) {
+            LOG("Thread-pointer patch plan failed validation.");
+            Result close=load_image_close(image);
+            if (R_FAILED(close)) LOG("Patch-plan rollback failed: 0x%x", close);
+            ret=-1;
+        } else if (patched) {
+            image->guest_tp_retargeted=true;
+            LOG("Experimental guest thread-pointer plan applied: %d sites", patched);
+        }
+    }
     if (ret < 0) LOG("Unsupported file or executable load failed.");
 
     free(data);

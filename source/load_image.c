@@ -31,6 +31,7 @@ Result load_image_close(LoadImage *image)
     image->prepared = image->bound = false;
     image->lifecycle = (LoadLifecycle){0};
     image->module = false;
+    image->guest_tp_retargeted = false;
     Result result = 0;
     for (int i = 0; i < image->fixed_count; ++i) {
         Result close = load_fixed_close(&image->fixed[i]);
