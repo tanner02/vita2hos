@@ -1,3 +1,40 @@
+## 2026-11-27: native multisample attachments and color resolve (not deployed)
+
+Render targets previously ignored their multisample mode and always created
+single-sample images. Forced depth load/store already rejected multisampling.
+Default2x/4x render targets now create matching native multisample color/depth
+attachments and a single-sample color resolve image. BeginScene sets matching
+rasterizer/sample modes, native default sample locations and a full sample mask;
+returning to1x explicitly resets that state. EndScene resolves to an equally
+sized image before copying/scaling to the guest color buffer. Full barriers order
+rendering, resolve and the subsequent copy. Single-sample targets avoid the extra
+resolve allocation. Failure at any allocation step rolls back all owned images.
+
+The supported color route is linear ABGR8 with MSAA_DOWNSCALE and no gamma.
+Raw per-sample color storage, custom sample locations and gamma-correct resolve
+return unsupported before scene mutation. Multisampled forced depth transfers
+remain unsupported. Native default sample positions are not established as an
+exact Vita match. This is not complete GXM multisample compatibility.
+
+Host ASan/UBSan checks verify image types/sample modes, attachment/resolve setup,
+rollback at every allocation stage, view ownership, resolve dimension/sample
+validation and command ordering. The full host suite and native Debug/Release
+builds pass. The owned graphics batch adds no-draw load/resolve preservation at
+2x and4x followed by1x, verifying both active and inactive guest buffers. Surface
+probe3, draw probe8 and visible cube5 compile; the visible-cube entry/import audit
+verifies61 current source exports. No new hardware report exists. These transfer
+cases do not prove draw coverage, sample positions or antialiased geometry.
+
+Review of [deko3d image transfer implementation](https://github.com/devkitPro/deko3d/blob/master/source/dk_image.cpp)
+(blob883b0aa4778d1a4c8b5955de157d04e9b81732ac) confirms that blit scales
+multisampled destination storage while resolve requires an equally sized
+multisampled source and single-sample destination. Local SDK headers and native
+builds check the APIs used here; GPU behavior remains unverified.
+
+Console remains ZCode-owned; no Codex hardware access, staging, installation,
+launch or held real-libc TLS probe change occurred. HLE integration stays with
+ZCode. Startup failure and commercial3D boot remain unresolved.
+
 ## 2026-11-27: numeric vertex array groundwork (not deployed)
 
 Non-register vertex arrays now reserve one native input location per array

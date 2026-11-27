@@ -161,6 +161,7 @@ typedef struct SceGxmRenderTarget {
     GxmDriverMemory driver_memory;
     dk_surface_t shadow_color_surface;
     dk_surface_t shadow_ds_surface;
+    dk_surface_t resolved_color_surface;
 } SceGxmRenderTarget;
 
 typedef struct {
@@ -823,8 +824,12 @@ static int validate_render_target(const SceGxmRenderTargetParams *params)
 {
     if (!params) return SCE_GXM_ERROR_INVALID_POINTER;
     if (!params->width || params->width>4096 || !params->height || params->height>4096 ||
-        !params->scenesPerFrame || params->scenesPerFrame>SCE_GXM_MAX_SCENES_PER_RENDERTARGET)
+        !params->scenesPerFrame || params->scenesPerFrame>SCE_GXM_MAX_SCENES_PER_RENDERTARGET ||
+        params->multisampleMode>SCE_GXM_MULTISAMPLE_4X ||
+        (params->flags&~SCE_GXM_RENDER_TARGET_CUSTOM_MULTISAMPLE_LOCATIONS))
         return SCE_GXM_ERROR_INVALID_VALUE;
+    if (params->flags&SCE_GXM_RENDER_TARGET_CUSTOM_MULTISAMPLE_LOCATIONS)
+        return SCE_GXM_ERROR_UNSUPPORTED;
     return 0;
 }
 EXPORT(SceGxm, 0xB291C959, int, sceGxmGetRenderTargetMemSize,
@@ -849,14 +854,10 @@ EXPORT(SceGxm, 0x207AF96B, int, sceGxmCreateRenderTarget, const SceGxmRenderTarg
     SceGxmRenderTarget *target=driver.base;
     memset(target,0,sizeof(*target));
     target->params=snapshot;target->driver_memory=driver;
-    bool color=dk_surface_create(g_dk_device,&target->shadow_color_surface,snapshot.width,
-        snapshot.height,DkImageFormat_RGBA8_Unorm,
-        DkImageFlags_UsageRender|DkImageFlags_Usage2DEngine|DkImageFlags_HwCompression);
-    bool depth=color && dk_surface_create(g_dk_device,&target->shadow_ds_surface,snapshot.width,
-        snapshot.height,DkImageFormat_ZF32_X24S8,DkImageFlags_UsageRender|DkImageFlags_Usage2DEngine);
-    if (!depth) {
-        dk_surface_destroy(&target->shadow_ds_surface);
-        dk_surface_destroy(&target->shadow_color_surface);
+    const DkMsMode mode=snapshot.multisampleMode==SCE_GXM_MULTISAMPLE_4X ? DkMsMode_4x :
+        snapshot.multisampleMode==SCE_GXM_MULTISAMPLE_2X ? DkMsMode_2x : DkMsMode_1x;
+    if (!dk_render_surfaces_create(g_dk_device,&target->shadow_color_surface,&target->shadow_ds_surface,
+            &target->resolved_color_surface,snapshot.width,snapshot.height,mode)) {
         gxm_driver_memory_release(&driver);
         return SCE_GXM_ERROR_OUT_OF_MEMORY;
     }
@@ -878,6 +879,7 @@ EXPORT(SceGxm, 0x0B94C50A, int, sceGxmDestroyRenderTarget, SceGxmRenderTarget *t
     GxmDriverMemory driver=target->driver_memory;
     dk_surface_destroy(&target->shadow_color_surface);
     dk_surface_destroy(&target->shadow_ds_surface);
+    dk_surface_destroy(&target->resolved_color_surface);
     return gxm_driver_memory_release(&driver);
 }
 
@@ -1146,6 +1148,14 @@ EXPORT(SceGxm, 0x8734FF4E, int, sceGxmBeginScene, SceGxmContext *context, unsign
     if (validRegion && (validRegion->xMax >= rt_width || validRegion->yMax >= rt_height))
         return SCE_GXM_ERROR_INVALID_VALUE;
 
+    /* Without downscale, Vita exposes raw sample storage. A resolved native
+     * color image cannot represent that layout. Gamma-correct sample resolve
+     * also needs an explicit shader path. Validate before scene changes. */
+    if (renderTarget->params.multisampleMode!=SCE_GXM_MULTISAMPLE_NONE &&
+        gxm_color_surface_enabled(color_surface_inner) &&
+        (!color_surface_inner->downscale || color_surface_inner->gamma))
+        return SCE_GXM_ERROR_UNSUPPORTED;
+
     GxmDepthStaging *next_depth=NULL;
     int depth_result=prepare_depth_staging(depthStencil,&renderTarget->params,fragmentSyncObject,&next_depth);
     if (depth_result) return depth_result;
@@ -1181,6 +1191,12 @@ EXPORT(SceGxm, 0x8734FF4E, int, sceGxmBeginScene, SceGxmContext *context, unsign
         color_view.format=DkImageFormat_RGBA8_Unorm_sRGB;
     dkCmdBufBindRenderTarget(context->cmdbuf, &color_view,
                              &renderTarget->shadow_ds_surface.view);
+    DkMultisampleState multisample;
+    dkMultisampleStateDefaults(&multisample);
+    multisample.mode=multisample.rasterizerMode=renderTarget->shadow_color_surface.ms_mode;
+    dkMultisampleStateSetLocations(&multisample,NULL,0);
+    dkCmdBufBindMultisampleState(context->cmdbuf,&multisample);
+    dkCmdBufSetSampleMask(context->cmdbuf,UINT32_MAX);
     dkCmdBufSetViewports(context->cmdbuf, 0, &viewport, 1);
     dkCmdBufSetScissors(context->cmdbuf, 0, &scissor, 1);
     DkRasterizerState rasterizer = gxm_effective_rasterizer(&context->state.rasterizer,
@@ -1291,7 +1307,10 @@ EXPORT(SceGxm, 0xFE300E2F, int, sceGxmEndScene, SceGxmContext *context,
     } else {
         if (dk_image_for_gxm_color_surface(g_dk_device, &color_surface_image, gxm_color_surface)) {
             LOG("Copying color surface: shadow -> GXM");
-            dk_cmdbuf_copy_image(context->cmdbuf, &shadow_color_surface->image,
+            const DkImage *source=dk_surface_resolve_color(context->cmdbuf,shadow_color_surface,
+                &render_target->resolved_color_surface);
+            if (!source) return SCE_GXM_ERROR_DRIVER;
+            dk_cmdbuf_copy_image(context->cmdbuf, source,
                                  shadow_color_surface->width, shadow_color_surface->height,
                                  &color_surface_image, gxm_color_surface->width,
                                  gxm_color_surface->height);

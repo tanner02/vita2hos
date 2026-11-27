@@ -10,16 +10,16 @@
 #include "draw_probe.h"
 #ifdef VITA2HOS_VISIBLE_CUBE
 #define PROBE_NAME "visible_cube"
-#define PROBE_VERSION "4"
+#define PROBE_VERSION "5"
 #define PROBE_REPORT "app0:/visible-cube.txt"
 #else
 #define PROBE_NAME "draw_probe"
-#define PROBE_VERSION "7"
+#define PROBE_VERSION "8"
 #define PROBE_REPORT "app0:/draw-probe.txt"
 #endif
 #else
 #define PROBE_NAME "surface_probe"
-#define PROBE_VERSION "2"
+#define PROBE_VERSION "3"
 #define PROBE_REPORT "app0:/surface-probe.txt"
 #endif
 
@@ -234,6 +234,42 @@ int module_start(SceSize args, void *argp)
     if (code) { result("FAIL null_color_scene", code); goto done; }
     sceGxmFinish(context);
     record("PASS null_color_scene\n");
+    /* Exercise sample replication, resolve and state restoration in one run.
+     * No draws occur here: matching pixels prove transfer preservation only,
+     * not antialiased coverage or sample positions. The draw/cube tests follow. */
+    const SceGxmMultisampleMode modes[3] = {
+        SCE_GXM_MULTISAMPLE_2X,SCE_GXM_MULTISAMPLE_4X,SCE_GXM_MULTISAMPLE_NONE};
+    for (unsigned pass=0;pass<3;++pass) {
+        target_params.driverMemBlock=-1;
+        target_params.multisampleMode=modes[pass];
+        result("RUN multisample_mode",modes[pass]);
+        code=sceGxmCreateRenderTarget(&target_params,&borrowed_target);
+        if (code) { result("FAIL multisample_create",code);goto done; }
+        SceGxmColorSurface ms_color;
+        unsigned selected=pass&1;
+        code=sceGxmColorSurfaceInit(&ms_color,SCE_GXM_COLOR_FORMAT_U8U8U8U8_ABGR,
+            SCE_GXM_COLOR_SURFACE_LINEAR,modes[pass]==SCE_GXM_MULTISAMPLE_NONE ?
+                SCE_GXM_COLOR_SURFACE_SCALE_NONE : SCE_GXM_COLOR_SURFACE_SCALE_MSAA_DOWNSCALE,
+            SCE_GXM_OUTPUT_REGISTER_SIZE_32BIT,WIDTH,HEIGHT,WIDTH,buffers[selected]);
+        if (!code) code=sceGxmBeginScene(context,0,borrowed_target,NULL,NULL,NULL,&ms_color,&disabled);
+        if (!code) code=sceGxmEndScene(context,NULL,NULL);
+        if (code) { result("FAIL multisample_scene",code);goto done; }
+        sceGxmFinish(context);
+        for (unsigned b=0;b<2;++b) {
+            for (unsigned i=0;i<PIXELS;++i) {
+                if (buffers[b][i]!=pattern(i,b+1)) {
+                    result("FAIL multisample_pixel",i);result("mode",modes[pass]);
+                    result("buffer",b);result("actual",buffers[b][i]);
+                    result("expected",pattern(i,b+1));goto done;
+                }
+            }
+        }
+        code=sceGxmDestroyRenderTarget(borrowed_target);
+        if (code) { result("FAIL multisample_destroy",code);goto done; }
+        borrowed_target=NULL;
+        record(pass==0 ? "PASS multisample_2x_preservation\n" : pass==1 ?
+            "PASS multisample_4x_preservation\n" : "PASS multisample_restore_1x\n");
+    }
 #ifdef VITA2HOS_DRAW_PROBE
     const ProbeHooks hooks = {allocate, record, result};
     code = probe_draw(context, target, &surfaces[0], buffers[0], &hooks);

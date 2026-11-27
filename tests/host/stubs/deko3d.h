@@ -94,7 +94,11 @@ typedef void *DkCmdBuf;
 typedef void *DkQueue;
 typedef struct { unsigned unused; } DkImage;
 typedef struct { const DkImage *pImage;DkImageFormat format; } DkImageView;
-typedef struct { DkDevice device;DkImageFormat format;uint32_t flags,dimensions[3]; } DkImageLayoutMaker;
+typedef enum { DkMsMode_1x,DkMsMode_2x,DkMsMode_4x,DkMsMode_8x } DkMsMode;
+enum { DkImageFlags_UsageRender=1,DkImageFlags_Usage2DEngine=2,DkImageFlags_HwCompression=4 };
+typedef enum { DkImageType_2D,DkImageType_2DMS } DkImageType;
+typedef struct { DkDevice device;DkImageFormat format;uint32_t flags,dimensions[3];
+    DkMsMode msMode;DkImageType type; } DkImageLayoutMaker;
 typedef struct { uint64_t size;uint32_t alignment; } DkImageLayout;
 static inline void dkImageLayoutMakerDefaults(DkImageLayoutMaker *maker,DkDevice device)
 { *maker=(DkImageLayoutMaker){.device=device}; }
@@ -110,6 +114,7 @@ typedef enum { DkBarrier_Full=4 } DkBarrier;
 enum { DkInvalidateFlags_Image=1,DkInvalidateFlags_Zcull=8,DkInvalidateFlags_L2Cache=16 };
 DkGpuAddr dkMemBlockGetGpuAddr(DkMemBlock);
 void dkCmdBufBarrier(DkCmdBuf,DkBarrier,uint32_t);
+void dkCmdBufResolveImage(DkCmdBuf,const DkImageView *,const DkImageView *);
 void dkCmdBufCopyBufferToImage(DkCmdBuf,const DkCopyBuf *,const DkImageView *,const DkImageRect *,uint32_t);
 void dkCmdBufCopyImageToBuffer(DkCmdBuf,const DkImageView *,const DkImageRect *,const DkCopyBuf *,uint32_t);
 void dkQueueWaitIdle(DkQueue);

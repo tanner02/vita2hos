@@ -119,6 +119,14 @@ adds a console-only mid-gray RGB/alpha readback and a linear-reset pass. Native
 sRGB encoding and destination blending remain unverified until console runs;
 these host checks do not establish pixel accuracy. Surface clipping is pending.
 
+Render-surface checks cover 1x/2x/4x image type and sample-mode selection,
+matching color/depth attachments, a single-sample resolve target only when
+needed, view ownership, and complete rollback at each allocation step. Resolve
+checks require equal source/destination dimensions and a single-sample output;
+invalid inputs emit no commands. Mock command checks verify full barriers before
+sample reads and after resolve, plus the direct1x path. These validate allocation
+and command configuration, not antialiased pixels or native sample positions.
+
 GXM marker/heartbeat checks exercise library-scoped NID dispatch, null arguments,
 literal format characters in tags, bounded 63-byte tag reads, and untouched
 surface/sync objects. Marker calls emit push/set/pop annotations in Debug logs;
