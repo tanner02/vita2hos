@@ -3,6 +3,7 @@
 #include <psp2/kernel/processmgr.h>
 #include <psp2/kernel/threadmgr.h>
 #include <psp2/kernel/threadmgr/signal.h>
+#include <psp2/kernel/cpu.h>
 #include <stdlib.h>
 #include <switch.h>
 
@@ -89,8 +90,8 @@ static void NORETURN thread_entry_wrapper(void *arg)
     threadExit();
 }
 
-static SceUID create_thread(const char *name, SceKernelThreadEntry entry, int initPriority,
-                            SceSize stackSize)
+static SceUID create_thread_with_affinity(const char *name, SceKernelThreadEntry entry, int initPriority,
+                            SceSize stackSize,int affinity)
 {
     VitaThreadInfo *ti;
     Result res;
@@ -98,6 +99,8 @@ static SceUID create_thread(const char *name, SceKernelThreadEntry entry, int in
 
     if (priority < 0)
         return priority;
+    if (affinity & ~SCE_KERNEL_CPU_MASK_USER_ALL)
+        return SCE_KERNEL_ERROR_ILLEGAL_CPU_AFFINITY_MASK;
     if (!name || !entry)
         return SCE_KERNEL_ERROR_ILLEGAL_ADDR;
 
@@ -118,12 +121,14 @@ static SceUID create_thread(const char *name, SceKernelThreadEntry entry, int in
     ti->entry = entry;
     atomic_init(&ti->priority, resolve_vita_priority(initPriority));
     ti->initial_priority = atomic_load(&ti->priority);
+    ti->affinity_mask=affinity;
     ti->vita_tls = guest_tls_allocate(&g_main_tls);
     if (!ti->vita_tls) {
         free(ti);
         return SCE_KERNEL_ERROR_NO_MEMORY;
     }
     ti->vita_user_tls = guest_tls_user_area(ti->vita_tls);
+    ti->vita_tls[9] = affinity; /* Pinned guest kernel TLS affinity slot. */
     ti->vita_tls[8] = atomic_load(&ti->priority); /* Pinned kernel TLS priority slot. */
 
     res = threadCreate(&ti->thread, thread_entry_wrapper, ti, NULL, stackSize, priority, -2);
@@ -142,6 +147,9 @@ static SceUID create_thread(const char *name, SceKernelThreadEntry entry, int in
 
     return ti->uid;
 }
+
+static SceUID create_thread(const char *name,SceKernelThreadEntry entry,int priority,SceSize stack)
+{ return create_thread_with_affinity(name,entry,priority,stack,0); }
 
 static int start_thread(SceUID thid, SceSize arglen, void *argp)
 {
@@ -185,7 +193,7 @@ EXPORT(SceLibKernel, 0xC5C11EE7, SceUID, sceKernelCreateThread, const char *name
        SceKernelThreadEntry entry, int initPriority, SceSize stackSize, SceUInt attr,
        int cpuAffinityMask, const SceKernelThreadOptParam *option)
 {
-    return create_thread(name, entry, initPriority, stackSize);
+    return create_thread_with_affinity(name, entry, initPriority, stackSize,cpuAffinityMask);
 }
 
 EXPORT(SceThreadmgr, 0x1BBDE3D9, int, sceKernelDeleteThread, SceUID thid)
@@ -294,8 +302,8 @@ int SceKernelThreadMgr_run_module_start(SceKernelThreadEntry entry)
 {
     VitaThreadInfo *parent=SceKernelThreadMgr_get_thread_info();
     if (!parent) return SCE_KERNEL_ERROR_UNKNOWN_THREAD_ID;
-    SceUID uid=create_thread("<module_start>",entry,parent->priority,
-                             SCE_KERNEL_THREAD_STACK_SIZE_DEFAULT_USER_MAIN);
+    SceUID uid=create_thread_with_affinity("<module_start>",entry,parent->priority,
+                             SCE_KERNEL_THREAD_STACK_SIZE_DEFAULT_USER_MAIN,parent->affinity_mask);
     if (uid<0) return uid;
     int result=start_thread(uid,0,NULL);
     if (result<0) {
@@ -444,6 +452,8 @@ EXPORT(SceThreadmgr, 0xB373D8A1, int, _sceKernelGetThreadInfo, SceUID thid,
                 .entry=(uint32_t)(uintptr_t)thread->entry,
                 .stack=(uint32_t)(uintptr_t)thread->thread.stack_mirror,
                 .stack_size=thread->thread.stack_sz,
+                .initial_affinity=thread->affinity_mask,
+                .current_affinity=thread->affinity_mask,
                 .initial_priority=thread->initial_priority,
                 .current_priority=atomic_load(&thread->priority),
                 .current_cpu=-1, .last_cpu=-1,
@@ -595,3 +605,20 @@ EXPORT(SceLibKernel,0xADCA94E5,int,sceKernelWaitSignal,SceUInt32 unknown,SceUInt
 EXPORT(SceThreadmgr,0x50407BF4,int,_sceKernelWaitSignal,SceUInt32 unknown,SceUInt32 delay,
        SceUInt32 *timeout)
 { return sceKernelWaitSignal(unknown,delay,timeout); }
+
+EXPORT(SceThreadmgr,0xF1AE5654,int,sceKernelGetThreadCpuAffinityMask,SceUID uid)
+{
+    if(!uid) {
+        VitaThreadInfo *caller=SceKernelThreadMgr_get_thread_info();
+        if(!caller)return SCE_KERNEL_ERROR_UNKNOWN_THREAD_ID;
+        uid=caller->uid;
+    }
+    rwlockReadLock(&g_vita_thread_infos_lock);
+    VitaThreadInfo **entry=vita_thread_info_dict_get(g_vita_thread_infos,uid);
+    int result=entry ? ((*entry)->affinity_mask ? (*entry)->affinity_mask : SCE_KERNEL_CPU_MASK_USER_ALL)
+                     : (int)SCE_KERNEL_ERROR_UNKNOWN_THREAD_ID;
+    rwlockReadUnlock(&g_vita_thread_infos_lock);
+    return result;
+}
+EXPORT(SceThreadmgr,0x212E6C35,int,_sceKernelGetThreadCpuAffinityMask,SceUID uid)
+{ return sceKernelGetThreadCpuAffinityMask(uid); }

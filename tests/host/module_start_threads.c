@@ -90,6 +90,8 @@ static int dependency(SceSize args,void *argp)
     assert(!args && !argp);
     VitaThreadInfo *info=SceKernelThreadMgr_get_thread_info();
     assert(info && info->uid!=parent_uid && info->priority==100);
+    assert(info->affinity_mask==SCE_KERNEL_CPU_MASK_USER_1 && info->vita_tls[9]==SCE_KERNEL_CPU_MASK_USER_1);
+    assert(sceKernelGetThreadCpuAffinityMask(0)==SCE_KERNEL_CPU_MASK_USER_1);
     assert(current_tp==(uintptr_t)info->vita_user_tls);
     assert(*(uint32_t *)info->vita_user_tls==0x12345678);
     *(uint32_t *)info->vita_user_tls=0xfeedface;
@@ -119,7 +121,7 @@ static void run(bool exit_call,int status,int injected)
     LoadImage images[3]={{.bound=true},{.bound=true},{.bound=true}};
     images[1].lifecycle.start=dependency;images[2].lifecycle.start=dependency;
     LoadProcess process={.images=images,.count=3,.bound=true,.entry=guest_main},*ptr=&process;
-    parent_uid=create_thread("parent",parent_entry,100,256*1024);assert(parent_uid>0);
+    parent_uid=create_thread_with_affinity("parent",parent_entry,100,256*1024,SCE_KERNEL_CPU_MASK_USER_1);assert(parent_uid>0);
     /* The parent has already been created; inject a dependency-stage failure. */
     atomic_store(&fail_create,injected==1);atomic_store(&fail_start,injected==2);
     atomic_store(&fail_wait,injected==3);

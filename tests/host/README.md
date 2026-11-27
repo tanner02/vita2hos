@@ -160,3 +160,12 @@ upgrade/downgrade requests are rejected with RW_LOCK_RECURSIVE. This policy avoi
 an unsafe ownership conversion; firmware equivalence for those requests and mixed
 reader/writer queue ordering is unverified. Callback waits, cancellation, named
 open/close, info queries, priority inheritance and owner-death handling are pending.
+
+CPU-affinity queries now retain validated guest creation masks, publish the raw
+mask in TLS word 9 and thread-info snapshots, and resolve mask zero to USER_ALL
+for the query, following the pinned reference. Dependency startup threads inherit
+the parent's configured guest mask. Tests cover explicit/default/self/deleted
+UID queries, invalid masks, snapshots, TLS and dependency inheritance. This is
+guest metadata only: native threadCreate still uses Horizon's default affinity.
+No native core pinning or change-affinity API is implemented by this change;
+processor identity and firmware edge cases remain unverified.

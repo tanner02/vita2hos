@@ -272,6 +272,26 @@ int main(void)
     assert((uint32_t)sceKernelSendSignal(uid)==SCE_KERNEL_ERROR_UNKNOWN_THREAD_ID);
     assert(module_get_func_export(0xcae9ace6,0xADCA94E5));
     assert(SceKernelThreadMgr_finish()==0);
+    assert(SceKernelThreadMgr_init(&tls,false)==0);
+    assert((uint32_t)sceKernelCreateThread("bad affinity",entry,160,4096,0,1,NULL)==SCE_KERNEL_ERROR_ILLEGAL_CPU_AFFINITY_MASK);
+    uid=sceKernelCreateThread("affinity",entry,160,4096,0,SCE_KERNEL_CPU_MASK_USER_1,NULL);assert(uid>0);
+    info=get_thread_info_for_uid(uid);assert(info->vita_tls[9]==SCE_KERNEL_CPU_MASK_USER_1);
+    assert(sceKernelGetThreadCpuAffinityMask(uid)==SCE_KERNEL_CPU_MASK_USER_1);
+    threadTlsSet(g_vita_thread_info_tls_slot_id,info);
+    assert(sceKernelGetThreadCpuAffinityMask(0)==SCE_KERNEL_CPU_MASK_USER_1);
+    GuestThreadSnapshot affinity_info={.size=128};assert(!_sceKernelGetThreadInfo(uid,(void *)&affinity_info));
+    assert(affinity_info.initial_affinity==SCE_KERNEL_CPU_MASK_USER_1 && affinity_info.current_affinity==SCE_KERNEL_CPU_MASK_USER_1);
+    threadTlsSet(g_vita_thread_info_tls_slot_id,NULL);assert(!sceKernelDeleteThread(uid));
+    assert((uint32_t)sceKernelGetThreadCpuAffinityMask(uid)==SCE_KERNEL_ERROR_UNKNOWN_THREAD_ID);
+    uid=create_thread("default affinity",entry,160,4096);assert(uid>0);
+    assert(_sceKernelGetThreadCpuAffinityMask(uid)==SCE_KERNEL_CPU_MASK_USER_ALL);assert(!sceKernelDeleteThread(uid));
+    for(unsigned mask=1;mask<8;++mask) {
+        uid=sceKernelCreateThread("mask combinations",entry,160,4096,0,(int)(mask<<16),NULL);assert(uid>0);
+        assert(sceKernelGetThreadCpuAffinityMask(uid)==(int)(mask<<16));assert(!sceKernelDeleteThread(uid));
+    }
+    assert((uint32_t)sceKernelCreateThread("system affinity",entry,160,4096,0,0x80000,NULL)==SCE_KERNEL_ERROR_ILLEGAL_CPU_AFFINITY_MASK);
+    assert(module_get_func_export(0x859a24b1,0xF1AE5654));
+    assert(SceKernelThreadMgr_finish()==0);
     guest_tls_template_clear(&tls);
     puts("Thread runtime regression checks passed.");
     return 0;
