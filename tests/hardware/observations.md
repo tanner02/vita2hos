@@ -622,6 +622,37 @@
   The full ASan/UBSan suite and ARM Debug/Release builds passed.
   No new Switch run or bundled-FIOS/commercial-title boot is established.
 
+## Host initial FIOS overlay discovery after 4b31fe9
+
+- Static Capstone inspection of the private FIOS wrapper at original VA
+  0x8101a7c4 showed a 24-byte syscall block. Its first words contain ID-buffer
+  address (+0), requested ID count (+4), returned-count address (+8), and
+  copy capacity (+12), calculated as min(requested IDs, 128) * 4. The final
+  eight bytes are unspecified stack contents, not validated options.
+- Added SceFios2Kernel GetList (9379e2d5) with an explicit 32-bit packet prefix,
+  current-process/self selection, order range, pointer alignment and copy-size
+  checks. It reports zero overlays because this runtime installs none. This
+  handles the observed initializer query; it does not install, enumerate a
+  nonempty registry, modify, remove, or resolve overlays. Those imports remain
+  unsupported, and this is not full FIOS overlay support.
+- Added GetRecommendedScheduler (b02e0b26): a required non-NULL options pointer,
+  index 1 for host[0-9]: when more than one scheduler is available, otherwise 0.
+  It neither runs a scheduler nor adds a host-device mount. The options contents
+  are unused. Rule reference:
+  https://github.com/vitasdk/vita-headers/blob/master/include/psp2/fios2kernel.h
+- Host tests map buffers into 32-bit address space, resolve real NIDs, and cover
+  the observed zero-capacity query, packet offsets, 128-ID copy cap, ignored
+  reserved fields, unchanged ID buffers, four-byte count writes, current/self
+  process selection, malformed input without output changes, input/output aliasing,
+  and scheduler index/prefix boundaries. ARM-only layout assertions compare the
+  raw packet offsets with the pinned SDK's 24-byte syscall structure.
+  The full ASan/UBSan suite and ARM Debug/Release builds passed.
+- The required count-pointer and validation/error choices beyond the observed
+  initializer packet are not firmware-verified. HLE pointer inputs must refer
+  to readable/writable mapped guest memory, as with existing native wrappers.
+  No Switch files were changed; FIOS startup and commercial 3D boot remain
+  unverified by this static analysis and host testing.
+
 ## Runtime 15d400f48e5d3a3f5d811e2a67bd30a1388cc102
 
 - Standalone HOME title, owned fixed-address CPU probe SHA-256
