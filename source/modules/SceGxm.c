@@ -1011,6 +1011,9 @@ EXPORT(SceGxm, 0x8734FF4E, int, sceGxmBeginScene, SceGxmContext *context, unsign
        SceGxmSyncObject *vertexSyncObject, SceGxmSyncObject *fragmentSyncObject,
        const SceGxmColorSurface *colorSurface, const SceGxmDepthStencilSurface *depthStencil)
 {
+    if (!context || !renderTarget)
+        return SCE_GXM_ERROR_INVALID_POINTER;
+
     uint16_t rt_width = renderTarget->params.width;
     uint16_t rt_height = renderTarget->params.height;
     DkViewport viewport = { 0.0f, 0.0f, (float)rt_width, (float)rt_height, 0.0f, 1.0f };
@@ -1038,8 +1041,11 @@ EXPORT(SceGxm, 0x8734FF4E, int, sceGxmBeginScene, SceGxmContext *context, unsign
 
     LOG("sceGxmBeginScene to renderTarget %p, fragmentSyncObject: %p, "
         "w: %" PRId32 ", h: %" PRId32 ", stride: %" PRId32 ", CPU addr: %p",
-        renderTarget, fragmentSyncObject, color_surface_inner->width, color_surface_inner->height,
-        color_surface_inner->strideInPixels, color_surface_inner->data);
+        renderTarget, fragmentSyncObject,
+        color_surface_inner ? color_surface_inner->width : 0,
+        color_surface_inner ? color_surface_inner->height : 0,
+        color_surface_inner ? color_surface_inner->strideInPixels : 0,
+        color_surface_inner ? color_surface_inner->data : NULL);
 
     dkCmdBufClear(context->cmdbuf);
     dkCmdBufBindRenderTarget(context->cmdbuf, &renderTarget->shadow_color_surface.view,
@@ -1081,6 +1087,11 @@ EXPORT(SceGxm, 0x8734FF4E, int, sceGxmBeginScene, SceGxmContext *context, unsign
 EXPORT(SceGxm, 0xFE300E2F, int, sceGxmEndScene, SceGxmContext *context,
        const SceGxmNotification *vertexNotification, const SceGxmNotification *fragmentNotification)
 {
+    if (!context)
+        return SCE_GXM_ERROR_INVALID_POINTER;
+    if (!context->state.in_scene)
+        return SCE_GXM_ERROR_NOT_WITHIN_SCENE;
+
     DkCmdList cmd_list;
     DkVariable variable;
     uint32_t offset;
@@ -1097,9 +1108,6 @@ EXPORT(SceGxm, 0xFE300E2F, int, sceGxmEndScene, SceGxmContext *context,
     bool discard_stencil;
 
     LOG("sceGxmEndScene");
-
-    if (!context->state.in_scene)
-        return SCE_GXM_ERROR_NOT_WITHIN_SCENE;
 
     if (vertexNotification) {
         offset = dk_memblock_cpu_addr_offset(g_notification_region_memblock,
@@ -1156,7 +1164,8 @@ EXPORT(SceGxm, 0xFE300E2F, int, sceGxmEndScene, SceGxmContext *context,
     }
 
     /* Signal fence when rendering and copying finishes */
-    dkQueueSignalFence(g_render_queue, &context->state.fragment_sync_object->fence, true);
+    if (context->state.fragment_sync_object)
+        dkQueueSignalFence(g_render_queue, &context->state.fragment_sync_object->fence, true);
 
     cmd_list = dkCmdBufFinishList(context->cmdbuf);
     dkQueueSubmitCommands(g_render_queue, cmd_list);
