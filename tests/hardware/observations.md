@@ -1,3 +1,40 @@
+## 2026-11-27: missing game resource index restored and content verified
+
+A fresh SD listing confirmed that the original game payload contained data.farc,
+gamedata and sce_sys but lacked the entire output directory. The owned source
+contains output/blurayguids.map (1293883 bytes) and output/titleid.txt (9 bytes);
+the executable references both paths. These two absent files were added under
+the application's SD root and exact-readback verified. Existing files were
+preserved. No proprietary contents are committed to the repository.
+
+The source GUID index parses to21798 records and exact EOF. Its21792 archive
+SHA1 references match the source FARC index; the six remaining entries match
+external font files. All six SD fonts match source bytes. A full streaming SD
+archive SHA256 equals the current source archive, not just its size:
+0545397887141584ac23f9cbc172638e0ef75727fda0dae18714ee25f177dba1.
+This establishes file completeness/integrity for those indexed resources. It
+does not establish that the guest reached these paths, that the index caused
+the previous resource fault, or that restoring it boots the title.
+
+The first newly labelled owner HLE artifact failed independent runtime-identity
+verification: metadata says c389222 while decompressed NSO rodata says
+21adb05-dirty with an older compile timestamp. That stamp alone does not prove
+all functions are old, but the candidate was not installed as verified c389222.
+The clean c389222 host suite passes; its native target declares two missing
+source files, restored in owner commit073ee41. A live-source build was stopped
+when owner tracked files changed during configuration, rather than attributing
+its slow Git dependency scan to a compiler failure.
+
+Codex exported immutable owner073ee41 source and built it in a separate private
+build directory with four verified-pinned read-only dependency binds. Every
+exported source file remains byte-identical after compilation. A build-only
+revision wrapper supplies the independently verified archive commit because the
+export has no .git; no HLE source or repository CMake was edited. Final native
+ELF and packaged NSO identify073ee41. ARM32 metadata, exact NSO preservation,
+all three NCA hash trees and CNMT hashes pass. HLE remains unmerged into Codex
+main. Hardware verification of that candidate is ongoing; no game-boot result
+is claimed here. The held real-libc TLS probe remains unchanged.
+
 ## 2026-11-27: log-retry runtime passes graphics batch with live collection
 
 Clean Debug/Release builds of927c50f pass the existing build/package checks,

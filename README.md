@@ -32,8 +32,10 @@ It achieves this by redirecting the [module](https://wiki.henkaku.xyz/vita/Modul
    - Place your PlayStation Vita executable (`.velf`, `.self`, or `eboot.bin`) in the `sd:/vita2hos/` directory and rename it to `executable` (without any file extension).\
    The resulting full path should be `sd:/vita2hos/executable`.
 
-   - Place the application's extracted assets beside `executable`, retaining
-     their directory structure. For example, `app0:/data/textures.bin` resolves
+   - Place the application's complete extracted contents beside `executable`,
+     retaining their directory structure, resource indexes and metadata. Keep
+     folders such as `output` when present: they can contain runtime resource
+     indexes. For example, `app0:/data/textures.bin` resolves
      to `sd:/vita2hos/data/textures.bin`. Both `app0:file` and `app0:/file`
      refer to this application directory. File opens, metadata queries, and
      directory enumeration share this mapping.
