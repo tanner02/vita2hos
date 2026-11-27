@@ -1,3 +1,19 @@
+## Runtime 006d5c495f2265d877cc14a94ab63b8843136cbf — owned cube v2
+
+- User completed the test; report and runtime logs were collected over USB/MTP.
+  Executable SHA-256: 6ed20aab2a8cae81531906923b3d0c92dc2fc31720dcc56cb889f3c69d74652c.
+- Report starts visible_cube v2 and ends PASS visible_cube after all 360 frames.
+  Driver-memory ownership/lookup, framebuffer switching, null color scene,
+  background depth, shader color, depth-only occlusion, stencil replacement,
+  texture quadrants/updates and all listed viewport orientations passed.
+- Current log identifies runtime 0.4.0-006d5c4, process result 0, launch result 0,
+  and load_process_close result 0. No unresolved-import or deko3d failure was
+  observed in the recovered run. The previous log was preserved separately.
+- This verifies this owned 3D workload on the user's physical Switch. It does
+  not separately exercise forced depth load/store, sRGB gamma, alternate polygon
+  modes, commercial shaders, library starts, or TLS register preservation.
+  LittleBigPlanet boot remains unverified.
+
 ## Offline render-target driver memory (2026-11-27)
 
 - Added sceGxmRenderTargetGetDriverMemBlock (0x49553737). Render targets now
