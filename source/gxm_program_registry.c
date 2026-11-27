@@ -2,6 +2,15 @@
 #include <string.h>
 #include "gxm/program_registry.h"
 
+bool gxm_program_registry_contains(const SceGxmShaderPatcherId *entries, uint32_t count,
+                                    SceGxmShaderPatcherId program)
+{
+    if (!entries || !program) return false;
+    for (uint32_t i = 0; i < count; ++i)
+        if (entries[i] == program) return true;
+    return false;
+}
+
 int gxm_program_registry_add(SceGxmShaderPatcherId **entries, uint32_t *count,
                               SceGxmShaderPatcherId program)
 {

@@ -106,7 +106,7 @@ typedef struct SceGxmShaderPatcher {
 } SceGxmShaderPatcher;
 
 typedef struct SceGxmVertexProgram {
-    SceGxmShaderPatcherId programId;
+    uint32_t default_uniform_count;
     SceGxmVertexAttribute *attributes;
     unsigned int attributeCount;
     SceGxmVertexStream *streams;
@@ -115,7 +115,7 @@ typedef struct SceGxmVertexProgram {
 } SceGxmVertexProgram;
 
 typedef struct SceGxmFragmentProgram {
-    SceGxmShaderPatcherId programId;
+    uint32_t default_uniform_count;
     SceGxmOutputRegisterFormat outputFormat;
     SceGxmMultisampleMode multisampleMode;
     SceGxmBlendInfo blendInfo;
@@ -465,6 +465,8 @@ EXPORT(SceGxm, 0xEAA5B100, int, sceGxmShaderPatcherDestroy, SceGxmShaderPatcher 
 {
     if (!shaderPatcher)
         return SCE_GXM_ERROR_INVALID_POINTER;
+    for (uint32_t i = 0; i < shaderPatcher->registered_count; ++i)
+        free(shaderPatcher->registered_programs[i]);
     free(shaderPatcher->registered_programs);
     free(shaderPatcher);
     return 0;
@@ -584,7 +586,12 @@ EXPORT(SceGxm, 0xB7BBA6D5, int, sceGxmShaderPatcherCreateVertexProgram,
     if (!vertexProgram)
         return SCE_GXM_ERROR_INVALID_POINTER;
     *vertexProgram = NULL;
-    if (!shaderPatcher || !programId || !programId->programHeader)
+    if (!shaderPatcher || !programId)
+        return SCE_GXM_ERROR_INVALID_POINTER;
+    if (!gxm_program_registry_contains(shaderPatcher->registered_programs,
+                                        shaderPatcher->registered_count, programId))
+        return SCE_GXM_ERROR_INVALID_VALUE;
+    if (!programId->programHeader)
         return SCE_GXM_ERROR_INVALID_POINTER;
     ret = gxm_validate_vertex_layout(attributes, attributeCount, streams, streamCount);
     if (ret != 0)
@@ -595,7 +602,7 @@ EXPORT(SceGxm, 0xB7BBA6D5, int, sceGxmShaderPatcherCreateVertexProgram,
         return SCE_KERNEL_ERROR_NO_MEMORY;
 
     memset(vertex_program, 0, sizeof(*vertex_program));
-    vertex_program->programId = programId;
+    vertex_program->default_uniform_count = programId->programHeader->default_uniform_buffer_count;
     if (attributeCount) {
         vertex_program->attributes = calloc(attributeCount, sizeof(SceGxmVertexAttribute));
         if (!vertex_program->attributes) {
@@ -649,12 +656,22 @@ EXPORT(SceGxm, 0x4ED2E49D, int, sceGxmShaderPatcherCreateFragmentProgram,
     int ret;
     SceGxmFragmentProgram *fragment_program;
 
+    if (!fragmentProgram)
+        return SCE_GXM_ERROR_INVALID_POINTER;
+    *fragmentProgram = NULL;
+    if (!shaderPatcher || !programId)
+        return SCE_GXM_ERROR_INVALID_POINTER;
+    if (!gxm_program_registry_contains(shaderPatcher->registered_programs,
+                                        shaderPatcher->registered_count, programId))
+        return SCE_GXM_ERROR_INVALID_VALUE;
+    if (!programId->programHeader)
+        return SCE_GXM_ERROR_INVALID_POINTER;
     fragment_program = malloc(sizeof(*fragment_program));
     if (!fragment_program)
         return SCE_KERNEL_ERROR_NO_MEMORY;
 
     memset(fragment_program, 0, sizeof(*fragment_program));
-    fragment_program->programId = programId;
+    fragment_program->default_uniform_count = programId->programHeader->default_uniform_buffer_count;
     fragment_program->outputFormat = outputFormat;
     fragment_program->multisampleMode = multisampleMode;
     if (blendInfo) {
@@ -1211,7 +1228,6 @@ EXPORT(SceGxm, 0xC697CAE5, int, sceGxmSetVertexDefaultUniformBuffer, SceGxmConte
 EXPORT(SceGxm, 0x97118913, int, sceGxmReserveVertexDefaultUniformBuffer, SceGxmContext *context,
        void **uniformBuffer)
 {
-    const SceGxmProgram *program;
     uint32_t size;
 
     if (!context->state.in_scene)
@@ -1219,8 +1235,7 @@ EXPORT(SceGxm, 0x97118913, int, sceGxmReserveVertexDefaultUniformBuffer, SceGxmC
     else if (!context->state.vertex_program)
         return SCE_GXM_ERROR_NULL_PROGRAM;
 
-    program = context->state.vertex_program->programId->programHeader;
-    size = program->default_uniform_buffer_count * sizeof(float);
+    size = context->state.vertex_program->default_uniform_count * sizeof(float);
     if (size == 0) {
         *uniformBuffer = NULL;
         return 0;
@@ -1270,7 +1285,6 @@ EXPORT(SceGxm, 0xA824EB24, int, sceGxmSetFragmentDefaultUniformBuffer, SceGxmCon
 EXPORT(SceGxm, 0x7B1FABB6, int, sceGxmReserveFragmentDefaultUniformBuffer, SceGxmContext *context,
        void **uniformBuffer)
 {
-    const SceGxmProgram *program;
     uint32_t size;
 
     if (!context->state.in_scene)
@@ -1278,8 +1292,7 @@ EXPORT(SceGxm, 0x7B1FABB6, int, sceGxmReserveFragmentDefaultUniformBuffer, SceGx
     else if (!context->state.fragment_program)
         return SCE_GXM_ERROR_NULL_PROGRAM;
 
-    program = context->state.fragment_program->programId->programHeader;
-    size = program->default_uniform_buffer_count * sizeof(float);
+    size = context->state.fragment_program->default_uniform_count * sizeof(float);
     if (size == 0) {
         *uniformBuffer = NULL;
         return 0;
@@ -1716,15 +1729,14 @@ static int context_flush_dirty_state(SceGxmContext *context)
     if (context->state.dirty.bit.vertex_default_uniform) {
         dkCmdBufBindStorageBuffer(
             context->cmdbuf, DkStage_Vertex, 0, context->state.vertex_default_uniform.gpu_addr,
-            vertex_program->programId->programHeader->default_uniform_buffer_count * sizeof(float));
+            vertex_program->default_uniform_count * sizeof(float));
         context->state.vertex_default_uniform.allocated = false;
     }
 
     if (context->state.dirty.bit.fragment_default_uniform) {
         dkCmdBufBindStorageBuffer(
             context->cmdbuf, DkStage_Fragment, 1, context->state.fragment_default_uniform.gpu_addr,
-            fragment_program->programId->programHeader->default_uniform_buffer_count *
-                sizeof(float));
+            fragment_program->default_uniform_count * sizeof(float));
         context->state.fragment_default_uniform.allocated = false;
     }
 
