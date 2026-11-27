@@ -66,6 +66,13 @@ These tests establish a basic rendering baseline; performance, GPU cache
 visibility, and swizzled/tiled layout behavior still need direct hardware
 coverage. A successful cube does not prove that LittleBigPlanet boots.
 
+Fragment-program enable controls now select front/back suppression through the
+translator's helper uniforms. Disabling both effective faces masks color writes
+while retaining depth/stencil processing. Two-sided mode selects separate stencil
+settings without losing saved back-face state. Separate back-face depth functions
+and depth-write modes remain unsupported, and draws still require a bound fragment
+program. These paths need hardware coverage beyond the existing cube result.
+
 Pinned sample archive SHA-256 values:
 
 - `gxm_cube_sample.zip`: `619f2c1bbc1cdf2652025545041ac628675a18628d4fe499074cc23f71da045f`

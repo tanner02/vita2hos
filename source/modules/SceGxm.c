@@ -23,6 +23,7 @@
 #include "gxm/viewport.h"
 #include "gxm/region_clip.h"
 #include "gxm/notification.h"
+#include "gxm/fragment_control.h"
 #include "gxm/uniform_staging.h"
 #include "gxm/blend.h"
 #include "gxm/shader_code.h"
@@ -64,6 +65,7 @@ typedef struct SceGxmContext {
         SceGxmSyncObject *fragment_sync_object;
         bool in_scene;
         bool two_sided_mode;
+        GxmFragmentControl fragment_control;
         GxmViewportState viewport;
         GxmRegionClip region_clip;
         DkRasterizerState rasterizer;
@@ -172,13 +174,7 @@ typedef struct {
 /* Vita3K's shader recompiler */
 typedef GxmViewportUniform GXMRenderVertUniformBlock;
 
-struct GXMRenderFragUniformBlock {
-    float back_disabled;
-    float front_disabled;
-    float writing_mask;
-    float use_raw_image;
-    float res_multiplier;
-};
+typedef GxmFragmentUniform GXMRenderFragUniformBlock;
 
 /* Global state */
 
@@ -349,7 +345,7 @@ EXPORT(SceGxm, 0xE84CE5B4, int, sceGxmCreateContext, const SceGxmContextParams *
         DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached);
 
     ctx->gxm_frag_unif_block_memblock = dk_alloc_memblock(
-        g_dk_device, ALIGN(sizeof(struct GXMRenderFragUniformBlock), DK_UNIFORM_BUF_ALIGNMENT),
+        g_dk_device, ALIGN(sizeof(GXMRenderFragUniformBlock), DK_UNIFORM_BUF_ALIGNMENT),
         DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached);
 
     /* Init default state */
@@ -875,7 +871,7 @@ EXPORT(SceGxm, 0x8FA6FE44, void, sceGxmSetFrontStencilRef, SceGxmContext *contex
     context->state.dirty.bit.front_stencil = true;
 
     if (!context->state.two_sided_mode)
-        sceGxmSetBackStencilRef(context, sref);
+        context->state.dirty.bit.back_stencil = true;
 }
 
 EXPORT(SceGxm, 0xB042A4D2, void, sceGxmSetBackDepthFunc, SceGxmContext *context,
@@ -911,10 +907,8 @@ EXPORT(SceGxm, 0xB8645A9A, void, sceGxmSetFrontStencilFunc, SceGxmContext *conte
     context->state.dirty.bit.depth_stencil = true;
     context->state.dirty.bit.front_stencil = true;
 
-    if (!context->state.two_sided_mode) {
-        sceGxmSetBackStencilFunc(context, func, stencilFail, depthFail, depthPass, compareMask,
-                                 writeMask);
-    }
+    if (!context->state.two_sided_mode)
+        context->state.dirty.bit.back_stencil = true;
 }
 
 EXPORT(SceGxm, 0x1A68C8D2, void, sceGxmSetBackStencilFunc, SceGxmContext *context,
@@ -930,6 +924,50 @@ EXPORT(SceGxm, 0x1A68C8D2, void, sceGxmSetBackStencilFunc, SceGxmContext *contex
     context->state.back_stencil.write_mask = writeMask;
     context->state.dirty.bit.depth_stencil = true;
     context->state.dirty.bit.back_stencil = true;
+}
+
+static void fragment_control_changed(SceGxmContext *context)
+{
+    /* The shared helper uniforms are replayed with the viewport state. */
+    context->state.dirty.bit.viewport = true;
+    context->state.dirty.bit.color_write = true;
+}
+
+EXPORT(SceGxm, 0x575958A8, void, sceGxmSetFrontFragmentProgramEnable, SceGxmContext *context,
+       SceGxmFragmentProgramMode mode)
+{
+    if (!context) return;
+    if (gxm_fragment_control_set(&context->state.fragment_control, false, mode)) {
+        LOG("sceGxmSetFrontFragmentProgramEnable: invalid mode 0x%x", mode);
+        return;
+    }
+    fragment_control_changed(context);
+}
+
+EXPORT(SceGxm, 0xE26B4834, void, sceGxmSetBackFragmentProgramEnable, SceGxmContext *context,
+       SceGxmFragmentProgramMode mode)
+{
+    if (!context) return;
+    if (gxm_fragment_control_set(&context->state.fragment_control, true, mode)) {
+        LOG("sceGxmSetBackFragmentProgramEnable: invalid mode 0x%x", mode);
+        return;
+    }
+    fragment_control_changed(context);
+}
+
+EXPORT(SceGxm, 0x0DE9AEB7, void, sceGxmSetTwoSidedEnable, SceGxmContext *context,
+       SceGxmTwoSidedMode mode)
+{
+    if (!context) return;
+    if (mode != SCE_GXM_TWO_SIDED_ENABLED && mode != SCE_GXM_TWO_SIDED_DISABLED) {
+        LOG("sceGxmSetTwoSidedEnable: invalid mode 0x%x", mode);
+        return;
+    }
+    context->state.two_sided_mode = mode == SCE_GXM_TWO_SIDED_ENABLED;
+    context->state.dirty.bit.depth_stencil = true;
+    context->state.dirty.bit.front_stencil = true;
+    context->state.dirty.bit.back_stencil = true;
+    fragment_control_changed(context);
 }
 
 EXPORT(SceGxm, 0x3EB3380B, void, sceGxmSetViewport, SceGxmContext *context,
@@ -988,13 +1026,9 @@ static void set_vita3k_gxm_uniform_blocks(SceGxmContext *context, float width, f
     gxm_viewport_translate(&context->state.viewport, width, height, &viewport, &vert_unif);
     dkCmdBufSetViewports(context->cmdbuf, 0, &viewport, 1);
 
-    const struct GXMRenderFragUniformBlock frag_unif = {
-        .back_disabled = 0.0f,
-        .front_disabled = 0.0f,
-        .writing_mask = 0.0f,
-        .use_raw_image = 0.0f,
-        .res_multiplier = 0,
-    };
+    bool color_enabled;
+    const GXMRenderFragUniformBlock frag_unif = gxm_fragment_control_uniform(
+        &context->state.fragment_control, context->state.two_sided_mode, &color_enabled);
 
     dkCmdBufPushConstants(context->cmdbuf,
                           dkMemBlockGetGpuAddr(context->gxm_vert_unif_block_memblock),
@@ -1884,8 +1918,11 @@ static int stage_uniforms(SceGxmContext *context, DkStage stage,
 static int context_flush_dirty_state(SceGxmContext *context)
 {
     if (context->state.dirty.bit.viewport)
-        set_vita3k_gxm_uniform_blocks(context, context->state.color_surface->width,
-                                      context->state.color_surface->height);
+        set_vita3k_gxm_uniform_blocks(context,
+            context->state.color_surface ? context->state.color_surface->width :
+                                           context->state.render_target->params.width,
+            context->state.color_surface ? context->state.color_surface->height :
+                                           context->state.render_target->params.height);
     const DkShader *shaders[2];
     const SceGxmVertexProgram *vertex_program = context->state.vertex_program;
     const SceGxmFragmentProgram *fragment_program = context->state.fragment_program;
@@ -1959,6 +1996,12 @@ static int context_flush_dirty_state(SceGxmContext *context)
 
     if (context->state.dirty.bit.depth_stencil) {
         DkDepthStencilState effective = context->state.depth_stencil;
+        if (!context->state.two_sided_mode) {
+            effective.stencilBackFailOp = effective.stencilFrontFailOp;
+            effective.stencilBackDepthFailOp = effective.stencilFrontDepthFailOp;
+            effective.stencilBackPassOp = effective.stencilFrontPassOp;
+            effective.stencilBackCompareOp = effective.stencilFrontCompareOp;
+        }
         if (!context->state.ds_surface ||
             !sceGxmDepthStencilSurfaceIsEnabled(context->state.ds_surface)) {
             effective.depthTestEnable = false;
@@ -1978,13 +2021,24 @@ static int context_flush_dirty_state(SceGxmContext *context)
     }
 
     if (context->state.dirty.bit.back_stencil) {
-        dkCmdBufSetStencil(context->cmdbuf, DkFace_Back, context->state.back_stencil.write_mask,
-                           context->state.back_stencil.ref,
-                           context->state.back_stencil.compare_mask);
+        if (context->state.two_sided_mode)
+            dkCmdBufSetStencil(context->cmdbuf, DkFace_Back, context->state.back_stencil.write_mask,
+                               context->state.back_stencil.ref,
+                               context->state.back_stencil.compare_mask);
+        else
+            dkCmdBufSetStencil(context->cmdbuf, DkFace_Back, context->state.front_stencil.write_mask,
+                               context->state.front_stencil.ref,
+                               context->state.front_stencil.compare_mask);
     }
 
-    if (context->state.dirty.bit.color_write)
-        dkCmdBufBindColorWriteState(context->cmdbuf, &context->state.color_write);
+    if (context->state.dirty.bit.color_write) {
+        DkColorWriteState effective = context->state.color_write;
+        bool color_enabled;
+        gxm_fragment_control_uniform(&context->state.fragment_control,
+                                     context->state.two_sided_mode, &color_enabled);
+        if (!color_enabled) dkColorWriteStateSetMask(&effective, 0, 0);
+        dkCmdBufBindColorWriteState(context->cmdbuf, &effective);
+    }
 
     if (context->state.dirty.bit.blend) {
         dkCmdBufBindColorState(context->cmdbuf, &context->state.color);

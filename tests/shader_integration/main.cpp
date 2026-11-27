@@ -23,6 +23,22 @@ static GxmUniformLayout check_layout(const SceGxmProgram *program, const std::st
     free(words);
     spirv_cross::Compiler reflection(spirv);
     const auto resources = reflection.get_shader_resources();
+    bool found_fragment_control = false;
+    for (const auto &resource : resources.uniform_buffers) {
+        if (reflection.get_decoration(resource.id, spv::DecorationBinding) != 3) continue;
+        found_fragment_control = true;
+        const auto &type = reflection.get_type(resource.base_type_id);
+        const char *members[] = {"back_disabled", "front_disabled", "writing_mask",
+                                 "use_raw_image", "res_multiplier"};
+        require(type.member_types.size() == 5, "fragment control block has unexpected members");
+        for (unsigned i = 0; i < 5; ++i) {
+            require(reflection.get_member_name(type.self, i) == members[i],
+                    "fragment control uniform order disagrees with runtime");
+            require(reflection.type_struct_member_offset(type, i) == i * sizeof(float),
+                    "fragment control uniform offset disagrees with runtime");
+        }
+    }
+    require(!program->is_fragment() || found_fragment_control, "fragment control block missing");
     bool found = false;
     for (const auto &resource : resources.storage_buffers) {
         const auto &type = reflection.get_type(resource.base_type_id);
