@@ -69,12 +69,17 @@ It achieves this by redirecting the [module](https://wiki.henkaku.xyz/vita/Modul
 
 **vita2hos** is in its early development stages and currently supports running simple CPU-rendered PlayStation Vita homebrew applications. Additionally, initial 3D graphics support is available—including texturing, depth, and stencil—enabling the execution of vitasdk's GXM samples.
 
-Event flags and counting semaphores support FIFO and priority-ordered waits, polling,
-signaling, timed waits, cancellation, deletion, and status queries. Equal-priority
-waiters retain FIFO order. Named/openable objects and callback-aware waits are
-not implemented. These APIs are covered
-by host thread tests; commercial-game compatibility still requires hardware
-validation.
+Event flags and counting semaphores support FIFO and priority-ordered waits,
+polling, signaling, timed waits, cancellation, deletion, and status queries.
+Equal-priority waiters retain FIFO order. Named/openable objects and
+callback-aware waits are not implemented. These APIs are covered by host thread
+tests; commercial-game compatibility still requires hardware validation.
+
+Lightweight mutex imports track Vita owner IDs and recursive lock counts, with
+try-locks, timed waits, deletion, and FIFO or priority-ordered handoff. Their Vita
+work areas contain owner/count/attribute/UID fields, rather than a native Switch
+mutex. Ceiling attributes, priority inheritance, callback-aware waits, and mutex
+information queries are not implemented.
 
 ## Building from Source
 
