@@ -1144,7 +1144,12 @@ EXPORT(SceGxm, 0x8734FF4E, int, sceGxmBeginScene, SceGxmContext *context, unsign
         gxm_color_surface_data(color_surface_inner));
 
     dkCmdBufClear(context->cmdbuf);
-    dkCmdBufBindRenderTarget(context->cmdbuf, &renderTarget->shadow_color_surface.view,
+    DkImageView color_view=renderTarget->shadow_color_surface.view;
+    /* Keep load/store copies byte-preserving. Only render attachment access
+     * decodes the destination for blending and encodes RGB on write. */
+    if (gxm_color_surface_enabled(color_surface_inner) && color_surface_inner->gamma==1)
+        color_view.format=DkImageFormat_RGBA8_Unorm_sRGB;
+    dkCmdBufBindRenderTarget(context->cmdbuf, &color_view,
                              &renderTarget->shadow_ds_surface.view);
     dkCmdBufSetViewports(context->cmdbuf, 0, &viewport, 1);
     dkCmdBufSetScissors(context->cmdbuf, 0, &scissor, 1);

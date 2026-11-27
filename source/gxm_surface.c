@@ -51,6 +51,31 @@ EXPORT(SceGxm,0xF33D9980,unsigned,sceGxmColorSurfaceGetStrideInPixels,const SceG
     return surface ? ((const SceGxmColorSurfaceInner *)surface)->strideInPixels : 0;
 }
 
+EXPORT(SceGxm,0xEE0B4DF0,SceGxmColorSurfaceGammaMode,sceGxmColorSurfaceGetGammaMode,
+       const SceGxmColorSurface *surface)
+{
+    return surface ? (SceGxmColorSurfaceGammaMode)(((const SceGxmColorSurfaceInner *)surface)->gamma<<12)
+                   : SCE_GXM_COLOR_SURFACE_GAMMA_NONE;
+}
+EXPORT(SceGxm,0xF5C89643,int,sceGxmColorSurfaceSetGammaMode,SceGxmColorSurface *surface,
+       SceGxmColorSurfaceGammaMode mode)
+{
+    if (!surface) return SCE_GXM_ERROR_INVALID_POINTER;
+    if (mode!=SCE_GXM_COLOR_SURFACE_GAMMA_NONE && mode!=SCE_GXM_COLOR_SURFACE_GAMMA_BGR &&
+        mode!=SCE_GXM_COLOR_SURFACE_GAMMA_GR) return SCE_GXM_ERROR_INVALID_VALUE;
+    SceGxmColorSurfaceInner *inner=(SceGxmColorSurfaceInner *)surface;
+    /* Native sRGB encodes RGB together; selective GR cannot use that view.
+     * Keep unsupported descriptors unchanged rather than silently rendering
+     * linear output. Other render-target formats/layouts lack native support. */
+    if (mode==SCE_GXM_COLOR_SURFACE_GAMMA_GR ||
+        (mode!=SCE_GXM_COLOR_SURFACE_GAMMA_NONE &&
+         (inner->surfaceType!=SCE_GXM_COLOR_SURFACE_LINEAR ||
+          inner->colorFormat!=SCE_GXM_COLOR_FORMAT_U8U8U8U8_ABGR)))
+        return SCE_GXM_ERROR_UNSUPPORTED;
+    inner->gamma=(unsigned)mode>>12;
+    return 0;
+}
+
 int gxm_color_surface_linear_pitch(uint32_t width, uint32_t height, uint32_t stride,
                                     size_t available, uint32_t *pitch)
 {

@@ -110,3 +110,11 @@ waits share the existing lightweight reference policy: release/reacquire one
 count, and return errors without reacquisition. These policies follow the pinned
 Vita3K source and still need firmware comparison. Open/close-by-name, callback
 waits and condition-info queries remain unimplemented.
+
+Color-surface gamma checks cover NID dispatch, descriptor copies, resetting to
+linear, unsupported selective GR/layout modes, and unchanged descriptors after
+errors. Linear ABGR8 BGR mode selects an sRGB render attachment view while
+load/store image copies retain their UNORM view. Draw probe v7 / visible cube v3
+adds a console-only mid-gray RGB/alpha readback and a linear-reset pass. Native
+sRGB encoding and destination blending remain unverified until console runs;
+these host checks do not establish pixel accuracy. Surface clipping is pending.

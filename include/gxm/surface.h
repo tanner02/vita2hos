@@ -12,7 +12,8 @@
 typedef struct __attribute__((may_alias)) {
     uint32_t disabled : 1;
     uint32_t downscale : 1;
-    uint32_t pad : 30;
+    uint32_t gamma : 2;
+    uint32_t pad : 28;
     uint32_t width, height, strideInPixels;
     uint32_t data;
     SceGxmColorFormat colorFormat;

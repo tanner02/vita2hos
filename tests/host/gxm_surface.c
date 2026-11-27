@@ -44,6 +44,25 @@ int main(void)
     assert(color->pbeSidebandWord==2 && color->pbeEmitWords[3]==0x81000000);
     SceGxmColorSurface copy=*color;
     assert(color_data(&copy)==color_data(color) && color_stride(&copy)==color_stride(color));
+    int (*set_gamma)(SceGxmColorSurface *,SceGxmColorSurfaceGammaMode)=
+        (void *)module_get_func_export(0xf76b66bd,0xF5C89643);
+    SceGxmColorSurfaceGammaMode (*get_gamma)(const SceGxmColorSurface *)=
+        (void *)module_get_func_export(0xf76b66bd,0xEE0B4DF0);
+    assert(set_gamma && get_gamma && get_gamma(color)==SCE_GXM_COLOR_SURFACE_GAMMA_NONE);
+    assert((uint32_t)set_gamma(NULL,0)==SCE_GXM_ERROR_INVALID_POINTER);
+    assert(!set_gamma(color,SCE_GXM_COLOR_SURFACE_GAMMA_BGR));
+    assert(get_gamma(color)==SCE_GXM_COLOR_SURFACE_GAMMA_BGR);
+    SceGxmColorSurface gamma_copy=*color;
+    assert(get_gamma(&gamma_copy)==SCE_GXM_COLOR_SURFACE_GAMMA_BGR);
+    assert((uint32_t)set_gamma(color,SCE_GXM_COLOR_SURFACE_GAMMA_GR)==SCE_GXM_ERROR_UNSUPPORTED);
+    assert((uint32_t)set_gamma(color,(SceGxmColorSurfaceGammaMode)0x2000)==SCE_GXM_ERROR_INVALID_VALUE);
+    assert(!memcmp(color,&gamma_copy,sizeof(gamma_copy)));
+    assert(!set_gamma(color,SCE_GXM_COLOR_SURFACE_GAMMA_NONE));
+    assert(!memcmp(color,&copy,sizeof(copy)));
+    ((SceGxmColorSurfaceInner *)color)->surfaceType=SCE_GXM_COLOR_SURFACE_TILED;
+    SceGxmColorSurface tiled=*color;
+    assert((uint32_t)set_gamma(color,SCE_GXM_COLOR_SURFACE_GAMMA_BGR)==SCE_GXM_ERROR_UNSUPPORTED);
+    assert(!memcmp(color,&tiled,sizeof(tiled)));*color=copy;
     const struct { unsigned width,height,stride;uintptr_t data;SceGxmColorSurfaceType type; } bad_color[]={
         {0,544,1024,0x1000,0},{4097,544,4104,0x1000,0},
         {960,0,1024,0x1000,0},{960,4097,1024,0x1000,0},

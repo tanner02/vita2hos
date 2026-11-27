@@ -121,6 +121,33 @@ int probe_draw(SceGxmContext *context, SceGxmRenderTarget *target,
     CHECK(sceGxmEndScene(context, NULL, NULL)); sceGxmFinish(context);
     CHECK(check_pixels(pixels, 0xff0000ff)); hooks->record("PASS shader_red\n");
 
+    /* Mid-gray distinguishes encoded sRGB output from linear UNORM; alpha
+     * must stay linear. Test switching back on the same render target too. */
+    const float gray[4]={0.5f,0.5f,0.5f,0.5f};
+    SceGxmColorSurface gamma_surface=*surface;
+    for (unsigned encoded=0;encoded<2;++encoded) {
+        CHECK(sceGxmColorSurfaceSetGammaMode(&gamma_surface,encoded ?
+            SCE_GXM_COLOR_SURFACE_GAMMA_NONE : SCE_GXM_COLOR_SURFACE_GAMMA_BGR));
+        CHECK(sceGxmBeginScene(context,0,target,NULL,NULL,NULL,&gamma_surface,&ds));
+        CHECK(sceGxmSetVertexStream(context,0,vertices));
+        CHECK(color(context,clear_color,matrix,gray));
+        CHECK(sceGxmDraw(context,SCE_GXM_PRIMITIVE_TRIANGLES,SCE_GXM_INDEX_FORMAT_U16,indices,3));
+        CHECK(sceGxmEndScene(context,NULL,NULL));sceGxmFinish(context);
+        for (unsigned y=16;y<=48;y+=16) for (unsigned x=16;x<=48;x+=16) {
+            uint32_t pixel=pixels[y*64+x];
+            for (unsigned channel=0;channel<4;++channel) {
+                unsigned value=(pixel>>(channel*8))&255;
+                unsigned expected=(channel==3 || encoded) ? 128 : 188;
+                if (value+2<expected || value>expected+2) {
+                    hooks->record("FAIL color_surface_gamma\n");
+                    hooks->result("gamma_pass",encoded);hooks->result("actual",pixel);
+                    ret=-1;goto done;
+                }
+            }
+        }
+    }
+    hooks->record("PASS color_surface_gamma_rgb_alpha_and_reset\n");
+
     CHECK(sceGxmBeginScene(context, 0, target, NULL, NULL, NULL, surface, &ds));
     CHECK(sceGxmSetVertexStream(context, 0, vertices)); CHECK(color(context, clear_color, matrix, red));
     CHECK(sceGxmDraw(context, SCE_GXM_PRIMITIVE_TRIANGLES, SCE_GXM_INDEX_FORMAT_U16, indices, 3));
