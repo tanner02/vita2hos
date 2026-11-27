@@ -9,7 +9,7 @@
 #ifdef VITA2HOS_DRAW_PROBE
 #include "draw_probe.h"
 #define PROBE_NAME "draw_probe"
-#define PROBE_VERSION "2"
+#define PROBE_VERSION "3"
 #define PROBE_REPORT "app0:/draw-probe.txt"
 #else
 #define PROBE_NAME "surface_probe"

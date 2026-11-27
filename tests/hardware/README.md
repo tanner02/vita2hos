@@ -160,10 +160,13 @@ triangles using the pinned Vita3K `color_v.gxp` and `clear_f.gxp` fixtures. It c
 red color output, depth-only occlusion, and stencil replacement at nine interior
 pixels. The vertex program uses an identity WVP matrix to preserve varying depth;
 the clear vertex fixture is deliberately not used because it forces depth to one.
-Version 2 then uses `texture_v.gxp` and `texture_f.gxp` to sample a 16-by-16
+Version 3 then uses `texture_v.gxp` and `texture_f.gxp` to sample a 16-by-16
 four-color texture with point filtering. Four interior samples verify UVs and
 image layout. A second scene rotates the colors in the same guest allocation
 and verifies re-upload, reporting `PASS texture_quadrants` and `PASS texture_update`.
+The expected row order accounts for GXM's default negative Y viewport scale;
+a third scene sets a positive Y scale and checks the reversed mapping, reporting
+`PASS texture_positive_viewport`. Version 2 had an incorrect expected row order.
 The version 1 hardware pass does not establish these new texture checks.
 
 Audit it with `verify-imports.py --variant draw_probe` in addition to the existing

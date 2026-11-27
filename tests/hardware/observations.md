@@ -48,6 +48,19 @@
   depth-only, stencil and readback paths. It does not cover textures, every
   primitive/state combination, or commercial-title compatibility.
 
+### Texture probe version 2: invalid expected row order
+
+- Guest source `84ff78bcbbfba08eb9ffcc580e0b99b231a98df7`, SHA-256
+  `1cd43cfc0043b5e36307e135b8a4a066bf9dbd38180435008afc72ae44cb7ea9`.
+- USB readback recovered `draw_probe v2` with the surface, shader, depth-only
+  and stencil checks passing again. The first texture sample at pixel `0x410`
+  read `0xffff0000` where the test expected `0xff0000ff`; the guest exited 1.
+- The test incorrectly assumed increasing NDC Y maps downward. The default
+  GXM viewport uses negative Y scale, while the fixture forwards UV unchanged.
+  The observed blue sample matches the bottom-left texture quadrant at that
+  framebuffer position. Version 3 corrects the expected mapping and adds a
+  positive-Y viewport case. Its full texture result remains unverified.
+
 ## Runtime f55edbf626acb6ff46d510a55bdd026dd78ac5ad
 
 - Experimental route: a retargeted ARM32 ExeFS NSP at
