@@ -1,3 +1,31 @@
+## Offline RTC imports for bundled FIOS (2026-11-27)
+
+- A fresh source/export-table comparison found 29 unresolved imports in the
+  supplied FIOS module before this change (80 total, 51 source exports). This is
+  availability evidence only: a resolved NID does not establish API semantics.
+  Repeating the comparison after this change leaves 26 FIOS imports unresolved.
+- Added SceRtcUser 0x6704D3C6 exports sceRtcGetCurrentClock (0x70FDE8F1),
+  sceRtcSetTime64_t (0xA6C36B6A), and sceRtcGetTime64_t (0xC995DE02). They use
+  the 16-byte guest calendar and fixed 64-bit unsigned Unix seconds; calendar
+  conversion does not depend on native time_t width, local timezone or DST.
+- Calendar conversion supports 1970-01-01 through 9999-12-31 23:59:59. Pre-epoch
+  unsigned wrap behavior is not implemented. Invalid calendar fields return RTC
+  field errors, out-of-range epochs return INVALID_VALUE, and failures preserve
+  outputs. GetTime64_t discards subsecond precision; SetTime64_t sets it to zero.
+- CurrentClock preserves gettimeofday microseconds and maps backend failure to
+  NOT_INITIALIZED. Nonzero timezone follows the pinned Vita3K hour interpretation;
+  the VitaSDK user header does not specify units. Firmware behavior for nonzero
+  zones remains unverified; host timezone settings are not used.
+- Host tests check NID dispatch, Gregorian leap centuries, epoch/2038/year9999
+  boundaries, 2000 independent gmtime_r oracle samples, invalid fields, null
+  pointers, failure preservation and a clock-zone day/month rollover. A bounded
+  local Bonsai outline suggested test categories but had incorrect epoch examples;
+  no generated constants were accepted without checking. The full ASan/UBSan
+  host suite and ARM Debug/Release builds passed.
+- No RTC clock-setting function changes the Switch clock: SetTime64_t only
+  converts a supplied epoch into a date. No Switch files or runtime were changed;
+  hardware library startup and commercial game boot remain unverified.
+
 ## Offline thread-info snapshots (2026-11-27)
 
 - Added public sceKernelGetThreadInfo (SceLibKernel 0x8D9C5461) and raw

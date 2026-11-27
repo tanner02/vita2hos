@@ -76,6 +76,7 @@ add_executable(vita2hos
     source/load_process_run.c
     source/load_module_info.c
     source/modules/SceModulemgr.c
+    source/modules/SceRtc.c
     source/modules/SceFios2Kernel.c
     source/modules/SceProcessmgr.c
     source/load_module_paths.c
