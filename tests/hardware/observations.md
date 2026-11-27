@@ -266,6 +266,21 @@
 - Outputs are staged locally only. No ARM guest instructions were executed and
   no files were deployed to the Switch.
 
+## Host process-parameter settings after 1951596
+
+- Extended bounded process-parameter decoding to indirect main-priority,
+  main-stack-size, and preload-disable pointers. Unreadable or misaligned pointers
+  fail decoding without publishing partial settings; missing fields retain defaults.
+- In the supplied main executable, replay decoded requested Vita priority 64 and
+  stack size `0x40000` (256 KiB). The preload-disable pointer was absent. These are
+  static parameter values, not evidence that the main thread ran.
+- Main-thread creation now uses the decoded priority/stack; the existing Vita-to-
+  Horizon priority mapping remains in use. Host tests check nondefault settings,
+  default-priority flags, invalid priority, and zero/overflowing stack sizes.
+- Four-image host binding still completes with the existing native-function-stub
+  limitations. Automatic preload selection, names, attributes, and affinity remain
+  unfinished. No ARM guest execution or Switch changes were performed.
+
 ## Runtime 15d400f48e5d3a3f5d811e2a67bd30a1388cc102
 
 - Standalone HOME title, owned fixed-address CPU probe SHA-256

@@ -4,6 +4,7 @@
 #include <psp2/kernel/threadmgr.h>
 #include <stdatomic.h>
 #include "guest_tls.h"
+#include "load_process_params.h"
 
 typedef struct {
     uint32_t index;
@@ -25,5 +26,7 @@ int SceKernelThreadMgr_init(const GuestTlsTemplate *main_tls, bool retarget_thre
 int SceKernelThreadMgr_finish(void);
 VitaThreadInfo *SceKernelThreadMgr_get_thread_info(void);
 int SceKernelThreadMgr_main_entry(SceKernelThreadEntry entry, int args, void *argp);
+int SceKernelThreadMgr_main_entry_configured(SceKernelThreadEntry entry, int args, void *argp,
+                                             const LoadProcessParameters *parameters);
 
 #endif

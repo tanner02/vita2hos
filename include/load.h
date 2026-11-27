@@ -27,6 +27,7 @@ typedef struct {
     LoadLifecycle lifecycle;
     GuestTlsTemplate tls;
     bool guest_tp_retargeted;
+    LoadProcessParameters parameters;
 } LoadImage;
 
 enum { LOAD_LAYOUT_CONFLICT = -2 };

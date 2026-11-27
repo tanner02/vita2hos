@@ -336,8 +336,13 @@ For supported version-5/6 parameter structures, the loader validates the structu
 and referenced libc parameter range, then publishes `__sce_libcparam` using its
 actual guest address. Version-0 homebrew parameters provide no libc export.
 Missing optional parameters do not synthesize one. This enables the bundled
-libc's variable import to bind without a placeholder structure; it does not yet
-apply preload-disable flags, thread settings, or TLS initialization.
+libc's variable import to bind without a placeholder structure. Optional main
+priority, main stack size, and preload-disable values are read indirectly through
+bounded guest pointers. Main-thread creation now uses the requested priority and
+stack size; absent fields keep the existing defaults. Zero or overflowing main
+stack sizes fail before native thread creation. Preload flags are captured for
+future module discovery but are not yet applied automatically. Thread names,
+attributes, and affinity are not configured from these fields.
 
 Native variable exports now have a separate typed descriptor table. Guest
 libraries retain ownership of their entire namespace, so a missing guest

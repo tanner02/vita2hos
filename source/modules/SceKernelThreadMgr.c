@@ -252,13 +252,24 @@ EXPORT(SceLibKernel, 0xDDB395A9, int, sceKernelWaitThreadEnd, SceUID thid, int *
 
 int SceKernelThreadMgr_main_entry(SceKernelThreadEntry entry, int args, void *argp)
 {
+    return SceKernelThreadMgr_main_entry_configured(entry,args,argp,NULL);
+}
+
+int SceKernelThreadMgr_main_entry_configured(SceKernelThreadEntry entry, int args, void *argp,
+                                             const LoadProcessParameters *parameters)
+{
     SceUID thid;
     UEvent *process_exit_event;
     int ret;
     Result res;
 
-    thid = create_thread("<main>", entry, SCE_KERNEL_DEFAULT_PRIORITY_USER,
-                         SCE_KERNEL_THREAD_STACK_SIZE_DEFAULT_USER_MAIN);
+    int priority=parameters && parameters->has_main_priority ? parameters->main_priority :
+        SCE_KERNEL_DEFAULT_PRIORITY_USER;
+    uint32_t stack=parameters && parameters->has_main_stack_size ? parameters->main_stack_size :
+        SCE_KERNEL_THREAD_STACK_SIZE_DEFAULT_USER_MAIN;
+    if (!stack || stack > UINT32_MAX-0xfff) return SCE_KERNEL_ERROR_ILLEGAL_SIZE;
+    LOG("Main guest thread priority=0x%x stack=0x%x",priority,stack);
+    thid = create_thread("<main>", entry, priority, stack);
     if (thid < 0)
         return thid;
 

@@ -14,6 +14,9 @@ static int process_exit_status;
 static uintptr_t writable_tp;
 static unsigned tp_exchanges;
 static bool expect_guest_tp;
+static size_t last_stack;
+static int last_priority;
+static unsigned create_calls;
 uintptr_t guest_tp_exchange(uintptr_t value)
 {
     uintptr_t previous=writable_tp;writable_tp=value;++tp_exchanges;return previous;
@@ -25,7 +28,8 @@ int SceLibKernel_get_process_exit_res(void) { return process_exit_status; }
 Result threadCreate(Thread *thread, void (*entry)(void *), void *arg, void *stack,
                     size_t size, int priority, int cpu)
 {
-    (void)stack; (void)size; (void)priority; (void)cpu;
+    (void)stack; (void)cpu;
+    last_stack=size;last_priority=priority;++create_calls;
     thread->entry = entry;
     thread->argument = arg;
     return 0;
@@ -107,6 +111,23 @@ int main(void)
         process_exit_status = exits[i];
         assert(SceKernelThreadMgr_main_entry(entry, 0, NULL) == exits[i]);
     }
+    assert(last_stack==256*1024 && last_priority==vita_priority_to_hos_priority(160));
+    LoadProcessParameters settings={.has_main_priority=true,.main_priority=100,
+        .has_main_stack_size=true,.main_stack_size=65536};
+    process_exit_status=17;
+    assert(SceKernelThreadMgr_main_entry_configured(entry,0,NULL,&settings)==17);
+    assert(last_stack==65536 && last_priority==vita_priority_to_hos_priority(100));
+    settings.main_priority=0x10000103;
+    assert(SceKernelThreadMgr_main_entry_configured(entry,0,NULL,&settings)==17);
+    assert(last_priority==vita_priority_to_hos_priority(0x10000103));
+    unsigned created=create_calls;
+    settings.main_stack_size=0;
+    assert((uint32_t)SceKernelThreadMgr_main_entry_configured(entry,0,NULL,&settings)==SCE_KERNEL_ERROR_ILLEGAL_SIZE);
+    settings.main_stack_size=UINT32_MAX;
+    assert((uint32_t)SceKernelThreadMgr_main_entry_configured(entry,0,NULL,&settings)==SCE_KERNEL_ERROR_ILLEGAL_SIZE);
+    settings.main_stack_size=65536;settings.main_priority=63;
+    assert((uint32_t)SceKernelThreadMgr_main_entry_configured(entry,0,NULL,&settings)==SCE_KERNEL_ERROR_ILLEGAL_PRIORITY);
+    assert(create_calls==created);
     start_result = 1;
     assert((uint32_t)SceKernelThreadMgr_main_entry(entry, 0, NULL) == SCE_KERNEL_ERROR_THREAD_ERROR);
     assert(SceKernelThreadMgr_finish() == 0);

@@ -595,8 +595,10 @@ static int load_segments(LoadImage *image, void **entry, Elf32_Addr e_entry, seg
         LOG("Invalid or unsupported guest library exports.");
         goto err_free_data;
     }
-    if (!image->module && load_process_parameters_register(&image->exports, image,
-            process_param, read_export_address, &reader) < 0) {
+    if (!image->module && (load_process_parameters_read(&image->parameters,
+            process_param, read_export_address, &reader) < 0 ||
+        load_process_parameters_register(&image->exports, image,
+            process_param, read_export_address, &reader) < 0)) {
         LOG("Invalid or unsupported process parameters.");
         goto err_free_data;
     }

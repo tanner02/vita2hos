@@ -94,7 +94,8 @@ static int launch(LoadProcess *process)
 
     LOG("Entering SceKernelThreadMgr...");
 
-    ret = SceKernelThreadMgr_main_entry(guest_process_entry, sizeof(process), &process);
+    ret = SceKernelThreadMgr_main_entry_configured(guest_process_entry, sizeof(process), &process,
+                                                   &process->images[0].parameters);
 
     LOG("SceKernelThreadMgr returned...");
 

@@ -112,6 +112,22 @@ int main(void)
     assert(module_guest_exports_find(&parameters, 0x5ad9c136, MODULE_SYMBOL_VARIABLE,
         0xdf084dfa, NULL) == (void *)0x10c0);
     module_guest_exports_clear(&parameters);
+    put32(memory+0x14,0x1080);put32(memory+0x18,0x1084);put32(memory+0x24,0x1088);
+    put32(memory+128,0x10000103);put32(memory+132,0x40000);put32(memory+136,0x210000);
+    LoadProcessParameters settings;
+    assert(load_process_parameters_read(&settings,0x1000,read_memory,memory)==0);
+    assert(settings.has_main_priority && settings.main_priority==0x10000103);
+    assert(settings.has_main_stack_size && settings.main_stack_size==0x40000);
+    assert(settings.has_preload_disabled && settings.preload_disabled==0x210000);
+    assert(settings.libc_address==0x10c0);
+    put32(memory+0x18,0x10fe);
+    assert(load_process_parameters_read(&settings,0x1000,read_memory,memory)<0);
+    assert(settings.main_priority==0x10000103 && settings.main_stack_size==0x40000);
+    put32(memory+0x18,0x1100);
+    assert(load_process_parameters_read(&settings,0x1000,read_memory,memory)<0);
+    put32(memory+0x14,0);put32(memory+0x18,0);put32(memory+0x24,0);
+    assert(load_process_parameters_read(&settings,0x1000,read_memory,memory)==0);
+    assert(!settings.has_main_priority && !settings.has_main_stack_size && !settings.has_preload_disabled);
     put32(memory+0x2c, 0x10fc); put32(memory+252, 8);
     assert(load_process_parameters_register(&parameters, &owner, 0x1000, read_memory, memory) < 0);
     assert(!parameters.libraries);
