@@ -248,6 +248,24 @@
   native callbacks, module initialization, dynamic TLS, and title boot remain
   unverified. The local plan and private target binaries were not deployed.
 
+## Owned TLS probe build after 88ed7d9
+
+- Added a freestanding owned guest with named ARM and Thumb thread-pointer read
+  helpers, plus a source-bound plan generated from their verified symbol locations.
+  Ten imports were audited against runtime source providers.
+- The pinned converter leaves TLS fields zero, so the builder explicitly writes
+  this owned guest's descriptor for a 4-byte seed and 16-byte TLS area. Final-image
+  validation confirms the seed bytes, descriptor, imports, and both patch words.
+- The guest checks pointer ownership before any user-TLS dereference, performs
+  32 native yields per thread, joins a normally returning worker, and verifies
+  distinct TLS pointers and private markers. A failed/unverified join records a
+  failure and parks rather than requesting cleanup with a potentially live worker.
+- The actual C probe source passes an ASan/UBSan host model for the normal path,
+  invalid thread-pointer value, worker initialization failure, and persistent or
+  intermittent report-write failure. ARM hardware behavior remains untested.
+- Outputs are staged locally only. No ARM guest instructions were executed and
+  no files were deployed to the Switch.
+
 ## Runtime 15d400f48e5d3a3f5d811e2a67bd30a1388cc102
 
 - Standalone HOME title, owned fixed-address CPU probe SHA-256

@@ -83,4 +83,8 @@ jobs:
             /tmp/surface-probe/fixed-probe/executable
             /tmp/surface-probe/fixed-probe/manifest.json
             /tmp/surface-probe/fixed-probe/fixed_probe.elf
+            /tmp/surface-probe/tls-probe/executable
+            /tmp/surface-probe/tls-probe/executable.tlsplan
+            /tmp/surface-probe/tls-probe/manifest.json
+            /tmp/surface-probe/tls-probe/tls_probe.elf
             /tmp/surface-probe/DRAW-PROBE-COPYING.txt

@@ -55,3 +55,18 @@ add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/fixed-probe/executable"
     DEPENDS "${FIXED_PROBE}/build.py" "${FIXED_PROBE}/main.S" "${FIXED_PROBE}/fixed.ld"
         "${CMAKE_CURRENT_SOURCE_DIR}/../../../tools/guest_elf.py" VERBATIM)
 add_custom_target(fixed_probe_guest ALL DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/fixed-probe/executable")
+
+set(TLS_PROBE "${CMAKE_CURRENT_SOURCE_DIR}/../tls_probe")
+add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/tls-probe/executable"
+        "${CMAKE_CURRENT_BINARY_DIR}/tls-probe/executable.tlsplan"
+        "${CMAKE_CURRENT_BINARY_DIR}/tls-probe/manifest.json"
+    COMMAND "${Python3_EXECUTABLE}" "${TLS_PROBE}/build.py" --sdk "${VITASDK}"
+        --output "${CMAKE_CURRENT_BINARY_DIR}/tls-probe"
+    DEPENDS "${TLS_PROBE}/build.py" "${TLS_PROBE}/main.c" "${TLS_PROBE}/thread_pointer.S"
+        "${TLS_PROBE}/exports.yml" "${CMAKE_CURRENT_SOURCE_DIR}/../../../tools/guest_elf.py"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../../tools/make-tls-plan.py"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../../source/modules/SceLibKernel.c"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../../source/modules/SceKernelThreadMgr.c" VERBATIM)
+add_custom_target(tls_probe_guest ALL DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/tls-probe/executable"
+    "${CMAKE_CURRENT_BINARY_DIR}/tls-probe/executable.tlsplan"
+    "${CMAKE_CURRENT_BINARY_DIR}/tls-probe/manifest.json")

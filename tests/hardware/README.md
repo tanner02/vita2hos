@@ -387,6 +387,14 @@ binding. Register exchange is verified with host mocks and ARM disassembly only;
 context-switch preservation and behavior across native calls need hardware testing.
 No patch plans are installed by default or deployed automatically.
 
+The [owned TLS probe](tls_probe/README.md) builds with the other diagnostic guests
+and produces its own matching `executable.tlsplan`. It checks ARM/Thumb reads,
+template/BSS initialization, native delays, and two-thread isolation without
+loading commercial code. The builder audits all ten imports, both symbol-derived
+patch sites, and the final TLS metadata. A host model checks its pass/failure
+reporting and absent-plan pointer check. This probe has not yet run on hardware;
+building it does not deploy it or establish thread-pointer preservation.
+
 ### Experimental title-specific launch profile
 
 **Hardware status:** this route failed to start Mario Kart 8 Deluxe on the tested
