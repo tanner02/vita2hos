@@ -734,6 +734,14 @@ EXPORT(SceLibKernel, 0x0FB972F9, int, sceKernelGetThreadId)
     return SceKernelThreadMgr_get_thread_info()->uid;
 }
 
+/* LittleBigPlanet invokes this during boot teardown paths; no guest module
+ * exit callback registry exists, so report success. */
+EXPORT(SceLibKernel, 0x15E2A45D, int, sceKernelCallModuleExit)
+{
+    LOG("sceKernelCallModuleExit called");
+    return 0;
+}
+
 DECLARE_LIBRARY(SceLibKernel, 0xcae9ace6);
 DECLARE_LIBRARY(SceIofilemgr, 0xf2ff276e);
 
