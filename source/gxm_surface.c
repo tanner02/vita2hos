@@ -1,7 +1,53 @@
 #include <stdbool.h>
+#include <stdint.h>
+#include <string.h>
 #include <psp2/gxm.h>
 #include "gxm/surface.h"
 #include "module.h"
+
+EXPORT(SceGxm, 0xCA9D41D1, int, sceGxmDepthStencilSurfaceInit,
+       SceGxmDepthStencilSurface *surface, SceGxmDepthStencilFormat format,
+       SceGxmDepthStencilSurfaceType type, unsigned int stride,
+       void *depth, void *stencil)
+{
+    if (!surface) return SCE_GXM_ERROR_INVALID_POINTER;
+    if ((uintptr_t)depth % SCE_GXM_DEPTHSTENCIL_SURFACE_ALIGNMENT)
+        return SCE_GXM_ERROR_INVALID_ALIGNMENT;
+    if (!stride || stride > 8192 || stride % SCE_GXM_TILE_SIZEX)
+        return SCE_GXM_ERROR_INVALID_VALUE;
+    if (type != SCE_GXM_DEPTH_STENCIL_SURFACE_LINEAR && type != SCE_GXM_DEPTH_STENCIL_SURFACE_TILED)
+        return SCE_GXM_ERROR_INVALID_VALUE;
+    switch (format) {
+    case SCE_GXM_DEPTH_STENCIL_FORMAT_DF32:
+    case SCE_GXM_DEPTH_STENCIL_FORMAT_S8:
+    case SCE_GXM_DEPTH_STENCIL_FORMAT_DF32_S8:
+    case SCE_GXM_DEPTH_STENCIL_FORMAT_DF32M:
+    case SCE_GXM_DEPTH_STENCIL_FORMAT_DF32M_S8:
+    case SCE_GXM_DEPTH_STENCIL_FORMAT_S8D24:
+    case SCE_GXM_DEPTH_STENCIL_FORMAT_D16: break;
+    default: return SCE_GXM_ERROR_INVALID_VALUE;
+    }
+    *surface = (SceGxmDepthStencilSurface){
+        .zlsControl = 1u | (((stride >> 5) - 1u) << 3) | type | format | 0x100000u,
+        .depthData = depth, .stencilData = stencil,
+        .backgroundDepth = 1.0f, .backgroundControl = 0x300u,
+    };
+    return 0;
+}
+
+EXPORT(SceGxm, 0xA41DB0D6, int, sceGxmDepthStencilSurfaceInitDisabled,
+       SceGxmDepthStencilSurface *surface)
+{
+    if (!surface) return SCE_GXM_ERROR_INVALID_POINTER;
+    *surface = (SceGxmDepthStencilSurface){.backgroundDepth = 1.0f, .backgroundControl = 0x300u};
+    return 0;
+}
+
+EXPORT(SceGxm, 0x082200E1, SceBool, sceGxmDepthStencilSurfaceIsEnabled,
+       const SceGxmDepthStencilSurface *surface)
+{
+    return surface && gxm_ds_surface_get_format(surface) != 0;
+}
 
 EXPORT(SceGxm, 0x269B56BE, float, sceGxmDepthStencilSurfaceGetBackgroundDepth,
        const SceGxmDepthStencilSurface *surface)

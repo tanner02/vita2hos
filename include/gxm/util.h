@@ -14,13 +14,6 @@
 #define SCE_GXM_COLOR_BASE_FORMAT_MASK   0xF1800000U
 #define SCE_GXM_TEXTURE_BASE_FORMAT_MASK 0x9f000000U
 
-#define SCE_GXM_DEPTH_STENCIL_ZLS_CTRL_DISABLE_BIT   1
-#define SCE_GXM_DEPTH_STENCIL_ZLS_CTRL_STRIDE_OFFSET 3
-#define SCE_GXM_DEPTH_STENCIL_ZLS_CTRL_STRIDE_MASK   0xF
-#define SCE_GXM_DEPTH_STENCIL_ZLS_CTRL_TYPE_OFFSET   12
-#define SCE_GXM_DEPTH_STENCIL_ZLS_CTRL_TYPE_MASK     0xFF
-#define SCE_GXM_DEPTH_STENCIL_ZLS_CTRL_FORMAT_OFFSET 21
-#define SCE_GXM_DEPTH_STENCIL_ZLS_CTRL_FORMAT_MASK   0x7FF
 
 
 
@@ -174,20 +167,6 @@ static inline bool gxm_base_format_is_paletted_format(SceGxmTextureBaseFormat ba
 {
     return base_format == SCE_GXM_TEXTURE_BASE_FORMAT_P8 ||
            base_format == SCE_GXM_TEXTURE_BASE_FORMAT_P4;
-}
-
-static inline SceGxmDepthStencilFormat
-gxm_ds_surface_get_format(const SceGxmDepthStencilSurface *surface)
-{
-    return (surface->zlsControl >> SCE_GXM_DEPTH_STENCIL_ZLS_CTRL_FORMAT_OFFSET) &
-           SCE_GXM_DEPTH_STENCIL_ZLS_CTRL_FORMAT_MASK;
-}
-
-static inline SceGxmDepthStencilSurfaceType
-gxm_ds_surface_get_type(const SceGxmDepthStencilSurface *surface)
-{
-    return (surface->zlsControl & (SCE_GXM_DEPTH_STENCIL_ZLS_CTRL_TYPE_MASK
-                                   << SCE_GXM_DEPTH_STENCIL_ZLS_CTRL_TYPE_OFFSET));
 }
 
 #endif

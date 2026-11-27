@@ -841,34 +841,6 @@ EXPORT(SceGxm, 0xED0F6E25, int, sceGxmColorSurfaceInit, SceGxmColorSurface *surf
     return 0;
 }
 
-EXPORT(SceGxm, 0xCA9D41D1, int, sceGxmDepthStencilSurfaceInit, SceGxmDepthStencilSurface *surface,
-       SceGxmDepthStencilFormat depthStencilFormat, SceGxmDepthStencilSurfaceType surfaceType,
-       unsigned int strideInSamples, void *depthData, void *stencilData)
-
-{
-    if (!surface)
-        return SCE_GXM_ERROR_INVALID_POINTER;
-    else if ((uint32_t)depthData % SCE_GXM_DEPTHSTENCIL_SURFACE_ALIGNMENT != 0)
-        return SCE_GXM_ERROR_INVALID_ALIGNMENT;
-    else if ((strideInSamples == 0) || ((strideInSamples % SCE_GXM_TILE_SIZEX) != 0))
-        return SCE_GXM_ERROR_INVALID_VALUE;
-
-    memset(surface, 0, sizeof(*surface));
-    surface->zlsControl =
-        SCE_GXM_DEPTH_STENCIL_FORCE_LOAD_DISABLED | SCE_GXM_DEPTH_STENCIL_FORCE_STORE_DISABLED |
-        ((strideInSamples >> 5) - 1) << SCE_GXM_DEPTH_STENCIL_ZLS_CTRL_STRIDE_OFFSET |
-        (surfaceType &
-         (SCE_GXM_DEPTH_STENCIL_ZLS_CTRL_TYPE_MASK << SCE_GXM_DEPTH_STENCIL_ZLS_CTRL_TYPE_OFFSET)) |
-        (depthStencilFormat & (SCE_GXM_DEPTH_STENCIL_ZLS_CTRL_FORMAT_MASK
-                               << SCE_GXM_DEPTH_STENCIL_ZLS_CTRL_FORMAT_OFFSET));
-    surface->depthData = depthData;
-    surface->stencilData = stencilData;
-    surface->backgroundDepth = 1.0f;
-    surface->backgroundControl = SCE_GXM_DEPTH_STENCIL_BG_CTRL_MASK_BIT;
-
-    return 0;
-}
-
 EXPORT(SceGxm, 0x14BD831F, void, sceGxmSetFrontDepthFunc, SceGxmContext *context,
        SceGxmDepthFunc depthFunc)
 {
@@ -1084,7 +1056,7 @@ EXPORT(SceGxm, 0x8734FF4E, int, sceGxmBeginScene, SceGxmContext *context, unsign
     if (fragmentSyncObject)
         dkCmdBufWaitFence(context->cmdbuf, &fragmentSyncObject->fence);
 
-    if (!depthStencil) {
+    if (!depthStencil || !sceGxmDepthStencilSurfaceIsEnabled(depthStencil)) {
         dkCmdBufClearDepthStencil(context->cmdbuf, true, 1.0f, 0xFF, 0);
     } else {
         if (!(depthStencil->zlsControl & SCE_GXM_DEPTH_STENCIL_FORCE_LOAD_ENABLED)) {
@@ -1154,7 +1126,7 @@ EXPORT(SceGxm, 0xFE300E2F, int, sceGxmEndScene, SceGxmContext *context,
 
     /* Check whether we need to discard the color and/or depth/stencil surfaces */
     discard_color = gxm_color_surface == NULL;
-    discard_stencil = !gxm_ds_surface ||
+    discard_stencil = !gxm_ds_surface || !sceGxmDepthStencilSurfaceIsEnabled(gxm_ds_surface) ||
                       !(gxm_ds_surface->zlsControl & SCE_GXM_DEPTH_STENCIL_FORCE_STORE_ENABLED);
 
     /* Copy from the shadow color surface to the GXM color surface */
@@ -1966,8 +1938,16 @@ static int context_flush_dirty_state(SceGxmContext *context)
         dkCmdBufBindShaders(context->cmdbuf, shader_stage_mask, shaders, shader_count);
     }
 
-    if (context->state.dirty.bit.depth_stencil)
-        dkCmdBufBindDepthStencilState(context->cmdbuf, &context->state.depth_stencil);
+    if (context->state.dirty.bit.depth_stencil) {
+        DkDepthStencilState effective = context->state.depth_stencil;
+        if (!context->state.ds_surface ||
+            !sceGxmDepthStencilSurfaceIsEnabled(context->state.ds_surface)) {
+            effective.depthTestEnable = false;
+            effective.depthWriteEnable = false;
+            effective.stencilTestEnable = false;
+        }
+        dkCmdBufBindDepthStencilState(context->cmdbuf, &effective);
+    }
 
     if (context->state.dirty.bit.rasterizer)
         dkCmdBufBindRasterizerState(context->cmdbuf, &context->state.rasterizer);
