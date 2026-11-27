@@ -28,6 +28,8 @@ Result load_image_close(LoadImage *image)
     image->imports = image->entry = NULL;
     image->imports_size = 0;
     image->prepared = image->bound = false;
+    image->lifecycle = (LoadLifecycle){0};
+    image->module = false;
     Result result = 0;
     for (int i = 0; i < image->fixed_count; ++i) {
         Result close = load_fixed_close(&image->fixed[i]);

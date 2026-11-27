@@ -8,6 +8,12 @@
  * Returned aliases are for reading only; symbol addresses retain guest VAs. */
 typedef const void *(*LoadExportRead)(void *context, uint32_t address, size_t size,
                                     bool executable);
+typedef struct {
+    const void *start, *stop, *exit;
+} LoadLifecycle;
+/* Decode library-zero lifecycle functions. Output is unchanged on failure. */
+int load_exports_lifecycle(LoadLifecycle *lifecycle, const void *records, size_t size,
+                           LoadExportRead read, void *context);
 int load_exports_register(ModuleGuestExports *exports, const void *owner,
                           const void *records, size_t size,
                           LoadExportRead read, void *context);

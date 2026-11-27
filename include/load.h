@@ -5,6 +5,7 @@
 #include "load_fixed.h"
 #include "module.h"
 #include "load_segment.h"
+#include "load_exports.h"
 
 typedef struct {
     Jit jit;
@@ -21,6 +22,8 @@ typedef struct {
     size_t imports_size;
     void *entry;
     bool prepared, bound;
+    bool module; /* Dependency preparation permits an absent module start. */
+    LoadLifecycle lifecycle;
 } LoadImage;
 
 enum { LOAD_LAYOUT_CONFLICT = -2 };
@@ -33,6 +36,7 @@ int load_file(LoadImage *image, const char *filename, void **entry);
  * published image; close all images, then clear the registry. On bind failure,
  * close the process images without executing them. */
 int load_file_prepare(LoadImage *image, const char *filename);
+int load_module_prepare(LoadImage *image, const char *filename);
 int load_image_publish(LoadImage *image, ModuleGuestExports *exports);
 int load_image_bind(LoadImage *image, ModuleGuestExports *exports);
 Result load_image_close(LoadImage *image);

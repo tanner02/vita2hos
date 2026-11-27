@@ -69,5 +69,31 @@ int main(void)
     record(records, 0); /* Lifecycle table is deliberately not registered. */
     assert(load_exports_register(&exports, &owner, records, 32, read_memory, memory) == 0);
     assert(exports.libraries == NULL);
+    LoadLifecycle lifecycle = {0};
+    put32(memory, NID_MODULE_START); put32(memory + 4, NID_MODULE_STOP);
+    record(records, 0); records[6] = 2; put32(records + 8, 0);
+    put32(memory + 16, 0x1081); put32(memory + 20, 0x1084);
+    assert(load_exports_lifecycle(&lifecycle, records, 32, read_memory, memory) == 0);
+    assert(lifecycle.start == (void *)0x1081 && lifecycle.stop == (void *)0x1084 && !lifecycle.exit);
+    LoadLifecycle saved = lifecycle;
+    put32(memory + 4, NID_MODULE_START); /* Ambiguous duplicate start. */
+    assert(load_exports_lifecycle(&lifecycle, records, 32, read_memory, memory) < 0);
+    assert(memcmp(&lifecycle, &saved, sizeof(saved)) == 0);
+    put32(memory + 4, NID_MODULE_EXIT);
+    put32(memory + 20, 0x10c0); /* Lifecycle entry in non-executable data. */
+    assert(load_exports_lifecycle(&lifecycle, records, 32, read_memory, memory) < 0);
+    put32(memory + 20, 0x1084);
+    assert(load_exports_lifecycle(&lifecycle, records, 32, read_memory, memory) == 0);
+    assert(lifecycle.exit == (void *)0x1084 && !lifecycle.stop);
+    records[6] = 1; put32(records + 8, 1); /* Lifecycle function listed as a variable. */
+    assert(load_exports_lifecycle(&lifecycle, records, 32, read_memory, memory) < 0);
+    record(records, 0); records[6] = 0; put32(records + 8, 0);
+    assert(load_exports_lifecycle(&lifecycle, records, 32, read_memory, memory) == 0);
+    assert(!lifecycle.start && !lifecycle.stop && !lifecycle.exit);
+    assert(load_exports_lifecycle(&lifecycle, records, 31, read_memory, memory) < 0);
+    put32(records + 12, 1);
+    assert(load_exports_lifecycle(&lifecycle, records, 32, read_memory, memory) < 0);
+    record(records, 0); put32(records + 24, 0x10fc);
+    assert(load_exports_lifecycle(&lifecycle, records, 32, read_memory, memory) < 0);
     puts("guest export decoding tests passed");
 }

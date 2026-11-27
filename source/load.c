@@ -113,7 +113,7 @@ int load_file(LoadImage *image, const char *filename, void **entry)
     *entry = NULL;
     int result = load_file_prepare(image, filename);
     if (result < 0) return result;
-    if (load_image_bind(image, &image->exports) < 0) {
+    if (!image->entry || load_image_bind(image, &image->exports) < 0) {
         Result close = load_image_close(image);
         if (R_FAILED(close)) LOG("Executable binding rollback failed: 0x%x", close);
         return -1;
@@ -122,7 +122,7 @@ int load_file(LoadImage *image, const char *filename, void **entry)
     return 0;
 }
 
-int load_file_prepare(LoadImage *image, const char *filename)
+static int load_file_prepare_kind(LoadImage *image, const char *filename, bool module)
 {
     void *data;
     uint32_t size;
@@ -130,6 +130,7 @@ int load_file_prepare(LoadImage *image, const char *filename)
     void *entry = NULL;
     if (!image || !filename || image->prepared || image->segments || image->jit_active ||
         image->data || image->fixed || image->exports.libraries) return -1;
+    image->module = module;
 
     LOG("Opening '%s' for reading.", filename);
     if (util_load_file(filename, &data, &size) != 0) {
@@ -144,6 +145,16 @@ int load_file_prepare(LoadImage *image, const char *filename)
 
     free(data);
     return ret;
+}
+
+int load_file_prepare(LoadImage *image, const char *filename)
+{
+    return load_file_prepare_kind(image, filename, false);
+}
+
+int load_module_prepare(LoadImage *image, const char *filename)
+{
+    return load_file_prepare_kind(image, filename, true);
 }
 
 static int load_vpk(LoadImage *image, const void *data, uint32_t size, void **entry)
@@ -551,7 +562,9 @@ static int load_segments(LoadImage *image, void **entry, Elf32_Addr e_entry, seg
     }
     ExportReader reader = {segments, num_segments};
     const void *export_records = (const void *)(segments[mod_info_idx].rw_addr + mod_info->export_top);
-    if (load_exports_register(&image->exports, image, export_records,
+    if (load_exports_lifecycle(&image->lifecycle, export_records,
+            mod_info->export_end - mod_info->export_top, read_export_address, &reader) < 0 ||
+        load_exports_register(&image->exports, image, export_records,
             mod_info->export_end - mod_info->export_top, read_export_address, &reader) < 0) {
         LOG("Invalid or unsupported guest library exports.");
         goto err_free_data;
@@ -563,12 +576,22 @@ static int load_segments(LoadImage *image, void **entry, Elf32_Addr e_entry, seg
         goto err_free_data;
     }
     /* Find the entry point (address belonging to the RX JIT area) */
-    *entry = (char *)segments[mod_info_idx].rx_addr + mod_info->module_start;
-    if (!(segments[mod_info_idx].p_flags & PF_X) ||
-        (mod_info->module_start & ~1U) >= segments[mod_info_idx].p_memsz) {
-        LOG("Invalid module entry function.");
-        goto err_free_data;
+    *entry = (void *)image->lifecycle.start;
+    if (!*entry && mod_info->module_start != UINT32_MAX &&
+        (!image->module || mod_info->module_start != 0)) {
+        uint64_t address = (uint64_t)segments[mod_info_idx].rx_addr + mod_info->module_start;
+        size_t bytes = (mod_info->module_start & 1) ? 2 : 4;
+        if (address > UINT32_MAX || (address & ~UINT64_C(1)) % bytes ||
+            (mod_info->module_start & ~1U) >= segments[mod_info_idx].p_memsz ||
+            !read_export_address(&reader, (uint32_t)address & ~1U, bytes, true)) {
+            LOG("Invalid module entry function.");
+            goto err_free_data;
+        }
+        *entry = (void *)(uintptr_t)address;
+        image->lifecycle.start = *entry;
     }
+    LOG("Module lifecycle start=%p stop=%p exit=%p", image->lifecycle.start,
+        image->lifecycle.stop, image->lifecycle.exit);
 
     image->segments = calloc(num_segments, sizeof(*image->segments));
     if (!image->segments) goto err_free_data;

@@ -261,7 +261,9 @@ variable relocations; the registry alone does not load those modules.
 The export decoder accepts relocated 32-byte public-library records through a
 bounded image-reader callback. It validates function targets as executable,
 preserves Thumb bits, and registers all libraries atomically. TLS exports are
-rejected, and lifecycle records are left for the module-startup phase. This is
+rejected. Library-zero lifecycle records are decoded separately into validated
+start, stop, and exit function addresses, without publishing those functions as
+ordinary library exports. Duplicate lifecycle functions are rejected. This is
 host-tested groundwork. The runtime registers the loaded image's public exports
 before binding imports, and removes them before releasing image mappings,
 including cleanup failures. The current loader still supports one process image;
@@ -278,6 +280,13 @@ image before clearing that registry, including after a binding failure. The
 existing `load_file` entry point performs these phases for one executable.
 Host tests cover cross-image function binding and shared-registry cleanup; the
 new multi-image API has not yet been exercised on Switch hardware.
+
+`load_module_prepare` permits dependency modules without startup functions:
+an absent lifecycle start with metadata start 0 or `0xffffffff` remains null.
+An exported lifecycle start takes precedence over the metadata offset. Main
+executables retain support for a valid entry at segment offset zero, and the
+single-executable `load_file` rejects an image with no entry. Lifecycle decoding
+does not invoke constructors or implement module-start/stop orchestration.
 
 ### Experimental title-specific launch profile
 
