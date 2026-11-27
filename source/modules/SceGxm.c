@@ -953,6 +953,7 @@ EXPORT(SceGxm, 0x0DE9AEB7, void, sceGxmSetTwoSidedEnable, SceGxmContext *context
         return;
     }
     context->state.two_sided_mode = mode == SCE_GXM_TWO_SIDED_ENABLED;
+    context->state.dirty.bit.rasterizer = true;
     context->state.dirty.bit.depth_stencil = true;
     context->state.dirty.bit.front_stencil = true;
     context->state.dirty.bit.back_stencil = true;
@@ -1129,7 +1130,9 @@ EXPORT(SceGxm, 0x8734FF4E, int, sceGxmBeginScene, SceGxmContext *context, unsign
                              &renderTarget->shadow_ds_surface.view);
     dkCmdBufSetViewports(context->cmdbuf, 0, &viewport, 1);
     dkCmdBufSetScissors(context->cmdbuf, 0, &scissor, 1);
-    dkCmdBufBindRasterizerState(context->cmdbuf, &context->state.rasterizer);
+    DkRasterizerState rasterizer = gxm_effective_rasterizer(&context->state.rasterizer,
+                                                          context->state.two_sided_mode);
+    dkCmdBufBindRasterizerState(context->cmdbuf, &rasterizer);
     dkCmdBufBindColorState(context->cmdbuf, &context->state.color);
 
     context->state.vertex_rb.head = 0;
@@ -1366,6 +1369,29 @@ EXPORT(SceGxm, 0xE1CA72AE, void, sceGxmSetCullMode, SceGxmContext *context, SceG
     }
     context->state.rasterizer.cullMode = face;
     context->state.dirty.bit.rasterizer = true;
+}
+
+static void set_polygon_mode(SceGxmContext *context, SceGxmPolygonMode mode, bool back)
+{
+    if (!context) return;
+    DkPolygonMode translated;
+    if (gxm_translate_polygon(mode, &translated)) {
+        LOG("sceGxmSetPolygonMode: invalid mode 0x%x", mode);
+        return;
+    }
+    if (back) context->state.rasterizer.polygonModeBack = translated;
+    else context->state.rasterizer.polygonModeFront = translated;
+    context->state.dirty.bit.rasterizer = true;
+}
+EXPORT(SceGxm, 0xFD93209D, void, sceGxmSetFrontPolygonMode, SceGxmContext *context,
+       SceGxmPolygonMode mode)
+{
+    set_polygon_mode(context, mode, false);
+}
+EXPORT(SceGxm, 0xF66EC6FE, void, sceGxmSetBackPolygonMode, SceGxmContext *context,
+       SceGxmPolygonMode mode)
+{
+    set_polygon_mode(context, mode, true);
 }
 
 EXPORT(SceGxm, 0x06752183, void, sceGxmSetFrontPointLineWidth, SceGxmContext *context,
@@ -2064,8 +2090,11 @@ static int context_flush_dirty_state(SceGxmContext *context)
         dkCmdBufBindDepthStencilState(context->cmdbuf, &effective);
     }
 
-    if (context->state.dirty.bit.rasterizer)
-        dkCmdBufBindRasterizerState(context->cmdbuf, &context->state.rasterizer);
+    if (context->state.dirty.bit.rasterizer) {
+        DkRasterizerState effective = gxm_effective_rasterizer(&context->state.rasterizer,
+                                                              context->state.two_sided_mode);
+        dkCmdBufBindRasterizerState(context->cmdbuf, &effective);
+    }
 
     if (context->state.dirty.bit.point_line_width) {
         /* Width is an unsigned pixel count, not an IEEE float argument. Native

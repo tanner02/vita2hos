@@ -7,6 +7,13 @@ typedef void *DkDevice;
 typedef struct { float x, y, width, height, near, far; } DkViewport;
 typedef struct { uint32_t x, y, width, height; } DkScissor;
 typedef enum { DkFace_None = 0, DkFace_Front = 1, DkFace_Back = 2, DkFace_FrontAndBack = 3 } DkFace;
+typedef enum { DkPolygonMode_Point=0, DkPolygonMode_Line=1, DkPolygonMode_Fill=2 } DkPolygonMode;
+typedef struct {
+    uint32_t rasterizerEnable:1, depthClampEnable:1, fillRectangleEnable:1;
+    uint32_t polygonModeFront:2, polygonModeBack:2, cullMode:2, frontFace:1, provokingVertex:1;
+    uint32_t polygonSmoothEnableMask:3, depthBiasEnableMask:3;
+} DkRasterizerState;
+
 typedef enum { DkBlendOp_Add = 1, DkBlendOp_Sub, DkBlendOp_RevSub, DkBlendOp_Min, DkBlendOp_Max } DkBlendOp;
 typedef enum {
     DkBlendFactor_Zero = 1, DkBlendFactor_One, DkBlendFactor_SrcColor, DkBlendFactor_InvSrcColor,

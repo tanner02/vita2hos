@@ -1,9 +1,37 @@
 #include <assert.h>
 #include <stdio.h>
+#include <string.h>
 #include "../../source/gxm_draw.c"
 
 int main(void)
 {
+    /* Distinct faces survive temporary one-sided rendering. Other rasterizer
+     * bits and another context's independent state must remain untouched. */
+    DkRasterizerState stored={.rasterizerEnable=1,.depthClampEnable=1,
+        .polygonModeFront=DkPolygonMode_Line,.polygonModeBack=DkPolygonMode_Point,
+        .cullMode=DkFace_Back,.frontFace=1,.depthBiasEnableMask=7};
+    DkRasterizerState saved=stored,other={.polygonModeFront=DkPolygonMode_Fill,
+                                       .polygonModeBack=DkPolygonMode_Fill};
+    DkRasterizerState one=gxm_effective_rasterizer(&stored,false);
+    assert(one.polygonModeFront==DkPolygonMode_Line && one.polygonModeBack==DkPolygonMode_Line);
+    one.polygonModeBack=DkPolygonMode_Point;
+    assert(!memcmp(&one,&saved,sizeof(one)) && !memcmp(&stored,&saved,sizeof(stored)));
+    DkRasterizerState two=gxm_effective_rasterizer(&stored,true);
+    assert(!memcmp(&two,&saved,sizeof(two)));
+    DkRasterizerState separate=gxm_effective_rasterizer(&other,false);
+    assert(separate.polygonModeFront==DkPolygonMode_Fill && separate.polygonModeBack==DkPolygonMode_Fill);
+    const SceGxmPolygonMode polygon_modes[]={SCE_GXM_POLYGON_MODE_TRIANGLE_FILL,
+        SCE_GXM_POLYGON_MODE_LINE,SCE_GXM_POLYGON_MODE_POINT_10UV,SCE_GXM_POLYGON_MODE_POINT,
+        SCE_GXM_POLYGON_MODE_POINT_01UV,SCE_GXM_POLYGON_MODE_TRIANGLE_LINE,SCE_GXM_POLYGON_MODE_TRIANGLE_POINT};
+    const DkPolygonMode native_modes[]={DkPolygonMode_Fill,DkPolygonMode_Line,DkPolygonMode_Point,
+        DkPolygonMode_Point,DkPolygonMode_Point,DkPolygonMode_Line,DkPolygonMode_Point};
+    for (unsigned i=0;i<7;++i) {
+        DkPolygonMode native=DkPolygonMode_Fill;
+        assert(!gxm_translate_polygon(polygon_modes[i],&native) && native==native_modes[i]);
+    }
+    DkPolygonMode native=DkPolygonMode_Line;
+    assert((uint32_t)gxm_translate_polygon(0x38000,&native)==SCE_GXM_ERROR_INVALID_VALUE && native==DkPolygonMode_Line);
+    assert((uint32_t)gxm_translate_polygon(SCE_GXM_POLYGON_MODE_TRIANGLE_FILL,NULL)==SCE_GXM_ERROR_INVALID_POINTER);
     DkFace face;
     assert(gxm_translate_cull(SCE_GXM_CULL_NONE, &face) == 0 && face == DkFace_None);
     assert(gxm_translate_cull(SCE_GXM_CULL_CW, &face) == 0 && face == DkFace_Front);

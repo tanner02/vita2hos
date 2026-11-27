@@ -2,12 +2,15 @@
 #define GXM_DRAW_H
 
 #include <stddef.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <psp2/gxm.h>
 #include <deko3d.h>
 
 int gxm_translate_primitive(SceGxmPrimitiveType primitive, DkPrimitive *translated);
 int gxm_translate_cull(SceGxmCullMode mode, DkFace *translated);
+int gxm_translate_polygon(SceGxmPolygonMode mode, DkPolygonMode *translated);
+DkRasterizerState gxm_effective_rasterizer(const DkRasterizerState *state, bool two_sided);
 int gxm_stream_divisor(SceGxmIndexSource source, uint32_t *divisor);
 int gxm_instanced_counts(unsigned int total, unsigned int wrap,
                          uint32_t *indices, uint32_t *instances);

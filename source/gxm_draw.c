@@ -98,3 +98,29 @@ int gxm_validate_index_range(SceGxmIndexFormat format, uintptr_t address,
     *offset = (uint32_t)displacement;
     return 0;
 }
+
+DkRasterizerState gxm_effective_rasterizer(const DkRasterizerState *state, bool two_sided)
+{
+    DkRasterizerState effective = *state;
+    if (!two_sided)
+        effective.polygonModeBack = effective.polygonModeFront;
+    return effective;
+}
+
+int gxm_translate_polygon(SceGxmPolygonMode mode, DkPolygonMode *translated)
+{
+    if (!translated) return SCE_GXM_ERROR_INVALID_POINTER;
+    DkPolygonMode result;
+    switch (mode) {
+    case SCE_GXM_POLYGON_MODE_TRIANGLE_FILL: result = DkPolygonMode_Fill; break;
+    case SCE_GXM_POLYGON_MODE_LINE:
+    case SCE_GXM_POLYGON_MODE_TRIANGLE_LINE: result = DkPolygonMode_Line; break;
+    case SCE_GXM_POLYGON_MODE_POINT_10UV:
+    case SCE_GXM_POLYGON_MODE_POINT:
+    case SCE_GXM_POLYGON_MODE_POINT_01UV:
+    case SCE_GXM_POLYGON_MODE_TRIANGLE_POINT: result = DkPolygonMode_Point; break;
+    default: return SCE_GXM_ERROR_INVALID_VALUE;
+    }
+    *translated = result;
+    return 0;
+}

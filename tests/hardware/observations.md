@@ -1,3 +1,30 @@
+## Offline polygon rasterization state (2026-11-27)
+
+- Added sceGxmSetFrontPolygonMode (0xFD93209D, imported by LittleBigPlanet)
+  and sceGxmSetBackPolygonMode (0xF66EC6FE). The seven SDK modes map to native
+  Fill/Line/Point using the pinned Vita3K renderer's mapping. Unknown values
+  preserve state and log an error instead of silently selecting fill.
+- Native context defaults remain fill. Both setters mark rasterizer state dirty;
+  BeginScene and pre-draw replay bind effective state. When two-sided mode is
+  disabled, the front polygon mode applies to both native faces. The stored back
+  choice survives and becomes effective again after enabling two-sided mode.
+- Effective-state construction copies the rasterizer descriptor and changes only
+  polygonModeBack when required. Culling, winding, depth-bias enable flags and
+  other rasterizer settings are preserved; context state is not overwritten by
+  the temporary one-sided choice. Two-sided toggles now invalidate rasterizer
+  state alongside existing stencil/depth/fragment state.
+- Host checks cover mode translation, invalid/null outputs, distinct faces,
+  temporary one-sided mode, preservation of unrelated rasterizer flags and
+  independent context state. The deko stub bitfields match the installed SDK.
+  The full ASan/UBSan host suite and ARM Debug/Release builds passed.
+- Point modes follow native point rasterization; dedicated point-sprite UV
+  generation and exact Vita point/line edge rules remain unimplemented or
+  unverified. Native mapping is not evidence of rendered parity. No GPU test,
+  Switch transfer, or commercial-title boot was performed for this change.
+- A bounded Bonsai mapping draft was requested; it overran its read scope and
+  compacted its context. The final function and integration were reviewed against
+  the actual enum definitions and pinned renderer source.
+
 ## Offline VFP exception-mask state (2026-11-27)
 
 - Added SceThreadmgr sceKernelChangeThreadVfpException (0xCC18FBAE), imported
