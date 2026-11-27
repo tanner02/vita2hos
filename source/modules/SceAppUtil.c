@@ -93,6 +93,8 @@ static int slot_operation(unsigned id,SceAppUtilSaveDataSlotParam *param,
         int native=operation==0 ? savedata_slot_get(save_root,id,param) :
             operation==3 ? savedata_slot_delete(save_root,id) :
             savedata_slot_put(save_root,id,param,operation==1);
+        /* A successfully loaded slot is available, matching the pinned reference. */
+        if(!native && operation==0)param->status=0;
         result=app_error(native);
     }
     mutexUnlock(&app_lock);return result;

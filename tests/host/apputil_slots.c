@@ -17,7 +17,7 @@ int main(void)
 {
     assert(mkdtemp(test_root));
     SceAppUtilInitParam init={0};SceAppUtilBootParam boot={0};
-    SceAppUtilSaveDataSlotParam param={0},output={0};param.userParam=42;
+    SceAppUtilSaveDataSlotParam param={0},output={0};param.userParam=42;param.status=17;
     assert(sceAppUtilSaveDataSlotGetParam(1,&output,NULL)==(int)SCE_APPUTIL_ERROR_NOT_INITIALIZED);
     assert(sceAppUtilInit(&init,&boot)==(int)SCE_APPUTIL_ERROR_NOT_MOUNTED);
     char sys[1024],path[1024];snprintf(sys,sizeof(sys),"%s/sce_sys",test_root);assert(!mkdir(sys,0700));
@@ -36,7 +36,7 @@ int main(void)
     assert(!sceAppUtilSaveDataSlotCreate(1,&param,NULL));
     assert(sceAppUtilSaveDataSlotCreate(1,&param,NULL)==(int)SCE_APPUTIL_ERROR_SAVEDATA_SLOT_EXISTS);
     assert(!sceAppUtilShutdown());assert(!sceAppUtilInit(&init,&boot));
-    assert(!sceAppUtilSaveDataSlotGetParam(1,&output,NULL) && output.userParam==42);
+    assert(!sceAppUtilSaveDataSlotGetParam(1,&output,NULL) && output.userParam==42 && output.status==0);
     param.userParam=7;assert(!sceAppUtilSaveDataSlotSetParam(1,&param,NULL));
     assert(!sceAppUtilSaveDataSlotGetParam(1,&output,NULL) && output.userParam==7);
     SceAppUtilSaveDataMountPoint mount={0};
