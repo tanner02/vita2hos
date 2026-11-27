@@ -218,6 +218,29 @@ The visible variant keeps its guest allocations until process exit so the
 presenter cannot read a freed framebuffer during shutdown. This bounded test
 process relies on process cleanup rather than freeing displayed memory early.
 
+### Fixed-address loader probe
+
+The build also emits `build-surface-probe/fixed-probe/executable`. This is an
+owned `ET_SCE_EXEC` ARM executable, with code at `0x81000000` and data at
+`0x81879000`, matching the address pattern observed in the selected LittleBigPlanet
+build. It has no relocations or game code. Its sole import is `sceKernelExitProcess`.
+The linker resolves references at their declared addresses; the generator then
+encodes Vita's module-info entry format without rebasing those references.
+
+The probe checks its actual code address, initialized data, zero-filled BSS, and
+data writes. It exits immediately with status 0 on success; statuses 1/2/3/4 mean
+initialized-data/BSS/write-read/code-address mismatch. Read the runtime log for
+the module name `vita2hos_fixed_probe`, exact mapped addresses, guest exit status,
+and successful `load_image_close()`. There is no visible scene or report file.
+
+This requires the new fixed loader, not runtime `38972ed` or `06ded1b`. That path
+requires usable CodeMemory syscalls and free permitted destination addresses.
+It reserves all destinations before choosing writable aliases, rejects overlapping
+or writable-executable layouts, and reports mapping conflicts without rebasing
+the fixed executable. Host tests cover layout, ownership, rollback, cache calls,
+and cleanup retry; hardware validation is pending. Passing this probe would not
+establish TLS, bundled-module linking, or LittleBigPlanet compatibility.
+
 ### Experimental title-specific launch profile
 
 **Hardware status:** this route failed to start Mario Kart 8 Deluxe on the tested

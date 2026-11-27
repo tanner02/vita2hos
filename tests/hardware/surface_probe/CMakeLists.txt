@@ -47,3 +47,11 @@ foreach(variant surface_probe draw_probe visible_cube)
         DEPENDS ${variant} exports.yml VERBATIM)
     add_custom_target(${variant}_guest ALL DEPENDS "${destination}/executable")
 endforeach()
+
+set(FIXED_PROBE "${CMAKE_CURRENT_SOURCE_DIR}/../fixed_probe")
+add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/fixed-probe/executable"
+    COMMAND "${Python3_EXECUTABLE}" "${FIXED_PROBE}/build.py" --sdk "${VITASDK}"
+        --output "${CMAKE_CURRENT_BINARY_DIR}/fixed-probe"
+    DEPENDS "${FIXED_PROBE}/build.py" "${FIXED_PROBE}/main.S" "${FIXED_PROBE}/fixed.ld"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../../tools/guest_elf.py" VERBATIM)
+add_custom_target(fixed_probe_guest ALL DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/fixed-probe/executable")

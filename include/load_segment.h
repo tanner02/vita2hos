@@ -13,6 +13,7 @@ typedef struct {
     Elf32_Word p_memsz;
     Elf32_Word p_flags;
     Elf32_Word p_align;
+    Elf32_Addr p_vaddr;
     bool needs_free;
 } segment_info_t;
 

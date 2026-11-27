@@ -2,8 +2,10 @@
 import struct
 
 
-def validate_guest(data):
-    if len(data) < 52 or data[:6] != b"\x7fELF\x01\x01" or struct.unpack_from("<HH", data, 16) != (0xfe04, 40):
+def validate_guest(data, allow_fixed=False):
+    types = (0xfe04, 0xfe00) if allow_fixed else (0xfe04,)
+    if (len(data) < 52 or data[:6] != b"\x7fELF\x01\x01" or
+        struct.unpack_from("<H", data, 16)[0] not in types or struct.unpack_from("<H", data, 18)[0] != 40):
         raise ValueError("Expected an ELF32 ARM Vita executable")
     entry, phoff = struct.unpack_from("<II", data, 24)
     phsize, phcount = struct.unpack_from("<HH", data, 42)

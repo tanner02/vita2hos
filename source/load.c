@@ -43,12 +43,12 @@
 
 
 
-static int load_vpk(Jit *jit, const void *data, uint32_t size, void **entry);
-static int load_executable(Jit *jit, const uint8_t *data, size_t size, void **entry);
-static int load_elf(Jit *jit, const void *data, size_t size, void **entry);
-static int load_self(Jit *jit, const void *data, size_t size, void **entry);
-static int load_segments(Jit *jit, void **entry, Elf32_Addr e_entry, segment_info_t *segments,
-                         int num_segments);
+static int load_vpk(LoadImage *image, const void *data, uint32_t size, void **entry);
+static int load_executable(LoadImage *image, const uint8_t *data, size_t size, void **entry);
+static int load_elf(LoadImage *image, const void *data, size_t size, void **entry);
+static int load_self(LoadImage *image, const void *data, size_t size, void **entry);
+static int load_segments(LoadImage *image, void **entry, Elf32_Addr e_entry, segment_info_t *segments,
+                         int num_segments, Elf32_Half type);
 static int resolve_imports(const segment_info_t *segments, int count, sce_module_imports_u_t *import);
 
 
@@ -89,8 +89,8 @@ int elf_check_vita_header(const Elf32_Ehdr *hdr)
         return -1;
     }
 
-    if (hdr->e_type != ET_SCE_RELEXEC) {
-        LOG("Only ET_SCE_RELEXEC files are supported.");
+    if (hdr->e_type != ET_SCE_RELEXEC && hdr->e_type != ET_SCE_EXEC) {
+        LOG("Only ET_SCE_EXEC and ET_SCE_RELEXEC files are supported.");
         return -1;
     }
 
@@ -128,12 +128,13 @@ static int elf_get_sce_module_info(Elf32_Addr e_entry, const segment_info_t *seg
     return index;
 }
 
-int load_file(Jit *jit, const char *filename, void **entry)
+int load_file(LoadImage *image, const char *filename, void **entry)
 {
     void *data;
     uint32_t size;
     int ret = 0;
 
+    if (!image || !entry || image->jit_active || image->data || image->fixed) return -1;
     *entry = NULL;
 
     LOG("Opening '%s' for reading.", filename);
@@ -142,19 +143,15 @@ int load_file(Jit *jit, const char *filename, void **entry)
         return -1;
     }
 
-    if (load_executable(jit, data, size, entry) < 0) {
-        /* Fallback to vpk (zip file) */
-        if (load_vpk(jit, data, size, entry) < 0) {
-            LOG("Unsupported file.");
-            ret = -1;
-        }
-    }
+    ret = load_detect_format(data, size) == LOAD_FORMAT_INVALID ?
+        load_vpk(image, data, size, entry) : load_executable(image, data, size, entry);
+    if (ret < 0) LOG("Unsupported file or executable load failed.");
 
     free(data);
     return ret;
 }
 
-static int load_vpk(Jit *jit, const void *data, uint32_t size, void **entry)
+static int load_vpk(LoadImage *image, const void *data, uint32_t size, void **entry)
 {
     mz_bool status;
     mz_zip_archive zip_archive;
@@ -177,7 +174,7 @@ static int load_vpk(Jit *jit, const void *data, uint32_t size, void **entry)
         return -1;
     }
 
-    ret = load_executable(jit, eboot_bin, uncompressed_size, entry);
+    ret = load_executable(image, eboot_bin, uncompressed_size, entry);
 
     mz_free(eboot_bin);
     mz_zip_reader_end(&zip_archive);
@@ -185,20 +182,20 @@ static int load_vpk(Jit *jit, const void *data, uint32_t size, void **entry)
     return ret;
 }
 
-static int load_executable(Jit *jit, const uint8_t *data, size_t size, void **entry)
+static int load_executable(LoadImage *image, const uint8_t *data, size_t size, void **entry)
 {
     *entry = NULL;
     switch (load_detect_format(data, size)) {
     case LOAD_FORMAT_ELF:
-        return load_elf(jit, data, size, entry);
+        return load_elf(image, data, size, entry);
     case LOAD_FORMAT_SELF:
-        return load_self(jit, data, size, entry);
+        return load_self(image, data, size, entry);
     default:
         return -1;
     }
 }
 
-static int load_self(Jit *jit, const void *data, size_t size, void **entry)
+static int load_self(LoadImage *image, const void *data, size_t size, void **entry)
 {
     const SCE_header *self_header = data;
     if (size < sizeof(*self_header) ||
@@ -279,6 +276,7 @@ static int load_self(Jit *jit, const void *data, size_t size, void **entry)
         segments[i].p_memsz = seg_header->p_memsz;
         segments[i].p_flags = seg_header->p_flags;
         segments[i].p_align = seg_header->p_align;
+        segments[i].p_vaddr = seg_header->p_vaddr;
 
         if (seg_header->p_type == PT_LOAD) {
             if (seg_header->p_memsz != 0) {
@@ -331,7 +329,7 @@ static int load_self(Jit *jit, const void *data, size_t size, void **entry)
         }
     }
 
-    ret = load_segments(jit, entry, elf_hdr->e_entry, segments, elf_hdr->e_phnum);
+    ret = load_segments(image, entry, elf_hdr->e_entry, segments, elf_hdr->e_phnum, elf_hdr->e_type);
 
 done:
     for (Elf32_Half i = 0; i < elf_hdr->e_phnum; i++) {
@@ -344,7 +342,7 @@ done:
     return ret;
 }
 
-static int load_elf(Jit *jit, const void *data, size_t size, void **entry)
+static int load_elf(LoadImage *image, const void *data, size_t size, void **entry)
 {
     const Elf32_Ehdr *elf_hdr = data;
     Elf32_Phdr *prog_hdrs;
@@ -387,78 +385,113 @@ static int load_elf(Jit *jit, const void *data, size_t size, void **entry)
         segments[i].p_memsz = prog_hdrs[i].p_memsz;
         segments[i].p_flags = prog_hdrs[i].p_flags;
         segments[i].p_align = prog_hdrs[i].p_align;
+        segments[i].p_vaddr = prog_hdrs[i].p_vaddr;
     }
 
-    ret = load_segments(jit, entry, elf_hdr->e_entry, segments, elf_hdr->e_phnum);
+    ret = load_segments(image, entry, elf_hdr->e_entry, segments, elf_hdr->e_phnum, elf_hdr->e_type);
 
     free(segments);
 
     return ret;
 }
 
-static int load_segments(Jit *jit, void **entry, Elf32_Addr e_entry, segment_info_t *segments,
-                         int num_segments)
+static int load_segments(LoadImage *image, void **entry, Elf32_Addr e_entry, segment_info_t *segments,
+                         int num_segments, Elf32_Half type)
 {
     uint32_t code_size = 0, data_size = 0;
     uint32_t code_offset = 0, data_offset = 0;
-    uintptr_t data_addr, code_rw_addr, code_rx_addr;
+    uintptr_t data_addr = 0, code_rw_addr = 0, code_rx_addr = 0;
     uintptr_t addr_rw, addr_rx;
     sce_module_info_raw *mod_info;
     int mod_info_idx;
     Result res;
 
-    /* Calculate total code and data sizes */
-    for (int i = 0; i < num_segments; i++) {
-        if (segments[i].p_type == PT_LOAD) {
-            uint32_t alignment = segments[i].p_align;
-            if ((alignment && (alignment & (alignment - 1))) ||
-                segments[i].p_filesz > segments[i].p_memsz)
-                return -1;
-            uint32_t padding = alignment > 1 ? alignment - 1 : 0;
-            uint32_t *total = (segments[i].p_flags & PF_X) ? &code_size : &data_size;
-            if (segments[i].p_memsz > UINT32_MAX - padding ||
-                *total > UINT32_MAX - segments[i].p_memsz - padding)
-                return -1;
-            *total += segments[i].p_memsz + padding;
+    Jit *jit = &image->jit;
+    bool fixed = type == ET_SCE_EXEC;
+    if (fixed) {
+        if (load_fixed_layout(segments, num_segments) != 0) {
+            LOG("Unsupported or overlapping fixed-address segment layout.");
+            return -1;
+        }
+        image->fixed = calloc(num_segments, sizeof(*image->fixed));
+        if (!image->fixed) return -1;
+        image->fixed_count = num_segments;
+        /* Reserve the entire layout before selecting any temporary aliases. */
+        for (int i = 0; i < num_segments; ++i) {
+            if (segments[i].p_type != PT_LOAD || !segments[i].p_memsz) continue;
+            res = load_fixed_reserve(&image->fixed[i], segments[i].p_vaddr,
+                                    segments[i].p_memsz, (segments[i].p_flags & PF_X) != 0);
+            if (R_FAILED(res)) {
+                LOG("Fixed reservation at 0x%08" PRIx32 " failed: 0x%x", segments[i].p_vaddr, res);
+                goto err_free_data;
+            }
         }
     }
+    if (!fixed) {
+        /* Calculate total code and data sizes */
+        for (int i = 0; i < num_segments; i++) {
+            if (segments[i].p_type == PT_LOAD) {
+                uint32_t alignment = segments[i].p_align;
+                if ((alignment && (alignment & (alignment - 1))) ||
+                    segments[i].p_filesz > segments[i].p_memsz)
+                    return -1;
+                uint32_t padding = alignment > 1 ? alignment - 1 : 0;
+                uint32_t *total = (segments[i].p_flags & PF_X) ? &code_size : &data_size;
+                if (segments[i].p_memsz > UINT32_MAX - padding ||
+                    *total > UINT32_MAX - segments[i].p_memsz - padding)
+                    return -1;
+                *total += segments[i].p_memsz + padding;
+            }
+        }
 
-    LOG("Total needed code size: 0x%" PRIx32, code_size);
-    LOG("Total needed data size: 0x%" PRIx32, data_size);
+        LOG("Total needed code size: 0x%" PRIx32, code_size);
+        LOG("Total needed data size: 0x%" PRIx32, data_size);
 
-    res = jitCreate(jit, code_size);
-    if (R_FAILED(res)) {
-        LOG("jitCreate failed: 0x%" PRIx32, res);
-        return -1;
+        res = jitCreate(jit, code_size);
+        if (R_FAILED(res)) {
+            LOG("jitCreate failed: 0x%" PRIx32, res);
+            return -1;
+        }
+
+        image->jit_active = true;
+        image->data = malloc(data_size ? data_size : 1);
+        data_addr = (uintptr_t)image->data;
+        if (!data_addr) {
+            LOG("Could not allocate buffer for the data segment");
+            goto err_jit_close;
+        }
+
+        code_rw_addr = (uintptr_t)jitGetRwAddr(jit);
+        code_rx_addr = (uintptr_t)jitGetRxAddr(jit);
+
+        LOG("JIT code RW addr: %p", (void *)code_rw_addr);
+        LOG("JIT code RX addr: %p", (void *)code_rx_addr);
+        LOG("Data        addr: %p", (void *)data_addr);
+
+        res = jitTransitionToWritable(jit);
+        if (R_FAILED(res)) {
+            LOG("Could not transition JIT to writable: 0x%" PRIx32, res);
+            goto err_free_data;
+        }
     }
-
-    data_addr = (uintptr_t)malloc(data_size ? data_size : 1);
-    if (!data_addr) {
-        LOG("Could not allocate buffer for the data segment");
-        goto err_jit_close;
-    }
-
-    code_rw_addr = (uintptr_t)jitGetRwAddr(jit);
-    code_rx_addr = (uintptr_t)jitGetRxAddr(jit);
-
-    LOG("JIT code RW addr: %p", (void *)code_rw_addr);
-    LOG("JIT code RX addr: %p", (void *)code_rx_addr);
-    LOG("Data        addr: %p", (void *)data_addr);
-
-    res = jitTransitionToWritable(jit);
-    if (R_FAILED(res)) {
-        LOG("Could not transition JIT to writable: 0x%" PRIx32, res);
-        goto err_free_data;
-    }
-
     for (int i = 0; i < num_segments; i++) {
         if (segments[i].p_type == PT_LOAD) {
+            if (!segments[i].p_memsz)
+                continue;
             LOG("Found loadable segment (%u)", i);
             LOG("  p_filesz: 0x%" PRIx32, segments[i].p_filesz);
             LOG("  p_memsz:  0x%" PRIx32, segments[i].p_memsz);
             LOG("  p_align:  0x%" PRIx32, segments[i].p_align);
 
-            if ((segments[i].p_flags & PF_X) == PF_X) {
+            if (fixed) {
+                res = load_fixed_map(&image->fixed[i]);
+                if (R_FAILED(res)) {
+                    LOG("Fixed mapping at 0x%08" PRIx32 " failed: 0x%x", segments[i].p_vaddr, res);
+                    goto err_free_data;
+                }
+                addr_rw = (uintptr_t)image->fixed[i].writable;
+                addr_rx = segments[i].p_vaddr;
+            } else if ((segments[i].p_flags & PF_X) == PF_X) {
                 uint32_t offset;
                 if (load_layout_place(code_rx_addr, code_offset, segments[i].p_memsz,
                                         segments[i].p_align, code_size, &offset, &code_offset) != 0)
@@ -546,7 +579,11 @@ static int load_segments(Jit *jit, void **entry, Elf32_Addr e_entry, segment_inf
         goto err_free_data;
     }
 
-    res = jitTransitionToExecutable(jit);
+    if (fixed) {
+        for (int i = 0; i < num_segments; ++i)
+            if (image->fixed[i].writable_mapped) load_fixed_flush(&image->fixed[i]);
+        res = 0;
+    } else res = jitTransitionToExecutable(jit);
     if (R_FAILED(res)) {
         LOG("Could not transition JIT to executable: 0x%" PRIx32, res);
         goto err_free_data;
@@ -555,9 +592,10 @@ static int load_segments(Jit *jit, void **entry, Elf32_Addr e_entry, segment_inf
     return 0;
 
 err_free_data:
-    free((void *)data_addr);
 err_jit_close:
-    jitClose(jit);
+    *entry = NULL;
+    res = load_image_close(image);
+    if (R_FAILED(res)) LOG("Executable rollback failed: 0x%x", res);
 
     return -1;
 }

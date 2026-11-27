@@ -113,7 +113,7 @@ int main(int argc, char *argv[])
 {
     time_t now;
     char timestr[32];
-    Jit jit;
+    LoadImage image = {0};
     void *entry;
     int ret;
 
@@ -137,7 +137,7 @@ int main(int argc, char *argv[])
     strftime(timestr, sizeof(timestr), "%c", localtime(&now));
     LOG("Starting at %s", timestr);
 
-    ret = load_file(&jit, VITA2HOS_EXE_FILE, &entry);
+    ret = load_file(&image, VITA2HOS_EXE_FILE, &entry);
     if (ret == 0) {
         LOG("Launching PlayStation Vita executable!");
 
@@ -146,9 +146,9 @@ int main(int argc, char *argv[])
 
         LOG("Returned from launch with result: %d", ret);
 
-        /* Close the JIT */
-        ret = jitClose(&jit);
-        LOG("jitClose() returned: 0x%x", ret);
+        /* Release guest code and data mappings after execution has stopped. */
+        ret = load_image_close(&image);
+        LOG("load_image_close() returned: 0x%x", ret);
     } else {
         fatal_error("Error loading PlayStation Vita executable.",
                     "Make sure to place it to '" VITA2HOS_EXE_FILE "'");

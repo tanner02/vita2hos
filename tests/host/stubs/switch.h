@@ -98,4 +98,34 @@ void __attribute__((noreturn)) threadExit(void);
 static inline void threadExit(void) { abort(); }
 #endif
 
+#ifdef TEST_FIXED_MEMORY
+typedef uint32_t Result;
+typedef uint32_t Handle;
+typedef uint32_t u32;
+typedef struct { uint64_t addr, size; uint32_t type; } MemoryInfo;
+typedef struct VirtmemReservation { uintptr_t address; size_t size; } VirtmemReservation;
+typedef struct { int unused; } Jit;
+#define INVALID_HANDLE 0
+#define R_FAILED(value) ((value) != 0)
+#define R_SUCCEEDED(value) ((value) == 0)
+#define MAKERESULT(module, description) ((Result)(((description) << 9) | (module)))
+enum { Module_Libnx = 345, LibnxError_BadInput = 1, LibnxError_JitUnavailable = 2,
+       LibnxError_OutOfMemory = 3, MemType_Unmapped = 0, Perm_Rw = 3, Perm_Rx = 5,
+       CodeMapOperation_MapOwner = 0, CodeMapOperation_MapSlave = 1,
+       CodeMapOperation_UnmapOwner = 2, CodeMapOperation_UnmapSlave = 3 };
+bool envIsSyscallHinted(unsigned);
+Result svcQueryMemory(MemoryInfo *, u32 *, uint64_t);
+Result svcCreateCodeMemory(Handle *, void *, size_t);
+Result svcControlCodeMemory(Handle, u32, uint64_t, uint64_t, u32);
+Result svcCloseHandle(Handle);
+void virtmemLock(void);
+void virtmemUnlock(void);
+VirtmemReservation *virtmemAddReservation(void *, size_t);
+void virtmemRemoveReservation(VirtmemReservation *);
+void *virtmemFindCodeMemory(size_t, size_t);
+void armDCacheFlush(void *, size_t);
+void armICacheInvalidate(void *, size_t);
+Result jitClose(Jit *);
+#endif
+
 #endif

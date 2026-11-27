@@ -22,6 +22,12 @@ def guest_fixture():
 
 
 class GuestTests(unittest.TestCase):
+    def test_fixed_executable_requires_explicit_opt_in(self):
+        data = guest_fixture()
+        struct.pack_into("<H", data, 16, 0xfe00)
+        with self.assertRaises(ValueError): tool.validate_guest(data)
+        self.assertEqual(tool.validate_guest(data, allow_fixed=True)["function_imports"], 3)
+
     def test_entry_and_import_count(self):
         self.assertEqual(tool.validate_guest(guest_fixture()),
                          {"entry_segment": 0, "entry_offset": 0x11, "function_imports": 3})

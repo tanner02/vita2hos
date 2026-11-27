@@ -78,4 +78,7 @@ jobs:
             /tmp/surface-probe/draw_probe.elf
             /tmp/surface-probe/visible-cube/executable
             /tmp/surface-probe/visible_cube.elf
+            /tmp/surface-probe/fixed-probe/executable
+            /tmp/surface-probe/fixed-probe/manifest.json
+            /tmp/surface-probe/fixed-probe/fixed_probe.elf
             /tmp/surface-probe/DRAW-PROBE-COPYING.txt
