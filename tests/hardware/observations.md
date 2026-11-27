@@ -1,3 +1,32 @@
+## 2026-11-27: real-game startup on the verified graphics runtime
+
+Original LittleBigPlanet PCSF00516 ran on8bf8795 after its owned graphics batch
+passed. The first cycle exhausted64 address-layout retries; Codex closed the
+observed error dialog and relaunched. The second cycle found a compatible
+layout after13 restarts and reached guest entry. No payload/profile change was
+needed to restart the counter. A source-based placement model explains why this
+fixed window is difficult; it does not prove uniform independent hardware odds.
+The32-bit-without-alias profile folds alias size into heap, so it is not simply
+extra free code space and was not installed as a workaround.
+
+The new main-thread fault is PC0x810461b8, LR0x813a39ef, effective address0x34.
+Thread mapping identifies native0x31e as guest UID5, <main>. The decoded10-thread
+DTI2 matches every crashed register/PC/LR/SP and exact EOF; saved TPIDR0x8dd058b0
+matches that thread's recorded user-TLS pointer. This does not prove TLS/DTV
+contents. Source-bound decoding loads entry3 from a zero registry-table pointer.
+Unsupported AbortHandler and ModuleExit calls precede the fault; failed startup
+followed by teardown is a hypothesis, not an established root cause. This differs
+from the older0x813a3f28 resource-TLS fault on the unmerged HLE runtime. No shader
+creation failure tag was captured in this run; absence is not proof of success.
+
+Crash report SHA256: 2a7ff8d9af22e99d264ff76c9e8d3b54eabe93d051e0e932fecfd73439fe49f3.
+Complete logs, thread dump, SDK-resolved unsupported-call list and receipts remain
+private. Detaching virtual input immediately after launch allowed a fresh input
+attachment to close this crash dialog without another reboot. HOME showed the
+title closed. Original game/modules/normal mode and root runtime8bf8795 were
+hash-verified afterward. No HLE/scanner merge or held TLS-probe update occurred.
+Commercial3D boot remains open.
+
 ## 2026-11-27: graphics batch hardware PASS on8bf8795
 
 Automated visible_cube6 ran through the dedicated HOME title on firmware16.1.0,
