@@ -352,3 +352,11 @@ A stale staging file returns EEXIST and is retained for explicit recovery.
 Filesystem rename and power-loss guarantees still require Switch validation;
 parent-directory durability is not established. No savedata mount, title identity,
 file payload API, quota calculation, or SDK success is supplied by this backend.
+
+Savedata identity parsing uses bounded PSF tables and UTF-8 string records,
+requires a nine-character TITLE_ID, and honors INSTALL_DIR_SAVEDATA when present.
+Directory identifiers permit only ASCII letters, digits, underscore and hyphen;
+malformed overrides are rejected instead of silently falling back to TITLE_ID.
+Tests cover truncation, duplicates, traversal, format and bounds failures, while
+preserving caller output. The optional host-test filename argument reads a
+private PARAM.SFO without modifying it. No save directory or mount is created.
