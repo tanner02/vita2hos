@@ -69,3 +69,4 @@ build_release/
 
 # VSCode
 .vscode/
+tools/__pycache__/
