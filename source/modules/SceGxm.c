@@ -1596,7 +1596,11 @@ static int context_flush_dirty_state(SceGxmContext *context)
 
         for (i = 0; i < vertex_program->streamCount; i++) {
             vertex_buffer_state[i].stride = streams[i].stride;
-            vertex_buffer_state[i].divisor = 0;
+            uint32_t divisor;
+            int ret = gxm_stream_divisor((SceGxmIndexSource)streams[i].indexSource, &divisor);
+            if (ret != 0)
+                return ret;
+            vertex_buffer_state[i].divisor = divisor;
         }
 
         dkCmdBufBindVtxAttribState(context->cmdbuf, vertex_attrib_state,
@@ -1663,8 +1667,9 @@ static int context_flush_dirty_state(SceGxmContext *context)
     return 0;
 }
 
-EXPORT(SceGxm, 0xBC059AFC, int, sceGxmDraw, SceGxmContext *context, SceGxmPrimitiveType primType,
-       SceGxmIndexFormat indexType, const void *indexData, unsigned int indexCount)
+static int draw_indexed(SceGxmContext *context, SceGxmPrimitiveType primType,
+                        SceGxmIndexFormat indexType, const void *indexData,
+                        unsigned int indexCount, unsigned int instances)
 {
     VitaMemBlockInfo *index_block;
     uint32_t index_offset;
@@ -1675,6 +1680,19 @@ EXPORT(SceGxm, 0xBC059AFC, int, sceGxmDraw, SceGxmContext *context, SceGxmPrimit
 
     if (!context || !indexData)
         return SCE_GXM_ERROR_INVALID_POINTER;
+    if (!context->state.in_scene)
+        return SCE_GXM_ERROR_NOT_WITHIN_SCENE;
+    if (!context->state.vertex_program || !context->state.fragment_program)
+        return SCE_GXM_ERROR_NULL_PROGRAM;
+
+    /* 16-bit stream index sources wrap at 65536. Native divisor fetches do
+     * not wrap; reject that case until a wrapping fetch path is implemented. */
+    const SceGxmVertexProgram *program = context->state.vertex_program;
+    for (unsigned int i = 0; i < program->streamCount; ++i) {
+        if (program->streams[i].indexSource == SCE_GXM_INDEX_SOURCE_INSTANCE_16BIT &&
+            instances > 65536)
+            return SCE_GXM_ERROR_INVALID_VALUE;
+    }
 
     ret = gxm_translate_primitive(primType, &primitive);
     if (ret != 0)
@@ -1696,9 +1714,25 @@ EXPORT(SceGxm, 0xBC059AFC, int, sceGxmDraw, SceGxmContext *context, SceGxmPrimit
 
     dkCmdBufBindIdxBuffer(context->cmdbuf, gxm_to_dk_idx_format(indexType),
                           dkMemBlockGetGpuAddr(index_block->dk_memblock) + index_offset);
-    dkCmdBufDrawIndexed(context->cmdbuf, primitive, indexCount, 1, 0, 0, 0);
+    dkCmdBufDrawIndexed(context->cmdbuf, primitive, indexCount, instances, 0, 0, 0);
 
     return 0;
+}
+
+EXPORT(SceGxm, 0xBC059AFC, int, sceGxmDraw, SceGxmContext *context, SceGxmPrimitiveType primType,
+       SceGxmIndexFormat indexType, const void *indexData, unsigned int indexCount)
+{
+    return draw_indexed(context, primType, indexType, indexData, indexCount, 1);
+}
+
+EXPORT(SceGxm, 0x14C4E7D3, int, sceGxmDrawInstanced, SceGxmContext *context,
+       SceGxmPrimitiveType primType, SceGxmIndexFormat indexType, const void *indexData,
+       unsigned int indexCount, unsigned int indexWrap)
+{
+    uint32_t indices, instances;
+    int ret = gxm_instanced_counts(indexCount, indexWrap, &indices, &instances);
+    if (ret != 0) return ret;
+    return draw_indexed(context, primType, indexType, indexData, indices, instances);
 }
 
 EXPORT(SceGxm, 0xC61E34FC, int, sceGxmMapMemory, void *base, SceSize size,

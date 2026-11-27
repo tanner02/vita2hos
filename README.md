@@ -86,6 +86,13 @@ report elapsed microseconds from runtime module initialization, before guest
 threads start; the Low variant returns the low 32 bits. These clocks do not
 represent calendar time or per-thread CPU usage.
 
+The indexed draw path includes `sceGxmDrawInstanced`, using `indexWrap` indices
+per instance and `indexCount / indexWrap` instances. A partial trailing instance
+is ignored, matching the pinned reference. Instance-indexed vertex streams use
+native per-instance fetch divisors. Draws requiring 16-bit instance-index
+wraparound beyond 65,536 instances are rejected; that wraparound is not yet
+implemented. Instanced rendering still needs Switch hardware validation.
+
 ## Building from Source
 
 1. **Clone the Repository with Submodules:**

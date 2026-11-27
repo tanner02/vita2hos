@@ -1,5 +1,28 @@
 #include "gxm/draw.h"
 
+int gxm_stream_divisor(SceGxmIndexSource source, uint32_t *divisor)
+{
+    if (!divisor) return SCE_GXM_ERROR_INVALID_POINTER;
+    switch (source) {
+    case SCE_GXM_INDEX_SOURCE_INDEX_16BIT:
+    case SCE_GXM_INDEX_SOURCE_INDEX_32BIT: *divisor = 0; return 0;
+    case SCE_GXM_INDEX_SOURCE_INSTANCE_16BIT:
+    case SCE_GXM_INDEX_SOURCE_INSTANCE_32BIT: *divisor = 1; return 0;
+    default: return SCE_GXM_ERROR_INVALID_VALUE;
+    }
+}
+
+int gxm_instanced_counts(unsigned int total, unsigned int wrap,
+                         uint32_t *indices, uint32_t *instances)
+{
+    if (!indices || !instances) return SCE_GXM_ERROR_INVALID_POINTER;
+    if (!wrap) return SCE_GXM_ERROR_INVALID_VALUE;
+    *indices = wrap;
+    /* Match the pinned reference: incomplete trailing instances are ignored. */
+    *instances = total / wrap;
+    return 0;
+}
+
 int gxm_translate_primitive(SceGxmPrimitiveType primitive, DkPrimitive *translated)
 {
     if (!translated) return SCE_GXM_ERROR_INVALID_POINTER;

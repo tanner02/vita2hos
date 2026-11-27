@@ -4,6 +4,21 @@
 
 int main(void)
 {
+    uint32_t divisor = 123;
+    assert(gxm_stream_divisor(SCE_GXM_INDEX_SOURCE_INDEX_16BIT, &divisor) == 0 && divisor == 0);
+    assert(gxm_stream_divisor(SCE_GXM_INDEX_SOURCE_INDEX_32BIT, &divisor) == 0 && divisor == 0);
+    assert(gxm_stream_divisor(SCE_GXM_INDEX_SOURCE_INSTANCE_16BIT, &divisor) == 0 && divisor == 1);
+    assert(gxm_stream_divisor(SCE_GXM_INDEX_SOURCE_INSTANCE_32BIT, &divisor) == 0 && divisor == 1);
+    divisor = 123;
+    assert((uint32_t)gxm_stream_divisor((SceGxmIndexSource)4, &divisor) == SCE_GXM_ERROR_INVALID_VALUE);
+    assert(divisor == 123);
+    uint32_t indices = 123, instances = 456;
+    assert((uint32_t)gxm_instanced_counts(10, 0, &indices, &instances) == SCE_GXM_ERROR_INVALID_VALUE);
+    assert(indices == 123 && instances == 456);
+    assert(gxm_instanced_counts(12, 3, &indices, &instances) == 0 && indices == 3 && instances == 4);
+    assert(gxm_instanced_counts(13, 3, &indices, &instances) == 0 && indices == 3 && instances == 4);
+    assert(gxm_instanced_counts(0, 3, &indices, &instances) == 0 && instances == 0);
+    assert(gxm_instanced_counts(UINT32_MAX, 1, &indices, &instances) == 0 && instances == UINT32_MAX);
     const struct { SceGxmPrimitiveType vita; DkPrimitive gpu; } primitives[] = {
         {SCE_GXM_PRIMITIVE_POINTS, DkPrimitive_Points},
         {SCE_GXM_PRIMITIVE_LINES, DkPrimitive_Lines},
