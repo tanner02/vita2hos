@@ -22,6 +22,7 @@
 #include "gxm/draw.h"
 #include "gxm/viewport.h"
 #include "gxm/region_clip.h"
+#include "gxm/uniform_staging.h"
 #include "gxm/blend.h"
 #include "gxm/shader_code.h"
 #include "gxm/program_registry.h"
@@ -45,6 +46,7 @@ typedef struct SceGxmContext {
     DkMemBlock gxm_frag_unif_block_memblock;
     DkMemBlock fragment_tex_descriptor_set_memblock;
     GxmTextureStaging *texture_staging;
+    GxmUniformStaging *uniform_staging;
     /* Dynamic state */
     struct {
         struct {
@@ -53,6 +55,8 @@ typedef struct SceGxmContext {
         const SceGxmVertexProgram *vertex_program;
         const SceGxmFragmentProgram *fragment_program;
         const void *vertex_streams[SCE_GXM_MAX_VERTEX_STREAMS];
+        const void *vertex_uniform_buffers[SCE_GXM_MAX_UNIFORM_BUFFERS];
+        const void *fragment_uniform_buffers[SCE_GXM_MAX_UNIFORM_BUFFERS];
         const SceGxmRenderTarget *render_target;
         const SceGxmColorSurfaceInner *color_surface;
         const SceGxmDepthStencilSurface *ds_surface;
@@ -393,6 +397,7 @@ EXPORT(SceGxm, 0xEDDC5FB2, int, sceGxmDestroyContext, SceGxmContext *context)
 {
     dkQueueWaitIdle(g_render_queue);
     gxm_texture_staging_release(&context->texture_staging);
+    gxm_uniform_staging_release(&context->uniform_staging);
     dkMemBlockDestroy(context->gxm_vert_unif_block_memblock);
     dkMemBlockDestroy(context->gxm_frag_unif_block_memblock);
     dkMemBlockDestroy(context->fragment_tex_descriptor_set_memblock);
@@ -1014,11 +1019,12 @@ EXPORT(SceGxm, 0x8734FF4E, int, sceGxmBeginScene, SceGxmContext *context, unsign
     sceGxmSetDefaultRegionClipAndViewport(context, validRegion ? validRegion->xMax : rt_width - 1U,
                                          validRegion ? validRegion->yMax : rt_height - 1U);
 
-    if (context->texture_staging) {
+    if (context->texture_staging || context->uniform_staging) {
         /* The previous scene was submitted by EndScene. Retire its temporary
-         * texture images only after the GPU is finished with them. */
+         * images and uniform snapshots only after the GPU is finished. */
         dkQueueWaitIdle(g_render_queue);
         gxm_texture_staging_release(&context->texture_staging);
+        gxm_uniform_staging_release(&context->uniform_staging);
     }
 
     LOG("sceGxmBeginScene to renderTarget %p, fragmentSyncObject: %p, "
@@ -1296,6 +1302,8 @@ EXPORT(SceGxm, 0xC697CAE5, int, sceGxmSetVertexDefaultUniformBuffer, SceGxmConte
     VitaMemBlockInfo *block;
     uint32_t offset;
 
+    if (!context || !uniformBuffer)
+        return SCE_GXM_ERROR_INVALID_POINTER;
     block = SceSysmem_get_vita_memblock_info_for_addr(uniformBuffer);
     if (!block)
         return SCE_GXM_ERROR_INVALID_VALUE;
@@ -1353,6 +1361,8 @@ EXPORT(SceGxm, 0xA824EB24, int, sceGxmSetFragmentDefaultUniformBuffer, SceGxmCon
     VitaMemBlockInfo *block;
     uint32_t offset;
 
+    if (!context || !uniformBuffer)
+        return SCE_GXM_ERROR_INVALID_POINTER;
     block = SceSysmem_get_vita_memblock_info_for_addr(uniformBuffer);
     if (!block)
         return SCE_GXM_ERROR_INVALID_VALUE;
@@ -1735,6 +1745,50 @@ static int upload_fragment_texture_descriptors(SceGxmContext *context)
     return 0;
 }
 
+EXPORT(SceGxm, 0xC68015E4, int, sceGxmSetVertexUniformBuffer, SceGxmContext *context,
+       unsigned int bufferIndex, const void *bufferData)
+{
+    if (!context || !bufferData) return SCE_GXM_ERROR_INVALID_POINTER;
+    if (bufferIndex >= SCE_GXM_MAX_UNIFORM_BUFFERS) return SCE_GXM_ERROR_INVALID_VALUE;
+    context->state.vertex_uniform_buffers[bufferIndex] = bufferData;
+    return 0;
+}
+
+EXPORT(SceGxm, 0xEA0FC310, int, sceGxmSetFragmentUniformBuffer, SceGxmContext *context,
+       unsigned int bufferIndex, const void *bufferData)
+{
+    if (!context || !bufferData) return SCE_GXM_ERROR_INVALID_POINTER;
+    if (bufferIndex >= SCE_GXM_MAX_UNIFORM_BUFFERS) return SCE_GXM_ERROR_INVALID_VALUE;
+    context->state.fragment_uniform_buffers[bufferIndex] = bufferData;
+    return 0;
+}
+
+static int stage_uniforms(SceGxmContext *context, DkStage stage,
+                          const GxmUniformLayout *layout, const void *default_buffer,
+                          const void *const named_buffers[SCE_GXM_MAX_UNIFORM_BUFFERS])
+{
+    GxmUniformSource sources[GXM_UNIFORM_LAYOUT_SLOTS] = {0};
+    for (unsigned i = 0; i < GXM_UNIFORM_LAYOUT_SLOTS; ++i) {
+        if (!layout->bytes[i]) continue;
+        const void *data = i ? named_buffers[i - 1] : default_buffer;
+        if (!data) return SCE_GXM_ERROR_INVALID_POINTER;
+        VitaMemBlockInfo *block = SceSysmem_get_vita_memblock_info_for_addr(data);
+        if (!block) return SCE_GXM_ERROR_INVALID_VALUE;
+        uintptr_t offset = (uintptr_t)data - (uintptr_t)block->base;
+        if (offset >= block->size || layout->bytes[i] > block->size - offset)
+            return SCE_GXM_ERROR_INVALID_VALUE;
+        void *cpu = dkMemBlockGetCpuAddr(block->dk_memblock);
+        if (!cpu) return SCE_GXM_ERROR_INVALID_POINTER;
+        sources[i] = (GxmUniformSource){(const char *)cpu + offset, block->size - offset};
+    }
+    DkMemBlock snapshot;
+    int ret = gxm_uniform_stage(g_dk_device, &context->uniform_staging, layout, sources, &snapshot);
+    if (ret) return ret;
+    dkCmdBufBindStorageBuffer(context->cmdbuf, stage, stage == DkStage_Vertex ? 0 : 1,
+                              snapshot ? dkMemBlockGetGpuAddr(snapshot) : 0, layout->size);
+    return 0;
+}
+
 static int context_flush_dirty_state(SceGxmContext *context)
 {
     if (context->state.dirty.bit.viewport)
@@ -1843,19 +1897,18 @@ static int context_flush_dirty_state(SceGxmContext *context)
             return ret;
     }
 
-    if (context->state.dirty.bit.vertex_default_uniform) {
-        dkCmdBufBindStorageBuffer(
-            context->cmdbuf, DkStage_Vertex, 0, context->state.vertex_default_uniform.gpu_addr,
-            vertex_program->default_uniform_count * sizeof(float));
-        context->state.vertex_default_uniform.allocated = false;
-    }
-
-    if (context->state.dirty.bit.fragment_default_uniform) {
-        dkCmdBufBindStorageBuffer(
-            context->cmdbuf, DkStage_Fragment, 1, context->state.fragment_default_uniform.gpu_addr,
-            fragment_program->default_uniform_count * sizeof(float));
-        context->state.fragment_default_uniform.allocated = false;
-    }
+    /* Snapshot at every draw: callers may modify a buffer without rebinding it.
+     * Distinct storage also protects queued draws when guest ringbuffers wrap. */
+    int ret = stage_uniforms(context, DkStage_Vertex, &vertex_program->uniform_layout,
+                             context->state.vertex_default_uniform.cpu_addr,
+                             context->state.vertex_uniform_buffers);
+    if (ret) return ret;
+    ret = stage_uniforms(context, DkStage_Fragment, &fragment_program->uniform_layout,
+                         context->state.fragment_default_uniform.cpu_addr,
+                         context->state.fragment_uniform_buffers);
+    if (ret) return ret;
+    context->state.vertex_default_uniform.allocated = false;
+    context->state.fragment_default_uniform.allocated = false;
 
     /* We have flushed all the dirty state */
     context->state.dirty.raw = 0;
