@@ -7,6 +7,7 @@
 #include <deko3d.h>
 
 int gxm_translate_primitive(SceGxmPrimitiveType primitive, DkPrimitive *translated);
+int gxm_translate_cull(SceGxmCullMode mode, DkFace *translated);
 int gxm_stream_divisor(SceGxmIndexSource source, uint32_t *divisor);
 int gxm_instanced_counts(unsigned int total, unsigned int wrap,
                          uint32_t *indices, uint32_t *instances);

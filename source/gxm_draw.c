@@ -1,5 +1,20 @@
 #include "gxm/draw.h"
 
+int gxm_translate_cull(SceGxmCullMode mode, DkFace *translated)
+{
+    if (!translated) return SCE_GXM_ERROR_INVALID_POINTER;
+    DkFace result;
+    /* Context creation fixes the native front-face winding to clockwise. */
+    switch (mode) {
+    case SCE_GXM_CULL_NONE: result = DkFace_None; break;
+    case SCE_GXM_CULL_CW: result = DkFace_Front; break;
+    case SCE_GXM_CULL_CCW: result = DkFace_Back; break;
+    default: return SCE_GXM_ERROR_INVALID_VALUE;
+    }
+    *translated = result;
+    return 0;
+}
+
 int gxm_validate_vertex_layout(const SceGxmVertexAttribute *attributes, unsigned int attribute_count,
                                 const SceGxmVertexStream *streams, unsigned int stream_count)
 {

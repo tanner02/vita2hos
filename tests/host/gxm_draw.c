@@ -4,6 +4,13 @@
 
 int main(void)
 {
+    DkFace face;
+    assert(gxm_translate_cull(SCE_GXM_CULL_NONE, &face) == 0 && face == DkFace_None);
+    assert(gxm_translate_cull(SCE_GXM_CULL_CW, &face) == 0 && face == DkFace_Front);
+    assert(gxm_translate_cull(SCE_GXM_CULL_CCW, &face) == 0 && face == DkFace_Back);
+    assert((uint32_t)gxm_translate_cull((SceGxmCullMode)3, &face) == SCE_GXM_ERROR_INVALID_VALUE);
+    assert(face == DkFace_Back);
+    assert((uint32_t)gxm_translate_cull(SCE_GXM_CULL_NONE, NULL) == SCE_GXM_ERROR_INVALID_POINTER);
     SceGxmVertexStream streams[SCE_GXM_MAX_VERTEX_STREAMS] = {0};
     SceGxmVertexAttribute attributes[SCE_GXM_MAX_VERTEX_ATTRIBUTES] = {0};
     for (unsigned int i = 0; i < SCE_GXM_MAX_VERTEX_ATTRIBUTES; ++i) {

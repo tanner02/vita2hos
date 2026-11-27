@@ -88,6 +88,7 @@ typedef struct SceGxmContext {
                 uint32_t fragment_default_uniform : 1;
                 uint32_t vertex_streams : 1;
                 uint32_t blend : 1;
+                uint32_t rasterizer : 1;
             } bit;
             uint32_t raw;
         } dirty;
@@ -1160,6 +1161,19 @@ EXPORT(SceGxm, 0xB98C5B0D, int, sceGxmDisplayQueueFinish, void)
     return 0;
 }
 
+EXPORT(SceGxm, 0xE1CA72AE, void, sceGxmSetCullMode, SceGxmContext *context, SceGxmCullMode mode)
+{
+    if (!context)
+        return;
+    DkFace face;
+    if (gxm_translate_cull(mode, &face) != 0) {
+        LOG("sceGxmSetCullMode: unsupported mode 0x%x", mode);
+        return;
+    }
+    context->state.rasterizer.cullMode = face;
+    context->state.dirty.bit.rasterizer = true;
+}
+
 EXPORT(SceGxm, 0x31FF8ABD, void, sceGxmSetVertexProgram, SceGxmContext *context,
        const SceGxmVertexProgram *vertexProgram)
 {
@@ -1732,6 +1746,9 @@ static int context_flush_dirty_state(SceGxmContext *context)
 
     if (context->state.dirty.bit.depth_stencil)
         dkCmdBufBindDepthStencilState(context->cmdbuf, &context->state.depth_stencil);
+
+    if (context->state.dirty.bit.rasterizer)
+        dkCmdBufBindRasterizerState(context->cmdbuf, &context->state.rasterizer);
 
     if (context->state.dirty.bit.front_stencil) {
         dkCmdBufSetStencil(context->cmdbuf, DkFace_Front, context->state.front_stencil.write_mask,
