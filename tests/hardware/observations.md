@@ -514,6 +514,30 @@
   add SD/network logging or establish bundled-libc startup or commercial boot.
   No Switch files were changed.
 
+## Host libc time imports after 866f74d
+
+- Added SceProcessmgr LibcClock, LibcTime and LibcGettimeofday exports. LibcClock
+  uses the existing process-relative monotonic microsecond counter and returns
+  the SDK's full 64-bit SceKernelClock, including values above UINT32_MAX.
+- Calendar calls read native UTC gettimeofday into a native temporary, then
+  convert fields explicitly. SceKernelTime is 32-bit; guest timeval is two
+  signed 32-bit fields. Epoch seconds retain their low 32-bit representation,
+  including post-2038 bit patterns. No host time_t, long or timeval layout is
+  copied into guest memory. Static ABI assertions cover all four SDK types.
+- Gettimeofday permits optional outputs and reports UTC (zero timezone value).
+  With no timeval requested it needs no native clock read. Native failure returns
+  -1, and Time returns its unsigned -1 sentinel; output objects stay unchanged.
+  Guest errno propagation and firmware-exact failure/rollover behavior are not
+  established by these choices. Non-UTC timezone/DST support remains unfinished.
+- Host tests query the actual NID tables and cover clock high bits and restart,
+  microsecond endpoints, guarded output sizes, 1970/current/2038/2106 boundaries,
+  negative epochs, optional outputs, UTC initialization and backend failures.
+  The full ASan/UBSan suite and ARM Debug/Release builds passed.
+- ABI reference: the pinned vita-headers checkout and
+  https://github.com/vitasdk/vita-headers/blob/master/include/psp2common/kernel/processmgr.h
+  distinguish the 64-bit clock from 32-bit epoch seconds. No new Switch run,
+  bundled-libc startup or commercial-title boot is claimed by these host checks.
+
 ## Runtime 15d400f48e5d3a3f5d811e2a67bd30a1388cc102
 
 - Standalone HOME title, owned fixed-address CPU probe SHA-256
