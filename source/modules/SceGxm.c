@@ -20,6 +20,7 @@
 #include "gxm/gxm_to_dk.h"
 #include "gxm/util.h"
 #include "gxm/draw.h"
+#include "gxm/viewport.h"
 #include "gxm/blend.h"
 #include "gxm/shader_code.h"
 #include "gxm/program_registry.h"
@@ -57,6 +58,7 @@ typedef struct SceGxmContext {
         SceGxmSyncObject *fragment_sync_object;
         bool in_scene;
         bool two_sided_mode;
+        GxmViewportState viewport;
         DkRasterizerState rasterizer;
         DkColorState color;
         DkBlendState blend;
@@ -89,6 +91,7 @@ typedef struct SceGxmContext {
                 uint32_t vertex_streams : 1;
                 uint32_t blend : 1;
                 uint32_t rasterizer : 1;
+                uint32_t viewport : 1;
             } bit;
             uint32_t raw;
         } dirty;
@@ -156,14 +159,7 @@ typedef struct {
 } DisplayQueueControlBlock;
 
 /* Vita3K's shader recompiler */
-struct GXMRenderVertUniformBlock {
-    float viewport_flip[4];
-    float viewport_flag;
-    float screen_width;
-    float screen_height;
-    float z_offset;
-    float z_scale;
-};
+typedef GxmViewportUniform GXMRenderVertUniformBlock;
 
 struct GXMRenderFragUniformBlock {
     float back_disabled;
@@ -338,7 +334,7 @@ EXPORT(SceGxm, 0xE84CE5B4, int, sceGxmCreateContext, const SceGxmContextParams *
     ctx->fragment_rb.size = params->fragmentRingBufferMemSize;
 
     ctx->gxm_vert_unif_block_memblock = dk_alloc_memblock(
-        g_dk_device, ALIGN(sizeof(struct GXMRenderVertUniformBlock), DK_UNIFORM_BUF_ALIGNMENT),
+        g_dk_device, ALIGN(sizeof(GXMRenderVertUniformBlock), DK_UNIFORM_BUF_ALIGNMENT),
         DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached);
 
     ctx->gxm_frag_unif_block_memblock = dk_alloc_memblock(
@@ -903,16 +899,38 @@ EXPORT(SceGxm, 0x1A68C8D2, void, sceGxmSetBackStencilFunc, SceGxmContext *contex
     context->state.dirty.bit.back_stencil = true;
 }
 
-static void set_vita3k_gxm_uniform_blocks(SceGxmContext *context, const DkViewport *viewport)
+EXPORT(SceGxm, 0x3EB3380B, void, sceGxmSetViewport, SceGxmContext *context,
+       float xOffset, float xScale, float yOffset, float yScale, float zOffset, float zScale)
 {
-    const struct GXMRenderVertUniformBlock vert_unif = {
-        .viewport_flip = { 1.0f, 1.0f, 1.0f, 1.0f },
-        .viewport_flag = (0) ? 0.0f : 1.0f,
-        .z_offset = 0.0f,
-        .z_scale = 1.0f,
-        .screen_width = viewport->width,
-        .screen_height = viewport->height
-    };
+    if (!context)
+        return;
+    if (!gxm_viewport_set(&context->state.viewport, xOffset, xScale, yOffset, yScale,
+                          zOffset, zScale)) {
+        LOG("sceGxmSetViewport: invalid transform");
+        return;
+    }
+    context->state.dirty.bit.viewport = true;
+}
+
+EXPORT(SceGxm, 0x814F61EB, void, sceGxmSetViewportEnable, SceGxmContext *context,
+       SceGxmViewportMode enable)
+{
+    if (!context)
+        return;
+    if (enable != SCE_GXM_VIEWPORT_ENABLED && enable != SCE_GXM_VIEWPORT_DISABLED) {
+        LOG("sceGxmSetViewportEnable: invalid mode %u", (unsigned)enable);
+        return;
+    }
+    context->state.viewport.disabled = enable == SCE_GXM_VIEWPORT_DISABLED;
+    context->state.dirty.bit.viewport = true;
+}
+
+static void set_vita3k_gxm_uniform_blocks(SceGxmContext *context, float width, float height)
+{
+    GXMRenderVertUniformBlock vert_unif;
+    DkViewport viewport;
+    gxm_viewport_translate(&context->state.viewport, width, height, &viewport, &vert_unif);
+    dkCmdBufSetViewports(context->cmdbuf, 0, &viewport, 1);
 
     const struct GXMRenderFragUniformBlock frag_unif = {
         .back_disabled = 0.0f,
@@ -922,14 +940,18 @@ static void set_vita3k_gxm_uniform_blocks(SceGxmContext *context, const DkViewpo
         .res_multiplier = 0,
     };
 
-    memcpy(dkMemBlockGetCpuAddr(context->gxm_vert_unif_block_memblock), &vert_unif,
-           sizeof(vert_unif));
+    dkCmdBufPushConstants(context->cmdbuf,
+                          dkMemBlockGetGpuAddr(context->gxm_vert_unif_block_memblock),
+                          ALIGN(sizeof(vert_unif), DK_UNIFORM_BUF_ALIGNMENT), 0,
+                          sizeof(vert_unif), &vert_unif);
     dkCmdBufBindUniformBuffer(context->cmdbuf, DkStage_Vertex, 2 /* hardcoded */,
                               dkMemBlockGetGpuAddr(context->gxm_vert_unif_block_memblock),
                               ALIGN(sizeof(vert_unif), DK_UNIFORM_BUF_ALIGNMENT));
 
-    memcpy(dkMemBlockGetCpuAddr(context->gxm_frag_unif_block_memblock), &frag_unif,
-           sizeof(frag_unif));
+    dkCmdBufPushConstants(context->cmdbuf,
+                          dkMemBlockGetGpuAddr(context->gxm_frag_unif_block_memblock),
+                          ALIGN(sizeof(frag_unif), DK_UNIFORM_BUF_ALIGNMENT), 0,
+                          sizeof(frag_unif), &frag_unif);
     dkCmdBufBindUniformBuffer(context->cmdbuf, DkStage_Fragment, 3 /* hardcoded */,
                               dkMemBlockGetGpuAddr(context->gxm_frag_unif_block_memblock),
                               ALIGN(sizeof(frag_unif), DK_UNIFORM_BUF_ALIGNMENT));
@@ -948,6 +970,16 @@ EXPORT(SceGxm, 0x8734FF4E, int, sceGxmBeginScene, SceGxmContext *context, unsign
 
     if (context->state.in_scene)
         return SCE_GXM_ERROR_WITHIN_SCENE;
+
+    if (validRegion && (validRegion->xMax >= rt_width || validRegion->yMax >= rt_height))
+        return SCE_GXM_ERROR_INVALID_VALUE;
+
+    /* BeginScene resets the transform to the default region, while retaining
+     * the viewport enable mode. Later setters are replayed at the next draw. */
+    float viewport_width = validRegion ? (float)validRegion->xMax + 1 : rt_width;
+    float viewport_height = validRegion ? (float)validRegion->yMax + 1 : rt_height;
+    gxm_viewport_set(&context->state.viewport, viewport_width * 0.5f, viewport_width * 0.5f,
+                     viewport_height * 0.5f, -viewport_height * 0.5f, 0.5f, 0.5f);
 
     if (context->texture_staging) {
         /* The previous scene was submitted by EndScene. Retire its temporary
@@ -968,7 +1000,6 @@ EXPORT(SceGxm, 0x8734FF4E, int, sceGxmBeginScene, SceGxmContext *context, unsign
     dkCmdBufSetScissors(context->cmdbuf, 0, &scissor, 1);
     dkCmdBufBindRasterizerState(context->cmdbuf, &context->state.rasterizer);
     dkCmdBufBindColorState(context->cmdbuf, &context->state.color);
-    set_vita3k_gxm_uniform_blocks(context, &viewport);
 
     context->state.vertex_rb.head = 0;
     context->state.fragment_rb.head = 0;
@@ -1673,6 +1704,9 @@ static int upload_fragment_texture_descriptors(SceGxmContext *context)
 
 static int context_flush_dirty_state(SceGxmContext *context)
 {
+    if (context->state.dirty.bit.viewport)
+        set_vita3k_gxm_uniform_blocks(context, context->state.color_surface->width,
+                                      context->state.color_surface->height);
     const DkShader *shaders[2];
     const SceGxmVertexProgram *vertex_program = context->state.vertex_program;
     const SceGxmFragmentProgram *fragment_program = context->state.fragment_program;
