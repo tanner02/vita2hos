@@ -1690,6 +1690,50 @@ EXPORT(SceGxm, 0x7B9023C3, SceGxmParameterType, sceGxmProgramParameterGetType,
     return parameter->type;
 }
 
+static int upload_texture_mip_chain(SceGxmContext *context, const GxmTextureMipChain *chain,
+                                     const void *source, size_t source_size, DkImage *image)
+{
+    if (!chain->count || chain->count > GXM_TEXTURE_MAX_MIP_LEVELS ||
+        source_size < chain->source_size) return SCE_GXM_ERROR_INVALID_VALUE;
+    DkMemBlock levels[GXM_TEXTURE_MAX_MIP_LEVELS];
+    for (unsigned i = 0; i < chain->count; ++i) {
+        if (chain->offsets[i] > source_size ||
+            chain->levels[i].source_size > source_size - chain->offsets[i])
+            return SCE_GXM_ERROR_INVALID_VALUE;
+        int ret = gxm_texture_stage(g_dk_device, &context->texture_staging, &chain->levels[i],
+            (const char *)source + chain->offsets[i], source_size - chain->offsets[i], &levels[i]);
+        if (ret) return ret;
+    }
+    DkImageLayoutMaker maker;
+    DkImageLayout layout;
+    dkImageLayoutMakerDefaults(&maker, g_dk_device);
+    maker.format = chain->levels[0].format;
+    maker.dimensions[0] = chain->levels[0].width;
+    maker.dimensions[1] = chain->levels[0].height;
+    maker.mipLevels = chain->count;
+    /* Pitch-linear images cannot represent a mip chain. Use native tiled
+     * storage and copy each packed linear level into its own image view. */
+    dkImageLayoutInitialize(&layout, &maker);
+    DkMemBlock destination;
+    int ret = gxm_texture_allocate_image(g_dk_device, &context->texture_staging,
+                                          dkImageLayoutGetSize(&layout), &destination);
+    if (ret) return ret;
+    dkImageInitialize(image, &layout, destination, 0);
+    dkCmdBufBarrier(context->cmdbuf, DkBarrier_Full, DkInvalidateFlags_L2Cache);
+    for (unsigned i = 0; i < chain->count; ++i) {
+        const GxmTextureLayout *level = &chain->levels[i];
+        DkImageView view;
+        dkImageViewDefaults(&view, image);
+        view.mipLevelOffset = i;
+        view.mipLevelCount = 1;
+        DkImageRect rect = {0, 0, 0, level->width, level->height, 1};
+        /* In this deko3d fork, rowLength and imageHeight are byte strides. */
+        DkCopyBuf buffer = {dkMemBlockGetGpuAddr(levels[i]), level->pitch, level->size};
+        dkCmdBufCopyBufferToImage(context->cmdbuf, &buffer, &view, &rect, 0);
+    }
+    return 0;
+}
+
 static int upload_fragment_texture_descriptors(SceGxmContext *context)
 {
     const SceGxmTextureInner *texture;
@@ -1702,6 +1746,7 @@ static int upload_fragment_texture_descriptors(SceGxmContext *context)
     DkImageView image_view;
     DkGpuAddr desc_addr;
     GxmTextureLayout texture_layout;
+    GxmTextureMipChain mip_chain;
     int ret;
     bool staged = false;
     struct {
@@ -1719,12 +1764,13 @@ static int upload_fragment_texture_descriptors(SceGxmContext *context)
         if (!tex_block)
             return SCE_GXM_ERROR_INVALID_POINTER;
 
-        ret = gxm_texture_get_linear_layout(texture, &texture_layout);
+        ret = gxm_texture_get_mip_chain(texture, &mip_chain);
         if (ret != 0) {
             LOG("Unsupported texture at unit %d: format 0x%08x, type 0x%08x", i,
                 (unsigned int)gxm_texture_get_format(texture), gxm_texture_get_type(texture));
             return ret;
         }
+        texture_layout = mip_chain.levels[0];
 
         dkSamplerDefaults(&sampler);
         sampler.wrapMode[0] = gxm_texture_addr_mode_to_dk_wrap_mode(texture->uaddr_mode);
@@ -1733,35 +1779,49 @@ static int upload_fragment_texture_descriptors(SceGxmContext *context)
             gxm_texture_get_type(texture) == SCE_GXM_TEXTURE_LINEAR_STRIDED
                 ? texture->mag_filter : texture->min_filter);
         sampler.magFilter = gxm_texture_filter_to_dk_filter(texture->mag_filter);
+        sampler.mipFilter = mip_chain.count == 1 ? DkMipFilter_None :
+            (texture->mip_filter ? DkMipFilter_Linear : DkMipFilter_Nearest);
+        sampler.lodClampMax = mip_chain.count - 1;
+        if (gxm_texture_get_type(texture) != SCE_GXM_TEXTURE_LINEAR_STRIDED) {
+            unsigned minimum = texture->lod_min0 | (texture->lod_min1 << 2);
+            sampler.lodClampMin = minimum < mip_chain.count ? minimum : mip_chain.count - 1;
+            sampler.lodBias = ((float)texture->lod_bias - 31.0f) / 8.0f;
+        }
         dkSamplerDescriptorInitialize(&descriptors.samplers[i], &sampler);
 
-        dkImageLayoutMakerDefaults(&image_layout_maker, g_dk_device);
-        image_layout_maker.flags = DkImageFlags_PitchLinear;
-        image_layout_maker.type = DkImageType_2D;
-        image_layout_maker.format = texture_layout.format;
-        image_layout_maker.dimensions[0] = texture_layout.width;
-        image_layout_maker.dimensions[1] = texture_layout.height;
-        image_layout_maker.pitchStride = texture_layout.pitch;
-        dkImageLayoutInitialize(&image_layout, &image_layout_maker);
-
         uint32_t offset = dk_memblock_cpu_addr_offset(tex_block->dk_memblock, tex_data);
-        if (offset > tex_block->size || texture_layout.source_size > tex_block->size - offset)
+        if (offset > tex_block->size || mip_chain.source_size > tex_block->size - offset)
             return SCE_GXM_ERROR_INVALID_VALUE;
-        DkMemBlock image_block = tex_block->dk_memblock;
-        const uint32_t type = gxm_texture_get_type(texture);
-        if ((type != SCE_GXM_TEXTURE_LINEAR && type != SCE_GXM_TEXTURE_LINEAR_STRIDED) ||
-            texture_layout.pitch != texture_layout.source_pitch ||
-            offset % dkImageLayoutGetAlignment(&image_layout) != 0) {
-            ret = gxm_texture_stage(g_dk_device, &context->texture_staging, &texture_layout,
-                                     tex_data, tex_block->size - offset, &image_block);
-            if (ret != 0)
-                return ret;
-            offset = 0;
+        if (mip_chain.count > 1) {
+            ret = upload_texture_mip_chain(context, &mip_chain, tex_data, tex_block->size - offset, &image);
+            if (ret) return ret;
             staged = true;
-        } else if (dkImageLayoutGetSize(&image_layout) > tex_block->size - offset) {
-            return SCE_GXM_ERROR_INVALID_VALUE;
+        } else {
+            dkImageLayoutMakerDefaults(&image_layout_maker, g_dk_device);
+            image_layout_maker.flags = DkImageFlags_PitchLinear;
+            image_layout_maker.type = DkImageType_2D;
+            image_layout_maker.format = texture_layout.format;
+            image_layout_maker.dimensions[0] = texture_layout.width;
+            image_layout_maker.dimensions[1] = texture_layout.height;
+            image_layout_maker.pitchStride = texture_layout.pitch;
+            dkImageLayoutInitialize(&image_layout, &image_layout_maker);
+
+            DkMemBlock image_block = tex_block->dk_memblock;
+            const uint32_t type = gxm_texture_get_type(texture);
+            if ((type != SCE_GXM_TEXTURE_LINEAR && type != SCE_GXM_TEXTURE_LINEAR_STRIDED) ||
+                texture_layout.pitch != texture_layout.source_pitch ||
+                offset % dkImageLayoutGetAlignment(&image_layout) != 0) {
+                ret = gxm_texture_stage(g_dk_device, &context->texture_staging, &texture_layout,
+                                         tex_data, tex_block->size - offset, &image_block);
+                if (ret != 0)
+                    return ret;
+                offset = 0;
+                staged = true;
+            } else if (dkImageLayoutGetSize(&image_layout) > tex_block->size - offset) {
+                return SCE_GXM_ERROR_INVALID_VALUE;
+            }
+            dkImageInitialize(&image, &image_layout, image_block, offset);
         }
-        dkImageInitialize(&image, &image_layout, image_block, offset);
         dkImageViewDefaults(&image_view, &image);
         memcpy(image_view.swizzle, texture_layout.swizzle, sizeof(image_view.swizzle));
         dkImageDescriptorInitialize(&descriptors.images[i], &image_view, false, false);

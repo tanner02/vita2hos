@@ -145,6 +145,47 @@ EXPORT(SceGxm, 0xFA22F6CC, int, sceGxmTextureSetVAddrModeSafe, SceGxmTexture *te
     return set_address_mode(texture, mode, false);
 }
 
+EXPORT(SceGxm, 0xB65EE6F7, int, sceGxmTextureSetLodBias, SceGxmTexture *texture, unsigned int bias)
+{
+    if (!texture) return SCE_GXM_ERROR_INVALID_POINTER;
+    SceGxmTextureInner *inner = (SceGxmTextureInner *)texture;
+    if (texture_type(inner) == SCE_GXM_TEXTURE_LINEAR_STRIDED) return SCE_GXM_ERROR_UNSUPPORTED;
+    if (bias > 63) return SCE_GXM_ERROR_INVALID_VALUE;
+    inner->lod_bias = bias;
+    return 0;
+}
+
+EXPORT(SceGxm, 0xB79E43DD, int, sceGxmTextureSetLodMin, SceGxmTexture *texture, unsigned int lodMin)
+{
+    if (!texture) return SCE_GXM_ERROR_INVALID_POINTER;
+    SceGxmTextureInner *inner = (SceGxmTextureInner *)texture;
+    if (texture_type(inner) == SCE_GXM_TEXTURE_LINEAR_STRIDED) return SCE_GXM_ERROR_UNSUPPORTED;
+    inner->lod_min0 = lodMin & 3; inner->lod_min1 = lodMin >> 2;
+    return 0;
+}
+
+EXPORT(SceGxm, 0x1CA9FE0B, int, sceGxmTextureSetMipFilter, SceGxmTexture *texture,
+       SceGxmTextureMipFilter filter)
+{
+    if (!texture) return SCE_GXM_ERROR_INVALID_POINTER;
+    SceGxmTextureInner *inner = (SceGxmTextureInner *)texture;
+    if (texture_type(inner) == SCE_GXM_TEXTURE_LINEAR_STRIDED) return SCE_GXM_ERROR_UNSUPPORTED;
+    if (filter != SCE_GXM_TEXTURE_MIP_FILTER_DISABLED && filter != SCE_GXM_TEXTURE_MIP_FILTER_ENABLED)
+        return SCE_GXM_ERROR_INVALID_VALUE;
+    inner->mip_filter = filter == SCE_GXM_TEXTURE_MIP_FILTER_ENABLED;
+    return 0;
+}
+
+EXPORT(SceGxm, 0xD2DC4643, int, sceGxmTextureSetMipmapCount, SceGxmTexture *texture, unsigned int count)
+{
+    if (!texture) return SCE_GXM_ERROR_INVALID_POINTER;
+    SceGxmTextureInner *inner = (SceGxmTextureInner *)texture;
+    if (texture_type(inner) == SCE_GXM_TEXTURE_LINEAR_STRIDED) return SCE_GXM_ERROR_UNSUPPORTED;
+    if (count > 13) return SCE_GXM_ERROR_INVALID_VALUE;
+    inner->mip_count = count ? count - 1 : 15;
+    return 0;
+}
+
 EXPORT(SceGxm, 0x855814C4, int, sceGxmTextureSetData, SceGxmTexture *texture, const void *data)
 {
     if (!texture)

@@ -8,6 +8,27 @@ struct GxmTextureStaging {
     GxmTextureStaging *next;
 };
 
+int gxm_texture_allocate_image(DkDevice device, GxmTextureStaging **list,
+                                uint64_t size, DkMemBlock *block)
+{
+    if (!block) return SCE_GXM_ERROR_INVALID_POINTER;
+    *block = NULL;
+    if (!list) return SCE_GXM_ERROR_INVALID_POINTER;
+    if (!size) return SCE_GXM_ERROR_INVALID_VALUE;
+    if (size > UINT32_MAX - (DK_MEMBLOCK_ALIGNMENT - 1U))
+        return SCE_GXM_ERROR_OUT_OF_MEMORY;
+    GxmTextureStaging *entry = malloc(sizeof(*entry));
+    if (!entry) return SCE_GXM_ERROR_OUT_OF_MEMORY;
+    uint32_t allocation = ((uint32_t)size + DK_MEMBLOCK_ALIGNMENT - 1U) & ~(DK_MEMBLOCK_ALIGNMENT - 1U);
+    DkMemBlockMaker maker;
+    dkMemBlockMakerDefaults(&maker, device, allocation);
+    maker.flags = DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached | DkMemBlockFlags_Image;
+    entry->block = dkMemBlockCreate(&maker);
+    if (!entry->block) { free(entry); return SCE_GXM_ERROR_OUT_OF_MEMORY; }
+    entry->next = *list; *list = entry; *block = entry->block;
+    return 0;
+}
+
 int gxm_texture_stage_data(DkDevice device, GxmTextureStaging **list, const void *data,
                            uint32_t size, DkMemBlock *block)
 {

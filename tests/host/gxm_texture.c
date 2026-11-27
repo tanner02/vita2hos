@@ -59,6 +59,24 @@ int main(void)
            SCE_GXM_ERROR_UNSUPPORTED);
     assert(sceGxmTextureSetMagFilter(&texture, SCE_GXM_TEXTURE_FILTER_LINEAR) == 0);
     assert(sceGxmTextureSetData(&texture, NULL) == 0 && inner->data_addr == 0);
+    SceGxmTexture strided = texture;
+    assert((uint32_t)sceGxmTextureSetLodBias(&texture, 0) == SCE_GXM_ERROR_UNSUPPORTED);
+    assert((uint32_t)sceGxmTextureSetLodMin(&texture, 3) == SCE_GXM_ERROR_UNSUPPORTED);
+    assert((uint32_t)sceGxmTextureSetMipFilter(&texture, SCE_GXM_TEXTURE_MIP_FILTER_ENABLED) == SCE_GXM_ERROR_UNSUPPORTED);
+    assert((uint32_t)sceGxmTextureSetMipmapCount(&texture, 3) == SCE_GXM_ERROR_UNSUPPORTED);
+    assert(!memcmp(&texture, &strided, sizeof(texture)));
+    assert(!sceGxmTextureInitSwizzled(&texture, NULL, SCE_GXM_TEXTURE_FORMAT_R8, 32, 32, 1));
+    assert(!sceGxmTextureSetMipmapCount(&texture, 0) && inner->mip_count == 15);
+    assert(!sceGxmTextureSetMipmapCount(&texture, 13) && inner->mip_count == 12);
+    assert(!sceGxmTextureSetMipFilter(&texture, SCE_GXM_TEXTURE_MIP_FILTER_ENABLED) && inner->mip_filter == 1);
+    assert(!sceGxmTextureSetLodBias(&texture, 63) && inner->lod_bias == 63);
+    assert(!sceGxmTextureSetLodMin(&texture, 15) && inner->lod_min0 == 3 && inner->lod_min1 == 3);
+    SceGxmTexture mip_saved = texture;
+    assert((uint32_t)sceGxmTextureSetMipmapCount(&texture, 14) == SCE_GXM_ERROR_INVALID_VALUE);
+    assert((uint32_t)sceGxmTextureSetLodBias(&texture, 64) == SCE_GXM_ERROR_INVALID_VALUE);
+    assert((uint32_t)sceGxmTextureSetMipFilter(&texture, (SceGxmTextureMipFilter)1) == SCE_GXM_ERROR_INVALID_VALUE);
+    assert(!memcmp(&texture, &mip_saved, sizeof(texture)));
+    assert((uint32_t)sceGxmTextureSetMipmapCount(NULL, 1) == SCE_GXM_ERROR_INVALID_POINTER);
     puts("GXM texture-state regression checks passed.");
     return 0;
 }

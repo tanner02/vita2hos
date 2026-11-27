@@ -182,6 +182,18 @@ int main(void)
             == SCE_GXM_ERROR_INVALID_VALUE && !block);
     gxm_texture_staging_release(&list);
     assert(!list && !live_blocks);
+    assert(!gxm_texture_allocate_image(NULL, &list, 8193, &block) && live_blocks == 1);
+    saved = list;
+    assert((uint32_t)gxm_texture_allocate_image(NULL, &list, UINT64_MAX, &block)
+            == SCE_GXM_ERROR_OUT_OF_MEMORY && !block && list == saved);
+    assert((uint32_t)gxm_texture_allocate_image(NULL, &list, 0, &block)
+            == SCE_GXM_ERROR_INVALID_VALUE && !block);
+    fail_create = true;
+    assert((uint32_t)gxm_texture_allocate_image(NULL, &list, 4096, &block)
+            == SCE_GXM_ERROR_OUT_OF_MEMORY && !block && live_blocks == 1);
+    fail_create = false;
+    gxm_texture_staging_release(&list);
+    assert(!list && !live_blocks);
     puts("GXM texture staging and descriptor snapshot regression checks passed.");
     return 0;
 }
