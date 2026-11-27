@@ -8,6 +8,9 @@ import re
 RECORD = re.compile(
     r"UNRESOLVED_IMPORT kind=(function|variable) library=(0x[0-9a-fA-F]{8}) "
     r"nid=(0x[0-9a-fA-F]{8})\b")
+LIBRARY = re.compile(r"Resolving imports for library NID (0x[0-9a-fA-F]{8})\b")
+LEGACY_FUNCTION = re.compile(r"Could not resolve NID (0x[0-9a-fA-F]{8}), export not found!")
+LEGACY_VARIABLE = re.compile(r"Trying to resolve variable NID (0x[0-9a-fA-F]{8})\b")
 
 
 def sdk_symbols(directory):
@@ -38,11 +41,29 @@ def sdk_symbols(directory):
 
 
 def report(log, libraries, symbols):
-    records = Counter((int(m[2], 16), m[1], int(m[3], 16))
-                      for m in RECORD.finditer(log))
+    structured = Counter((int(m[2], 16), m[1], int(m[3], 16))
+                         for m in RECORD.finditer(log))
+    legacy = Counter()
+    library = None
+    for line in log.splitlines():
+        match = LIBRARY.search(line)
+        if match:
+            library = int(match[1], 16)
+        if library is None:
+            continue  # Never guess a library for an orphaned NID.
+        for kind, pattern in (("function", LEGACY_FUNCTION), ("variable", LEGACY_VARIABLE)):
+            match = pattern.search(line)
+            if match:
+                legacy[(library, kind, int(match[1], 16))] += 1
+    # Current builds emit both representations. Prefer explicit library-scoped
+    # records per symbol; legacy-only symbols remain useful after UDP loss.
+    records = legacy.copy()
+    for key, occurrences in structured.items():
+        records[key] = occurrences
     return [{"library_nid": f"0x{library:08x}",
              "library": libraries.get(library), "kind": kind,
              "nid": f"0x{nid:08x}", "symbol": symbols.get((library, kind, nid)),
+             "evidence": "structured" if (library, kind, nid) in structured else "legacy_context",
              "log_occurrences": occurrences}
             for (library, kind, nid), occurrences in sorted(records.items())]
 
@@ -59,7 +80,8 @@ def main():
     rows = report(args.log.read_text(encoding="utf-8", errors="replace"), libraries, symbols)
     print(json.dumps({"unresolved_imports": rows, "unique_imports": len(rows),
                       "note": "Only imports observed in this log; UDP loss or a partial run can "
-                              "omit records. Occurrences are log records, not function calls."},
+                              "omit records. Legacy library context depends on log ordering. "
+                              "Occurrences are log records, not function calls."},
                      indent=2))
 
 

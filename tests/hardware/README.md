@@ -10,8 +10,11 @@ The JSON report groups unresolved function and variable imports by library and
 symbol NID and resolves names from the pinned Vita SDK database. Repeated log
 records are counted together; those counts are not runtime call frequencies.
 An empty report does not establish compatibility: partial execution or UDP loss
-can omit imports. Builds before the structured `UNRESOLVED_IMPORT` records are
-not supported by this reporting tool. Preserve the original log with the report.
+can omit imports. Older builds are supported through their library-header and
+missing-NID messages; those entries are marked `legacy_context` because dropped
+or reordered UDP messages can make that context unreliable. Structured records
+are preferred when present and are not counted again through their older
+companion messages. Preserve the original log with the report.
 
 Use a Debug NSP built from the commit being tested. The upstream
 [alpha-0.4 release](https://github.com/xerpi/vita2hos/releases/tag/alpha-0.4)

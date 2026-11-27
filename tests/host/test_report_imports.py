@@ -10,6 +10,30 @@ spec.loader.exec_module(module)
 
 
 class ReportTests(unittest.TestCase):
+    def test_legacy_context_switch_orphans_and_variables(self):
+        rows = module.report(
+            "Could not resolve NID 0x11111111, export not found!\n"
+            "Resolving imports for library NID 0xCAE9ACE6\n"
+            "Could not resolve NID 0x99BA173E, export not found!\n"
+            "Resolving imports for library NID 0x12345678\n"
+            "Trying to resolve variable NID 0x99BA173E\n", {}, {})
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[0]["library_nid"], "0x12345678")
+        self.assertEqual(rows[0]["kind"], "variable")
+        self.assertEqual(rows[1]["library_nid"], "0xcae9ace6")
+        self.assertEqual(rows[1]["evidence"], "legacy_context")
+
+    def test_mixed_formats_do_not_double_count(self):
+        legacy = ("Resolving imports for library NID 0xCAE9ACE6\n"
+                  "Could not resolve NID 0x99BA173E, export not found!\n")
+        structured = "UNRESOLVED_IMPORT kind=function library=0xCAE9ACE6 nid=0x99BA173E\n"
+        rows = module.report(legacy + structured, {}, {})
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["log_occurrences"], 1)
+        self.assertEqual(rows[0]["evidence"], "structured")
+        rows = module.report(legacy + structured * 2, {}, {})
+        self.assertEqual(rows[0]["log_occurrences"], 2)
+
     def test_pinned_database(self):
         libraries, symbols = module.sdk_symbols(root / "external/vita-headers/db/360")
         self.assertEqual(libraries[0xcae9ace6], "SceLibKernel")
