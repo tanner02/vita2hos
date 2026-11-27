@@ -10,10 +10,12 @@
 #include <stdlib.h>
 #include <switch.h>
 #include <unistd.h>
+#include <sys/time.h>
 #undef st_ctime
 #undef st_atime
 #undef st_mtime
 #include <psp2/io/dirent.h>
+#include <psp2/io/stat.h>
 
 #include "log.h"
 #include "config.h"
@@ -500,6 +502,7 @@ static int io_errno(int error)
     case EBADF: return SCE_ERROR_ERRNO_EBADF;
     case EINVAL: return SCE_ERROR_ERRNO_EINVAL;
     case ESPIPE: return (int)0x8001001d;
+    case ENOSYS: return (int)0x8001004e;
     default: return (int)0x80010005; /* EIO */
     }
 }
@@ -508,11 +511,10 @@ static int stat_to_sce(SceIoStat *destination, const struct stat *source)
 {
     SceIoStat result = {0};
     if (S_ISDIR(source->st_mode)) {
-        result.st_mode = SCE_S_IFDIR | SCE_S_IRWXU | SCE_S_IRWXG | SCE_S_IRWXS;
+        result.st_mode = SCE_S_IFDIR | (source->st_mode & 0707);
         result.st_attr = SCE_SO_IFDIR;
     } else {
-        result.st_mode = SCE_S_IFREG | SCE_S_IRUSR | SCE_S_IWUSR | SCE_S_IRGRP |
-                         SCE_S_IWGRP | SCE_S_IRSYS | SCE_S_IWSYS;
+        result.st_mode = SCE_S_IFREG | (source->st_mode & 0707);
         result.st_attr = SCE_SO_IFREG;
     }
     result.st_size = source->st_size;
@@ -520,12 +522,15 @@ static int stat_to_sce(SceIoStat *destination, const struct stat *source)
     if (!gmtime_r(&source->st_ctim.tv_sec, &time))
         return io_errno(EINVAL);
     tm_to_sce_datetime(&result.st_ctime, &time);
+    result.st_ctime.microsecond = source->st_ctim.tv_nsec / 1000;
     if (!gmtime_r(&source->st_atim.tv_sec, &time))
         return io_errno(EINVAL);
     tm_to_sce_datetime(&result.st_atime, &time);
+    result.st_atime.microsecond = source->st_atim.tv_nsec / 1000;
     if (!gmtime_r(&source->st_mtim.tv_sec, &time))
         return io_errno(EINVAL);
     tm_to_sce_datetime(&result.st_mtime, &time);
+    result.st_mtime.microsecond = source->st_mtim.tv_nsec / 1000;
     *destination = result;
     return 0;
 }
@@ -545,6 +550,66 @@ EXPORT(SceLibKernel, 0xBCA5B623, int, sceIoGetstat, const char *file, SceIoStat 
     if (stat(file, &status) != 0)
         return io_errno(errno);
     return stat_to_sce(info, &status);
+}
+
+static int vita_datetime_to_timeval(const SceDateTime *date,struct timeval *output)
+{
+    unsigned year=date->year,month=date->month,day=date->day;
+    static const unsigned days_in_month[]={31,28,31,30,31,30,31,31,30,31,30,31};
+    if (!year || year>9999 || !month || month>12 || !day || date->hour>23 ||
+        date->minute>59 || date->second>59 || date->microsecond>999999)
+        return io_errno(EINVAL);
+    bool leap=year%4==0 && (year%100!=0 || year%400==0);
+    if (day>days_in_month[month-1]+(month==2 && leap)) return io_errno(EINVAL);
+    /* Gregorian civil date -> days since 1970-01-01, without mktime's local
+     * timezone, DST normalization, or acceptance of invalid calendar fields. */
+    unsigned adjusted_year=year-(month<=2),era=adjusted_year/400;
+    unsigned yoe=adjusted_year-era*400;
+    unsigned march_month=month>2 ? month-3 : month+9;
+    unsigned doy=(153*march_month+2)/5+day-1;
+    unsigned doe=yoe*365+yoe/4-yoe/100+doy;
+    int64_t days=(int64_t)era*146097+doe-719468;
+    int64_t seconds=days*86400+date->hour*3600+date->minute*60+date->second;
+    struct timeval value={.tv_sec=(time_t)seconds,.tv_usec=date->microsecond};
+    if ((int64_t)value.tv_sec!=seconds) return io_errno(EINVAL);
+    *output=value;
+    return 0;
+}
+
+EXPORT(SceLibKernel,0x29482F7F,int,sceIoChstat,const char *path,SceIoStat *info,int bits)
+{
+    const int known=SCE_CST_MODE|SCE_CST_SIZE|SCE_CST_CT|SCE_CST_AT|SCE_CST_MT;
+    if (!path || !info) return io_errno(EFAULT);
+    if (bits & ~known) return io_errno(EINVAL);
+    /* POSIX ctime is metadata-change time, not Vita creation time. Reject the
+     * whole request before changing any other selected field. */
+    if (bits & SCE_CST_CT) return io_errno(ENOSYS);
+    if ((bits & SCE_CST_SIZE) && info->st_size<0) return io_errno(EINVAL);
+    struct timeval times[2];
+    int result;
+    if ((bits & SCE_CST_AT) && (result=vita_datetime_to_timeval(&info->st_atime,&times[0])))
+        return result;
+    if ((bits & SCE_CST_MT) && (result=vita_datetime_to_timeval(&info->st_mtime,&times[1])))
+        return result;
+    char resolved[PATH_MAX];
+    result=vita_io_path(path,resolved,sizeof(resolved));
+    if (result) return result;
+    if (!*resolved) return SCE_ERROR_ERRNO_ENODEV;
+    struct stat status;
+    if (stat(resolved,&status)<0) return io_errno(errno);
+    if (!(bits & SCE_CST_AT)) {
+        times[0].tv_sec=status.st_atim.tv_sec;times[0].tv_usec=status.st_atim.tv_nsec/1000;
+    }
+    if (!(bits & SCE_CST_MT)) {
+        times[1].tv_sec=status.st_mtim.tv_sec;times[1].tv_usec=status.st_mtim.tv_nsec/1000;
+    }
+    /* Group bits are ignored by the Vita ABI; file-type bits cannot change.
+     * Host operations are sequential: a later failure cannot undo an earlier
+     * successful change. Unselected timestamps use this stat snapshot. */
+    if ((bits & SCE_CST_SIZE) && truncate(resolved,info->st_size)<0) return io_errno(errno);
+    if ((bits & SCE_CST_MODE) && chmod(resolved,info->st_mode & 0707)<0) return io_errno(errno);
+    if ((bits & (SCE_CST_AT|SCE_CST_MT)) && utimes(resolved,times)<0) return io_errno(errno);
+    return 0;
 }
 
 EXPORT(SceLibKernel, 0x57F8CD25, int, sceIoGetstatByFd, SceUID fd, SceIoStat *info)

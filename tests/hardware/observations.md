@@ -538,6 +538,35 @@
   distinguish the 64-bit clock from 32-bit epoch seconds. No new Switch run,
   bundled-libc startup or commercial-title boot is claimed by these host checks.
 
+## Host file metadata changes after ff194f2
+
+- Added SceLibKernel sceIoChstat (NID 29482f7f): selected permissions, size,
+  access time and modification time use native chmod/truncate/utimes. Paths use
+  the existing app0 resolver and native failures propagate as Vita errno values.
+  The newly handled native ENOSYS maps to 0x8001004e.
+- Validate masks, negative sizes and selected calendar fields before mutation.
+  Creation-time changes return ENOSYS before any other field changes: POSIX ctime
+  is not a settable creation date. Unknown mask bits return EINVAL. Type bits do
+  not change file type; group permission bits are ignored per the SDK fields.
+- UTC Gregorian conversion avoids host timezone/DST normalization, validates
+  leap years and microseconds, and rejects dates outside years 1..9999 or native
+  time_t range. Unselected timestamps use a pre-change snapshot rounded to
+  microseconds. Native operations are sequential, so a later failure may retain
+  earlier successful changes; this is not an atomic metadata transaction.
+- Getstat and descriptor/directory stat now reflect native owner/system permission
+  bits and subsecond timestamps instead of fabricated writable modes and zero
+  microseconds. Vita system permissions map to POSIX other bits in this bridge;
+  firmware enforcement and SD permission/precision behavior remain unverified.
+- The host regression uses only temporary files, including a sparse size above
+  4 GiB, permission/type readback, exact microsecond round trips, unchanged
+  unselected timestamps, invalid combined requests, UTC conversion across
+  centuries under a non-UTC host timezone, and forced backend failures.
+  The full ASan/UBSan suite and ARM Debug/Release builds passed.
+- ABI reference:
+  https://github.com/vitasdk/vita-headers/blob/master/include/psp2common/kernel/iofilemgr.h
+  No Switch files or original game files were changed. This does not establish
+  bundled-module startup or commercial-title boot.
+
 ## Runtime 15d400f48e5d3a3f5d811e2a67bd30a1388cc102
 
 - Standalone HOME title, owned fixed-address CPU probe SHA-256
