@@ -325,3 +325,7 @@ thread/TLS ownership. Quiescence still rejects teardown until the test explicitl
 releases and joins the worker and main threads. A normally terminating main is
 also joined and deleted. These host tests exercise the bootstrap precondition;
 they do not simulate Horizon whole-process termination.
+
+Network host checks also call all six byte-order exports before initialization,
+checking literal wire bytes, unsigned boundaries, round trips and NID dispatch.
+These pure functions do not provide sockets, online authentication or callbacks.

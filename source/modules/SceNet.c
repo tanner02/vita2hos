@@ -15,6 +15,22 @@
 static Mutex net_lock;
 static bool host_ready,net_initialized,ctl_initialized;
 
+/* Both guest and host are little endian. These pure conversions are usable
+ * before NetInit, without acquiring or borrowing any network service. Keep
+ * the SDK's exact unsigned types, including the 64-bit r0/r1 return ABI. */
+EXPORT(SceNet,0x4C30B03C,unsigned int,sceNetHtonl,unsigned int host32)
+{return __builtin_bswap32(host32);}
+EXPORT(SceNet,0x12C19209,unsigned long long int,sceNetHtonll,unsigned long long int host64)
+{return __builtin_bswap64(host64);}
+EXPORT(SceNet,0x9FA3207B,unsigned short int,sceNetHtons,unsigned short int host16)
+{return __builtin_bswap16(host16);}
+EXPORT(SceNet,0xD2EAA645,unsigned int,sceNetNtohl,unsigned int net32)
+{return __builtin_bswap32(net32);}
+EXPORT(SceNet,0xFB3336A6,unsigned long long int,sceNetNtohll,unsigned long long int net64)
+{return __builtin_bswap64(net64);}
+EXPORT(SceNet,0x07845128,unsigned short int,sceNetNtohs,unsigned short int net16)
+{return __builtin_bswap16(net16);}
+
 void SceNet_set_host_ready(bool ready)
 { mutexLock(&net_lock);host_ready=ready;mutexUnlock(&net_lock); }
 bool SceNet_host_ready(void)

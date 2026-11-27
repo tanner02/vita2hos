@@ -2,6 +2,7 @@
 #include <assert.h>
 #include <stdarg.h>
 #include <stdio.h>
+#include <string.h>
 #include <switch.h>
 typedef enum {NifmServiceType_User=0} NifmServiceType;
 typedef enum {NifmInternetConnectionType_WiFi=1} NifmInternetConnectionType;
@@ -20,6 +21,30 @@ bool SceNpTrophy_is_initialized(void){return false;}
 void log_printf(const char *format,...){(void)format;}
 int main(void)
 {
+    /* Literal wire-order bytes give an oracle independent of the swap itself.
+     * Exercise the exports before any host provider or guest network init. */
+    unsigned short int (*htons_export)(unsigned short int) =
+        (void *)module_get_func_export(0x6bf8b2a2,0x9fa3207b);
+    unsigned int (*htonl_export)(unsigned int) =
+        (void *)module_get_func_export(0x6bf8b2a2,0x4c30b03c);
+    unsigned long long int (*htonll_export)(unsigned long long int) =
+        (void *)module_get_func_export(0x6bf8b2a2,0x12c19209);
+    assert(htons_export && htonl_export && htonll_export);
+    unsigned short int wire16 = htons_export(0x1234);
+    unsigned int wire32 = htonl_export(0x89abcdef);
+    unsigned long long int wire64 = htonll_export(0xfedcba9876543210ull);
+    assert(!memcmp(&wire16, "\x12\x34", 2));
+    assert(!memcmp(&wire32, "\x89\xab\xcd\xef", 4));
+    assert(!memcmp(&wire64, "\xfe\xdc\xba\x98\x76\x54\x32\x10", 8));
+    assert(module_get_func_export(0x6bf8b2a2,0x07845128) == (void *)sceNetNtohs);
+    assert(module_get_func_export(0x6bf8b2a2,0xd2eaa645) == (void *)sceNetNtohl);
+    assert(module_get_func_export(0x6bf8b2a2,0xfb3336a6) == (void *)sceNetNtohll);
+    assert(sceNetNtohs(wire16) == 0x1234 && sceNetNtohl(wire32) == 0x89abcdef);
+    assert(sceNetNtohll(wire64) == 0xfedcba9876543210ull);
+    assert(htons_export(0) == 0 && htons_export(0xffff) == 0xffff);
+    assert(htonl_export(0) == 0 && htonl_export(0xffffffffu) == 0xffffffffu);
+    assert(htonll_export(0) == 0 && htonll_export(~0ull) == ~0ull);
+    assert(htonll_export(0x8000000000000001ull) == 0x0100000000000080ull);
     unsigned char pool[0x4000];SceNetInitParam param={pool,sizeof(pool),0};
     SceNet_finish();SceNet_set_host_ready(false);
     assert(sceNetInit(&param)==(int)SCE_NET_ERROR_ENODEV);
@@ -60,5 +85,5 @@ int main(void)
     assert(module_get_func_export(0x6bf8b2a2,0xeb03e265));
     assert(module_get_func_export(0xc6083ae1,0x495ca1db));
     assert(module_get_func_export(0x03fcf19d,0x79a0160a));
-    puts("Network lifecycle: shared host provider, validation, retry, service ownership, observed state and teardown passed.");
+    puts("Network lifecycle: 16/32/64-bit wire order and NID dispatch, shared host provider, validation, retry, service ownership, observed state and teardown passed.");
 }
