@@ -140,3 +140,10 @@ normalization/numeric conversion, collisions, native capacity, offset overflow
 and unchanged output on failure. These checks establish declarations and fetch
 configuration; actual GPU fetch, matrix memory layout and rendered geometry
 still require hardware testing.
+
+The shader_integration target also builds two tests of the production logging
+wrapper (rather than the translator test stub). Debug retains TRACE/DEBUG;
+Release suppresses their output and argument evaluation. Both configurations
+retain INFO/WARN/ERROR/CRITICAL formatting. The tests explicitly check counters
+in Release, where assert is disabled. They cover logging behavior, not runtime
+startup speed or shader rendering correctness.

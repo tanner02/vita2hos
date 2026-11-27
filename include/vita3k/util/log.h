@@ -11,16 +11,22 @@
 #include "../log.h"
 
 #undef LOG_TRACE
+#undef LOG_DEBUG
+#ifdef NDEBUG
+/* Do not format or evaluate diagnostic arguments on the release hot path. */
+#define LOG_TRACE(...) ((void)0)
+#define LOG_DEBUG(...) ((void)0)
+#else
 template <typename... Args> void LOG_TRACE(std::string_view fmt, Args &&...args)
 {
     log_print(fmt::format(fmt::runtime(fmt), std::forward<Args>(args)...).c_str());
 }
 
-#undef LOG_DEBUG
 template <typename... Args> void LOG_DEBUG(std::string_view fmt, Args &&...args)
 {
     log_print(fmt::format(fmt::runtime(fmt), std::forward<Args>(args)...).c_str());
 }
+#endif
 
 #undef LOG_INFO
 template <typename... Args> void LOG_INFO(std::string_view fmt, Args &&...args)

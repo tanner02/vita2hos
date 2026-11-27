@@ -32,5 +32,18 @@ target_include_directories(shader_integration PRIVATE "${REPO}/include"
     "${REPO}/external/Vita3K/external/glslang")
 target_link_libraries(shader_integration PRIVATE shader spirv-cross-glsl)
 enable_testing()
+foreach(mode debug release)
+    add_executable(vita3k_logging_${mode} logging.cpp)
+    target_include_directories(vita3k_logging_${mode} PRIVATE "${REPO}/tests/host/stubs")
+    target_link_libraries(vita3k_logging_${mode} PRIVATE gxm util)
+    if(mode STREQUAL "release")
+        target_compile_definitions(vita3k_logging_${mode} PRIVATE NDEBUG)
+    else()
+        target_compile_options(vita3k_logging_${mode} PRIVATE
+            "$<IF:$<CXX_COMPILER_ID:MSVC>,/UNDEBUG,-UNDEBUG>")
+    endif()
+    add_test(NAME shader_logging_${mode} COMMAND vita3k_logging_${mode})
+endforeach()
+add_dependencies(shader_integration vita3k_logging_debug vita3k_logging_release)
 add_test(NAME real_gxp_layouts COMMAND shader_integration
     "${REPO}/external/Vita3K/tools/native-tool/src/shaders")

@@ -1924,3 +1924,16 @@ The runtime was unchanged between these two runs. Private initial/final reports
 are retained. Public owned-scene report and verification receipt list all48tags.
 These results establish our implementation on Switch; they do not substitute
 for an on-Vita clipping oracle or prove LittleBigPlanet boots correctly.
+
+## Release shader logging overhead
+
+The Vita3K compatibility wrapper implemented TRACE/DEBUG as unconditional
+format-and-write functions even under NDEBUG. Release now suppresses both
+levels and their argument evaluation; INFO/WARN/ERROR/CRITICAL remain active.
+Production-wrapper host tests explicitly force each mode and check counters
+without relying on assert in Release. Both tests and existing real-GXP layout
+integration pass. The original Release wrapper fails the new evaluation check.
+Native/hardware performance verification of this logging change is pending;
+no shader cache or precompilation feature is added. LOG_DISASM can still build
+its diagnostic string for the pinned translator's optional disassembly storage,
+so this change does not claim to eliminate all formatting overhead.
