@@ -13,6 +13,22 @@ struct ModuleGuestLibrary {
 };
 static ModuleGuestExports *active_guest_exports;
 
+int module_guest_exports_merge(ModuleGuestExports *exports, ModuleGuestExports *pending)
+{
+    if (!exports || !pending || exports == pending) return -1;
+    for (ModuleGuestLibrary *p = pending->libraries; p; p = p->next)
+        for (ModuleGuestLibrary *q = exports->libraries; q; q = q->next)
+            if (p->nid == q->nid) return -1;
+    if (pending->libraries) {
+        ModuleGuestLibrary *tail = pending->libraries;
+        while (tail->next) tail = tail->next;
+        tail->next = exports->libraries;
+        exports->libraries = pending->libraries;
+        pending->libraries = NULL;
+    }
+    return 0;
+}
+
 int module_guest_exports_register(ModuleGuestExports *exports, const void *owner,
                                   uint32_t library, const ModuleGuestSymbol *symbols, size_t count)
 {

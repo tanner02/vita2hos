@@ -22,6 +22,8 @@ const void *module_guest_exports_find(const ModuleGuestExports *exports, uint32_
                                       ModuleSymbolKind kind, uint32_t nid, bool *library_owned);
 void module_guest_exports_remove(ModuleGuestExports *exports, const void *owner);
 void module_guest_exports_clear(ModuleGuestExports *exports);
+/* Transfer all libraries atomically; duplicate providers leave both unchanged. */
+int module_guest_exports_merge(ModuleGuestExports *exports, ModuleGuestExports *pending);
 void module_set_guest_exports(ModuleGuestExports *exports);
 
 typedef struct {

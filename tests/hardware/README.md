@@ -258,6 +258,12 @@ so missing functions cannot silently fall back to a different allocator. The
 loader still needs to map/register/init the bundled SUPRX modules and bind their
 variable relocations; the registry alone does not load those modules.
 
+The export decoder accepts relocated 32-byte public-library records through a
+bounded image-reader callback. It validates function targets as executable,
+preserves Thumb bits, and registers all libraries atomically. TLS exports are
+rejected, and lifecycle records are left for the module-startup phase. This is
+host-tested groundwork; it is not yet called by the runtime image loader.
+
 ### Experimental title-specific launch profile
 
 **Hardware status:** this route failed to start Mario Kart 8 Deluxe on the tested
