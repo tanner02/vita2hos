@@ -92,6 +92,8 @@ static int launch(SceKernelThreadEntry entry)
     SceDisplay_finish();
     SceKernelThreadMgr_finish();
 
+    SceSysmem_finish();
+
     dkDeviceDestroy(dk_device);
 
     LOG("Process finished! Returned: %d", ret);

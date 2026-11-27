@@ -12,6 +12,7 @@ typedef struct VitaMemBlockInfo {
 } VitaMemBlockInfo;
 
 int SceSysmem_init(DkDevice dk_device);
+void SceSysmem_finish(void);
 SceUID SceSysmem_get_next_uid(void);
 VitaMemBlockInfo *SceSysmem_get_vita_memblock_info_for_addr(const void *addr);
 DkMemBlock SceSysmem_get_dk_memblock_for_addr(const void *addr);

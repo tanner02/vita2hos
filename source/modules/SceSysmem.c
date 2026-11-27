@@ -155,6 +155,25 @@ int SceSysmem_init(DkDevice dk_device)
     return 0;
 }
 
+/* Called after guest execution and the render/presenter queues have stopped.
+ * Guest-owned blocks may intentionally outlive module_start (for example a
+ * displayed framebuffer). Reclaim their GPU mappings before device destruction. */
+void SceSysmem_finish(void)
+{
+    rwlockWriteLock(&g_vita_memblock_infos_lock);
+    vita_memblock_info_dict_it_t it;
+    for (vita_memblock_info_dict_it(it, g_vita_memblock_infos);
+         !vita_memblock_info_dict_end_p(it); vita_memblock_info_dict_next(it)) {
+        VitaMemBlockInfo *block = vita_memblock_info_dict_ref(it)->value;
+        dkMemBlockDestroy(block->dk_memblock);
+        free(block->base);
+        free(block);
+    }
+    vita_memblock_info_dict_clear(g_vita_memblock_infos);
+    g_dk_device = NULL;
+    rwlockWriteUnlock(&g_vita_memblock_infos_lock);
+}
+
 SceUID SceSysmem_get_next_uid(void)
 {
     return atomic_fetch_add(&g_last_uid, 1);

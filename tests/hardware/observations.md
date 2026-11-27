@@ -104,14 +104,24 @@
   rendering cases. Visible cube presentation and commercial-title boot remain
   separate requirements; neither is established by this offscreen report.
 
-### Visible textured cube: pending
+### Visible textured cube: rendering PASS, shutdown FAIL
 
 - Guest source `ced41b378e35aff9521c9e4bdaca9c8348da5e4e`, SHA-256
   `970925b69b4f49c9f0a33ac4a4f203ddf46bcc4419dc1cd7da9e9287e7c29630`.
 - USB deployment verified the previous passing version 5 guest, preserved it
   under a backup name, then verified the new executable by readback checksum.
   The installed runtime remains `38972ed`; no NSP reinstall was performed.
-- Hardware report and visible presentation result are pending.
+- User reported that the cube appeared, followed by a deko3d failure after some
+  time. USB readback confirms all prerequisite checks, 120/240/360 frame markers,
+  `PASS cube_frames`, and final `PASS visible_cube`.
+- The runtime log confirms guest exit status 0. During shutdown, `dkDeviceDestroy`
+  then fails with `unfreed memory blocks` (result 9). The guest deliberately
+  retains its displayed allocations until the presenter stops, but the runtime
+  had no Sysmem teardown to release their GPU mappings before device destruction.
+- Sysmem teardown now releases outstanding guest mappings after display shutdown.
+  Host regression tests cover retained and explicitly freed allocations; hardware
+  confirmation of clean shutdown remains pending. The guest PASS marker by itself
+  does not cover runtime shutdown.
 
 ## Runtime f55edbf626acb6ff46d510a55bdd026dd78ac5ad
 

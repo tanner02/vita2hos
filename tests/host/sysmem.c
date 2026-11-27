@@ -80,7 +80,20 @@ int main(void)
         assert(uid > 0 && sceKernelFreeMemBlock(uid) == 0);
     }
     assert(vita_memblock_info_dict_size(g_vita_memblock_infos) == 0 && live_mappings == 0);
-    vita_memblock_info_dict_clear(g_vita_memblock_infos);
+    SceUID retained[3];
+    for (unsigned i = 0; i < 3; ++i) {
+        retained[i] = sceKernelAllocMemBlock("retained", SCE_KERNEL_MEMBLOCK_TYPE_USER_RW,
+                                           (i + 1) * 4096, NULL);
+        assert(retained[i] > 0);
+    }
+    assert(live_mappings == 3);
+    assert(sceKernelFreeMemBlock(retained[1]) == 0 && live_mappings == 2);
+    /* Process cleanup must release only remaining mappings, exactly once. */
+    SceSysmem_finish();
+    assert(live_mappings == 0 && g_dk_device == NULL);
+    assert(SceSysmem_init(NULL) == 0);
+    assert(vita_memblock_info_dict_size(g_vita_memblock_infos) == 0);
+    SceSysmem_finish();
     puts("SceSysmem regression checks passed.");
     return 0;
 }
