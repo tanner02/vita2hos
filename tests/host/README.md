@@ -420,5 +420,8 @@ all 16 units per stage, rebinding and non-mutating invalid input rejection.
 They do not exercise GPU sampling; vertex-stage hardware validation is pending.
 
 Vertex format checks cover all eleven guest formats and component counts1..4,
-including untyped32-bit integer fetch. Invalid formats/counts/pointers preserve
-outputs. Shader type/location reflection and GPU fetch behavior need further checks.
+including untyped32-bit integer fetch and numeric float conversion for raw
+U8/S8/U16/S16 shader inputs. Invalid formats/counts/pointers preserve outputs. Shader
+metadata checks cover integer/raw-register inputs, stripped float fallback,
+unused attributes and failure output preservation.
+Input location mapping, packed registers and GPU fetch behavior need further checks.

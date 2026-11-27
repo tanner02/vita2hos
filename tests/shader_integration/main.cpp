@@ -16,6 +16,39 @@
 static void require(bool value, const char *message)
 { if (!value) throw std::runtime_error(message); }
 
+static unsigned check_vertex_inputs(SceGxmProgram *program)
+{
+    if (program->is_fragment()) return 0;
+    unsigned checked = 0;
+    auto *parameters = const_cast<SceGxmProgramParameter *>(program->program_parameters());
+    auto *varyings = const_cast<SceGxmProgramVertexVaryings *>(program->vertex_varyings());
+    for (unsigned i = 0; i < program->parameter_count; ++i) {
+        auto &parameter = parameters[i];
+        if (parameter.category != SCE_GXM_PARAMETER_CATEGORY_ATTRIBUTE) continue;
+        require(parameter.resource_index < 64, "unexpected fixture attribute register");
+        const auto original_type = parameter.type;
+        const auto original_regs = varyings->untyped_pa_regs;
+        const uint64_t bit = uint64_t{1} << parameter.resource_index;
+        bool integer = true;
+        // Metadata-only derivatives: neither guest instructions nor GPU code run.
+        varyings->untyped_pa_regs &= ~bit;
+        parameter.type = SCE_GXM_PARAMETER_TYPE_F32;
+        require(gxp_vertex_attribute_integer_c(program, parameter.resource_index, &integer) && !integer,
+                "floating vertex input requires numeric fetch conversion");
+        parameter.type = SCE_GXM_PARAMETER_TYPE_S16;
+        require(gxp_vertex_attribute_integer_c(program, parameter.resource_index, &integer) && integer,
+                "integer vertex input requires integer fetch");
+        parameter.type = SCE_GXM_PARAMETER_TYPE_F32;
+        varyings->untyped_pa_regs |= bit;
+        require(gxp_vertex_attribute_integer_c(program, parameter.resource_index, &integer) && integer,
+                "register-format vertex input requires integer fetch");
+        parameter.type = original_type;
+        varyings->untyped_pa_regs = original_regs;
+        ++checked;
+    }
+    return checked;
+}
+
 static bool check_sampler_bindings(SceGxmProgram *program)
 {
     auto *parameters = const_cast<SceGxmProgramParameter *>(program->program_parameters());
@@ -184,6 +217,7 @@ int main(int argc, char **argv)
         unsigned checked = 0;
         unsigned named_checked = 0;
         unsigned misaligned_checked = 0;
+        unsigned vertex_inputs_checked = 0;
         bool sampler_checked[2] = {};
         for (const auto &entry : std::filesystem::directory_iterator(argv[1])) {
             if (entry.path().extension() != ".gxp") continue;
@@ -195,6 +229,7 @@ int main(int argc, char **argv)
             // Controlled derivatives exercise named slots without adding opaque
             // fixture blobs. These validate container declarations, not rendering.
             auto *mutable_program = reinterpret_cast<SceGxmProgram *>(data.data());
+            vertex_inputs_checked += check_vertex_inputs(mutable_program);
             const unsigned stage = program->is_fragment() ? 0 : 1;
             if (!sampler_checked[stage]) sampler_checked[stage] = check_sampler_bindings(mutable_program);
             auto *parameters = const_cast<SceGxmProgramParameter *>(mutable_program->program_parameters());
@@ -228,6 +263,7 @@ int main(int argc, char **argv)
             ++checked;
         }
         require(checked >= 7, "expected seven pinned real GXP fixtures");
+        require(vertex_inputs_checked >= 1, "expected real vertex input metadata coverage");
         require(misaligned_checked >= 3, "expected all misaligned uniform lanes");
         require(sampler_checked[0] && sampler_checked[1], "expected both stages' sampler binding coverage");
         require(named_checked >= 2, "expected derived named-buffer coverage");

@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-struct SceGxmProgram {};
+struct SceGxmProgram { bool fragment = false; bool is_fragment() const { return fragment; } };
 struct SceGxmVertexAttribute {};
 constexpr unsigned SCE_GXM_MAX_TEXTURE_UNITS = 16;
 constexpr int SCE_GXM_COLOR_FORMAT_U8U8U8U8_ABGR = 0;

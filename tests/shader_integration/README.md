@@ -82,3 +82,13 @@ when binding through deko3d, even though that call also selects a shader stage.
 These copies do not add texture-sampling instructions and are never rendered.
 They validate binding declarations, alongside the existing uniform/layout tests.
 Actual vertex-stage sampling still needs a later hardware batch.
+
+## Numeric vertex inputs
+
+Metadata-only derivatives of pinned vertex fixtures check floating, integer and
+raw-register input declarations against the runtime input classifier. Raw U8/S8
+and U16/S16 attributes use numeric float conversion for floating shader inputs;
+integer and raw-register inputs retain integer fetch. Host tests separately
+cover the deko3d format mapping and stripped-shader fallback. These checks do
+not establish rendered geometry; input locations and packed registers still
+need further compatibility work.

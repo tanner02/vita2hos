@@ -131,6 +131,7 @@ typedef struct SceGxmShaderPatcher {
 } SceGxmShaderPatcher;
 
 typedef struct SceGxmVertexProgram {
+    uint32_t integer_attributes;
     const SceGxmProgram *program; /* Caller-owned GXP, independent of registration ID. */
     GxmProgramRef ref;
     uint32_t default_uniform_count;
@@ -632,6 +633,15 @@ EXPORT(SceGxm, 0xB7BBA6D5, int, sceGxmShaderPatcherCreateVertexProgram,
         memcpy(vertex_program->attributes, attributes, attributeCount * sizeof(SceGxmVertexAttribute));
     }
     vertex_program->attributeCount = attributeCount;
+    for (unsigned i = 0; i < attributeCount; ++i) {
+        bool integer_input;
+        if (!gxp_vertex_attribute_integer_c(programId->programHeader, attributes[i].regIndex,
+                                             &integer_input)) {
+            ret = SCE_GXM_ERROR_INVALID_VALUE;
+            goto fail;
+        }
+        if (integer_input) vertex_program->integer_attributes |= 1U << i;
+    }
     if (streamCount) {
         vertex_program->streams = calloc(streamCount, sizeof(SceGxmVertexStream));
         if (!vertex_program->streams) {
@@ -2080,7 +2090,8 @@ static int context_flush_dirty_state(SceGxmContext *context)
             DkVtxAttribSize size;
             DkVtxAttribType type;
             int ret = gxm_translate_vertex_format(attributes[i].format,
-                attributes[i].componentCount, &type, &size);
+                attributes[i].componentCount, (vertex_program->integer_attributes & (1U << i)) != 0,
+                &type, &size);
             if (ret) return ret;
             vertex_attrib_state[i].size = size;
             vertex_attrib_state[i].type = type;

@@ -156,22 +156,37 @@ int main(void)
         for (unsigned components=1;components<=4;++components) {
             DkVtxAttribType type=DkVtxAttribType_None;
             DkVtxAttribSize size=DkVtxAttribSize_1x8;
-            assert(!gxm_translate_vertex_format(formats[f].format,components,&type,&size));
+            assert(!gxm_translate_vertex_format(formats[f].format,components,true,&type,&size));
             assert(type==formats[f].type && size==sizes[formats[f].width][components-1]);
         }
+    }
+    for (unsigned f=0;f<4;++f) {
+        DkVtxAttribType converted;
+        DkVtxAttribSize size;
+        assert(!gxm_translate_vertex_format(formats[f].format,3,false,&converted,&size));
+        assert(converted==(f==0 || f==2 ? DkVtxAttribType_Uscaled : DkVtxAttribType_Sscaled));
+        assert(size==sizes[formats[f].width][2]);
+    }
+    /* Normalization and ordinary floating-point fetch remain explicit format
+     * semantics rather than inheriting the unnormalized integer conversion. */
+    for (unsigned f=4;f<sizeof(formats)/sizeof(formats[0]);++f) {
+        DkVtxAttribType converted;
+        DkVtxAttribSize size;
+        assert(!gxm_translate_vertex_format(formats[f].format,4,false,&converted,&size));
+        assert(converted==formats[f].type && size==sizes[formats[f].width][3]);
     }
     DkVtxAttribType type=DkVtxAttribType_Snorm;
     DkVtxAttribSize size=DkVtxAttribSize_3x8;
     for (unsigned components=0;components<=5;components+=5) {
-        assert((uint32_t)gxm_translate_vertex_format(SCE_GXM_ATTRIBUTE_FORMAT_UNTYPED,components,&type,&size)==SCE_GXM_ERROR_INVALID_VALUE);
+        assert((uint32_t)gxm_translate_vertex_format(SCE_GXM_ATTRIBUTE_FORMAT_UNTYPED,components,true,&type,&size)==SCE_GXM_ERROR_INVALID_VALUE);
         assert(type==DkVtxAttribType_Snorm && size==DkVtxAttribSize_3x8);
     }
-    assert((uint32_t)gxm_translate_vertex_format((SceGxmAttributeFormat)-1,1,&type,&size)==SCE_GXM_ERROR_INVALID_VALUE);
-    assert((uint32_t)gxm_translate_vertex_format(SCE_GXM_ATTRIBUTE_FORMAT_UNTYPED+1,1,&type,&size)==SCE_GXM_ERROR_INVALID_VALUE);
+    assert((uint32_t)gxm_translate_vertex_format((SceGxmAttributeFormat)-1,1,true,&type,&size)==SCE_GXM_ERROR_INVALID_VALUE);
+    assert((uint32_t)gxm_translate_vertex_format(SCE_GXM_ATTRIBUTE_FORMAT_UNTYPED+1,1,true,&type,&size)==SCE_GXM_ERROR_INVALID_VALUE);
     assert(type==DkVtxAttribType_Snorm && size==DkVtxAttribSize_3x8);
-    assert((uint32_t)gxm_translate_vertex_format(SCE_GXM_ATTRIBUTE_FORMAT_F32,1,NULL,&size)==SCE_GXM_ERROR_INVALID_POINTER);
+    assert((uint32_t)gxm_translate_vertex_format(SCE_GXM_ATTRIBUTE_FORMAT_F32,1,true,NULL,&size)==SCE_GXM_ERROR_INVALID_POINTER);
     assert(size==DkVtxAttribSize_3x8);
-    assert((uint32_t)gxm_translate_vertex_format(SCE_GXM_ATTRIBUTE_FORMAT_F32,1,&type,NULL)==SCE_GXM_ERROR_INVALID_POINTER);
+    assert((uint32_t)gxm_translate_vertex_format(SCE_GXM_ATTRIBUTE_FORMAT_F32,1,true,&type,NULL)==SCE_GXM_ERROR_INVALID_POINTER);
     assert(type==DkVtxAttribType_Snorm);
     puts("GXM index range regression checks passed.");
     return 0;

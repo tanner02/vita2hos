@@ -12,6 +12,21 @@ static void *test_malloc(size_t size) { return fail_allocation ? nullptr : std::
 int main()
 {
     SceGxmProgram program;
+    bool integer = true;
+    assert(gxp_vertex_attribute_integer_c(&program, 0, &integer) && !integer);
+    assert(gxp_vertex_attribute_integer_c(&program, 4, &integer) && integer);
+    assert(gxp_vertex_attribute_integer_c(&program, 8, &integer) && integer);
+    assert(gxp_vertex_attribute_integer_c(&program, 99, &integer) && integer);
+    shader::test_conversion_mode = 1;
+    assert(gxp_vertex_attribute_integer_c(&program, 0, &integer) && !integer);
+    shader::test_conversion_mode = 2;
+    assert(!gxp_vertex_attribute_integer_c(&program, 0, &integer) && !integer);
+    program.fragment = true;
+    assert(!gxp_vertex_attribute_integer_c(&program, 0, &integer) && !integer);
+    program.fragment = false;
+    assert(!gxp_vertex_attribute_integer_c(nullptr, 0, &integer) && !integer);
+    assert(!gxp_vertex_attribute_integer_c(&program, 0, nullptr));
+    shader::test_conversion_mode = 0;
     GxmUniformLayout layout;
     assert(gxp_uniform_layout_c(&program, &layout));
     assert(layout.bytes[0] == 12 && layout.bytes[1] == 4 && layout.bytes[4] == 20);

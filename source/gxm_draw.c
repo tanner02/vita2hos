@@ -36,7 +36,7 @@ int gxm_validate_vertex_layout(const SceGxmVertexAttribute *attributes, unsigned
     return 0;
 }
 
-int gxm_translate_vertex_format(SceGxmAttributeFormat format, unsigned int components,
+int gxm_translate_vertex_format(SceGxmAttributeFormat format, unsigned int components, bool integer_input,
                                   DkVtxAttribType *type, DkVtxAttribSize *size)
 {
     if (!type || !size) return SCE_GXM_ERROR_INVALID_POINTER;
@@ -44,10 +44,14 @@ int gxm_translate_vertex_format(SceGxmAttributeFormat format, unsigned int compo
     DkVtxAttribType result;
     unsigned width;
     switch (format) {
-    case SCE_GXM_ATTRIBUTE_FORMAT_U8: result = DkVtxAttribType_Uint; width = 0; break;
-    case SCE_GXM_ATTRIBUTE_FORMAT_S8: result = DkVtxAttribType_Sint; width = 0; break;
-    case SCE_GXM_ATTRIBUTE_FORMAT_U16: result = DkVtxAttribType_Uint; width = 1; break;
-    case SCE_GXM_ATTRIBUTE_FORMAT_S16: result = DkVtxAttribType_Sint; width = 1; break;
+    case SCE_GXM_ATTRIBUTE_FORMAT_U8:
+        result = integer_input ? DkVtxAttribType_Uint : DkVtxAttribType_Uscaled; width = 0; break;
+    case SCE_GXM_ATTRIBUTE_FORMAT_S8:
+        result = integer_input ? DkVtxAttribType_Sint : DkVtxAttribType_Sscaled; width = 0; break;
+    case SCE_GXM_ATTRIBUTE_FORMAT_U16:
+        result = integer_input ? DkVtxAttribType_Uint : DkVtxAttribType_Uscaled; width = 1; break;
+    case SCE_GXM_ATTRIBUTE_FORMAT_S16:
+        result = integer_input ? DkVtxAttribType_Sint : DkVtxAttribType_Sscaled; width = 1; break;
     case SCE_GXM_ATTRIBUTE_FORMAT_U8N: result = DkVtxAttribType_Unorm; width = 0; break;
     case SCE_GXM_ATTRIBUTE_FORMAT_S8N: result = DkVtxAttribType_Snorm; width = 0; break;
     case SCE_GXM_ATTRIBUTE_FORMAT_U16N: result = DkVtxAttribType_Unorm; width = 1; break;

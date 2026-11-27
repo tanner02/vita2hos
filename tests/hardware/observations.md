@@ -1,3 +1,18 @@
+## 2026-11-27: numeric vertex attribute conversion (offline, not deployed)
+
+Raw U8/S8/U16/S16 vertex attributes now use deko3d numeric float conversion
+when the pinned shader parser declares a floating input. Integer and raw-register
+inputs retain integer fetch. The classification is cached during vertex program
+creation; stripped shaders follow the translator's float-input hint fallback.
+Normalized, float and untyped32-bit format mappings retain their existing behavior.
+
+The full ASan/UBSan host suite, real pinned GXP metadata integration checks and
+native Debug/Release builds pass. Metadata-only fixture derivatives cover float,
+integer and raw-register declarations. Input locations, packed-register handling
+and rendered geometry still need further work and hardware validation. No game
+boot is established. User probe hold and ZCode hardware ownership were respected;
+no console access, probe correction, payload change or deployment occurred.
+
 ## 2026-11-27: untyped vertex fetch support (offline, not deployed)
 
 Vertex layout admission now accepts SCE_GXM_ATTRIBUTE_FORMAT_UNTYPED. Its

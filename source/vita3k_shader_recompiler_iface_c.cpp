@@ -4,10 +4,28 @@
 #include <shader/spirv_recompiler.h>
 #include <shader/usse_translator_types.h>
 #include <shader/gxp_parser.h>
+#include <shader/usse_program_analyzer.h>
 
 #include "vita3k_shader_recompiler_iface_c.h"
 
 extern "C" {
+
+bool gxp_vertex_attribute_integer_c(const SceGxmProgram *program, uint32_t reg_index,
+                                     bool *integer_input)
+{
+    if (!program || !integer_input || program->is_fragment()) return false;
+    try {
+        shader::usse::AttributeInformationMap inputs;
+        shader::usse::get_attribute_informations(*program, inputs);
+        const auto found = inputs.find(reg_index);
+        const bool result = found == inputs.end() ? !inputs.empty() :
+            found->second.is_integer || found->second.regformat;
+        *integer_input = result;
+        return true;
+    } catch (...) {
+        return false;
+    }
+}
 
 bool gxp_uniform_layout_c(const SceGxmProgram *program, GxmUniformLayout *layout)
 {
