@@ -1,5 +1,6 @@
 #include "load_process.h"
 #include "log.h"
+#include "modules/SceKernelThreadMgr.h"
 #include <psp2/kernel/error.h>
 #include <psp2common/kernel/modulemgr.h>
 
@@ -21,7 +22,7 @@ int load_process_run(LoadProcess *process, uint32_t args, void *argp)
             continue;
         }
         LOG("Starting guest dependency %zu", i);
-        int result = start(0, NULL);
+        int result = SceKernelThreadMgr_run_module_start(start);
         if (result != SCE_KERNEL_START_SUCCESS) {
             atomic_store(&process->images[i].module_state,SCE_KERNEL_MODULE_STATE_ENDED);
             /* NO_RESIDENT cannot be accepted while imports still point into

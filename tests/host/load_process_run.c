@@ -2,6 +2,10 @@
 #include <assert.h>
 #include <stdio.h>
 #include "../../source/load_process_run.c"
+/* This unit test isolates loader ordering; the threaded integration test uses
+ * the production thread runner, TLS and explicit exits. */
+int SceKernelThreadMgr_run_module_start(SceKernelThreadEntry entry) { return entry(0,NULL); }
+
 
 static int calls[8], call_count, failed_module, failure_result, main_result;
 void log_printf(const char *format, ...) { (void)format; }

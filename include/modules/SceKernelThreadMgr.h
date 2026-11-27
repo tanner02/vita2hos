@@ -30,6 +30,11 @@ int SceKernelThreadMgr_finish(void);
 /* Called on the current guest thread immediately before its nonreturning exit. */
 void SceKernelThreadMgr_prepare_current_exit(int status);
 VitaThreadInfo *SceKernelThreadMgr_get_thread_info(void);
+/* Runs one dependency start on a fresh guest thread, joins it, and returns its
+ * return/explicit-exit status. Inherits the calling guest thread's priority.
+ * Once started, a failed host wait is retried: live guest mappings cannot be
+ * released until termination has been established. */
+int SceKernelThreadMgr_run_module_start(SceKernelThreadEntry entry);
 int SceKernelThreadMgr_main_entry(SceKernelThreadEntry entry, int args, void *argp);
 int SceKernelThreadMgr_main_entry_configured(SceKernelThreadEntry entry, int args, void *argp,
                                              const LoadProcessParameters *parameters);

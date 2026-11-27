@@ -6,6 +6,10 @@
 #include "../../source/modules/SceModulemgr.c"
 #include "../../source/module.c"
 #include "../../source/load_process_run.c"
+/* This unit test isolates loader ordering; the threaded integration test uses
+ * the production thread runner, TLS and explicit exits. */
+int SceKernelThreadMgr_run_module_start(SceKernelThreadEntry entry) { return entry(0,NULL); }
+
 DECLARE_LIBRARY(SceLibKernel,0xcae9ace6);
 SceUID SceSysmem_get_next_uid(void) { static SceUID uid=100;return uid++; }
 void log_printf(const char *format,...) { (void)format; }

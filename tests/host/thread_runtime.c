@@ -37,6 +37,7 @@ void log_printf(const char *format, ...) { (void)format; }
 SceUID SceSysmem_get_next_uid(void) { static SceUID next = 1; return next++; }
 UEvent *SceLibKernel_get_process_exit_uevent(void) { return &exit_event; }
 int SceLibKernel_get_process_exit_res(void) { return process_exit_status; }
+bool SceLibKernel_process_exit_requested(void) { return false; }
 Result threadCreate(Thread *thread, void (*entry)(void *), void *arg, void *stack,
                     size_t size, int priority, int cpu)
 {

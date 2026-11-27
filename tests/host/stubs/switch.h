@@ -30,7 +30,13 @@ static inline void rwlockWriteUnlock(RwLock *lock) { (void)lock; }
 #endif
 typedef int UEvent;
 #ifdef TEST_THREAD_RUNTIME
+#ifdef TEST_THREAD_RUNTIME_PTHREAD
+#include <pthread.h>
+typedef struct { void (*entry)(void *); void *argument; pthread_t native;
+                 bool started, joined; } Thread;
+#else
 typedef struct { void (*entry)(void *); void *argument; } Thread;
+#endif
 #else
 typedef int Thread;
 #endif

@@ -40,6 +40,7 @@ typedef struct {
 
 static UEvent g_process_exit_event;
 static atomic_int g_process_exit_res;
+static atomic_bool g_process_exit_requested;
 
 DICT_DEF2(vita_opened_files_dict, SceUID, M_DEFAULT_OPLIST, VitaOpenedFile *, M_POD_OPLIST)
 static vita_opened_files_dict_t g_vita_opened_files;
@@ -90,6 +91,7 @@ EXPORT(SceLibKernel, 0x7595D9AA, int, sceKernelExitProcess, int res)
     LOG("sceKernelExitProcess called! Return value %d", res);
 
     atomic_store(&g_process_exit_res, res);
+    atomic_store(&g_process_exit_requested, true);
     ueventSignal(&g_process_exit_event);
 
     SceKernelThreadMgr_prepare_current_exit(res);
@@ -588,6 +590,8 @@ int SceLibKernel_init(void)
     vita_opened_dirs_dict_init(g_vita_opened_dirs);
     rwlockInit(&g_vita_opened_files_lock);
     rwlockInit(&g_vita_opened_dirs_lock);
+    atomic_store(&g_process_exit_requested,false);
+    atomic_store(&g_process_exit_res,0);
     ueventCreate(&g_process_exit_event, false);
 
     return 0;
@@ -601,4 +605,9 @@ UEvent *SceLibKernel_get_process_exit_uevent(void)
 int SceLibKernel_get_process_exit_res(void)
 {
     return atomic_load(&g_process_exit_res);
+}
+
+bool SceLibKernel_process_exit_requested(void)
+{
+    return atomic_load(&g_process_exit_requested);
 }

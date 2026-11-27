@@ -279,6 +279,32 @@ EXPORT(SceLibKernel, 0xDDB395A9, int, sceKernelWaitThreadEnd, SceUID thid, int *
     return 0;
 }
 
+int SceKernelThreadMgr_run_module_start(SceKernelThreadEntry entry)
+{
+    VitaThreadInfo *parent=SceKernelThreadMgr_get_thread_info();
+    if (!parent) return SCE_KERNEL_ERROR_UNKNOWN_THREAD_ID;
+    SceUID uid=create_thread("<module_start>",entry,parent->priority,
+                             SCE_KERNEL_THREAD_STACK_SIZE_DEFAULT_USER_MAIN);
+    if (uid<0) return uid;
+    int result=start_thread(uid,0,NULL);
+    if (result<0) {
+        sceKernelDeleteThread(uid);
+        return result;
+    }
+    int status;
+    while ((result=sceKernelWaitThreadEnd(uid,&status,NULL))<0) {
+        LOG("Module-start thread 0x%x join failed: 0x%x; retaining live process",uid,result);
+        svcSleepThread(1000000);
+    }
+    result=sceKernelDeleteThread(uid);
+    /* ExitProcess from a dependency has already awakened the host waiter.
+     * End the parent startup thread too, rather than entering another module
+     * or main while the host is waiting to reclaim this process. */
+    if (SceLibKernel_process_exit_requested())
+        sceKernelExitThread(SceLibKernel_get_process_exit_res());
+    return result<0 ? result : status;
+}
+
 int SceKernelThreadMgr_main_entry(SceKernelThreadEntry entry, int args, void *argp)
 {
     return SceKernelThreadMgr_main_entry_configured(entry,args,argp,NULL);

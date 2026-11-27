@@ -50,6 +50,7 @@ int main(void)
     assert(!SceLibKernel_init());
     if (!setjmp(process_exit)) { sceKernelExitProcess(37);assert(0); }
     assert(SceLibKernel_get_process_exit_res()==37 && g_process_exit_event);
+    assert(SceLibKernel_process_exit_requested());
     char path[]="/tmp/vita2hos-positioned-XXXXXX";
     int native=mkstemp(path);assert(native>=0 && !close(native));
     SceUID fd=sceIoOpen(path,SCE_O_RDWR,0600);assert(fd>0);

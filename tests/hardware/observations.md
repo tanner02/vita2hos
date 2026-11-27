@@ -460,6 +460,33 @@
   code or establish bundled-libc startup or commercial-title compatibility.
   No Switch files were changed.
 
+## Host dependency-start threads after aead0bb
+
+- Static inspection of the privately supplied libc identified import stub
+  `0x8102d480` as SceThreadmgrCoredumpTime `sceKernelExitThread` (NID
+  `0x0c8a38e1`). Its module-start success path calls that stub with status 0;
+  early failure paths call it with status 2. The earlier inline startup design
+  would therefore terminate the guest main thread before entering the game.
+  This is import-table/disassembly evidence, not guest execution evidence.
+- Dependency starts now run sequentially on fresh guest threads, inheriting
+  their caller's priority and using a 256 KiB stack. Each gets the normal TLS,
+  optional reviewed thread-pointer exchange, and START/EXIT event path. The
+  parent joins and deletes each startup thread before advancing. Return and
+  explicit ExitThread status both feed the existing resident-success gate.
+- A host join error is retried while retaining the process, rather than allowing
+  teardown of mappings still used by an unconfirmed live startup thread.
+  ExitProcess from a dependency also ends the parent after joining the child,
+  preserving the process result and preventing entry into main.
+- A pthread-backed integration test uses the production loader/thread wrappers
+  and real callback registry. It checks explicit exits, normal returns, failure
+  gating, inherited priority, isolated TLS contents, event delivery, cleanup,
+  create/start failures, a transient join failure, and process-exit propagation.
+  The full ASan/UBSan suite and ARM Debug/Release builds passed.
+- Per-module custom thread settings, stop/exit lifecycle callbacks, dynamic
+  module loading and shutdown of unrelated guest workers remain unfinished.
+  Bundled-libc and commercial-title boot still require hardware validation.
+  No Switch files were changed.
+
 ## Runtime 15d400f48e5d3a3f5d811e2a67bd30a1388cc102
 
 - Standalone HOME title, owned fixed-address CPU probe SHA-256

@@ -11,5 +11,6 @@
 int SceLibKernel_init(void);
 UEvent *SceLibKernel_get_process_exit_uevent(void);
 int SceLibKernel_get_process_exit_res(void);
+bool SceLibKernel_process_exit_requested(void);
 
 #endif

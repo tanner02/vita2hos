@@ -32,7 +32,9 @@ struct LoadModulePaths;
 int load_process_load_app(LoadProcess *process, const char *executable,
                           const char *app_root, const struct LoadModulePaths *modules);
 /* Call once on an initialized guest thread. Startup entries run in explicit
- * dependency-list order with zero arguments. Only resident success (0) is
+ * dependency-list order on separate guest threads with zero arguments. Each
+ * thread is joined before continuing; return and explicit thread-exit status
+ * are equivalent. Only resident success (0) is
  * supported. Failure prevents entry into main. This does not run stop callbacks
  * or stop threads created by guest modules. */
 int load_process_run(LoadProcess *process, uint32_t args, void *argp);
