@@ -1196,7 +1196,9 @@ EXPORT(SceGxm, 0x8734FF4E, int, sceGxmBeginScene, SceGxmContext *context, unsign
     multisample.mode=multisample.rasterizerMode=renderTarget->shadow_color_surface.ms_mode;
     dkMultisampleStateSetLocations(&multisample,NULL,0);
     dkCmdBufBindMultisampleState(context->cmdbuf,&multisample);
-    dkCmdBufSetSampleMask(context->cmdbuf,UINT32_MAX);
+    /* Maxwell's sample-mask methods accept 16 bits. deko3d forwards the
+     * argument unchanged; reserved high bits trigger a GPU method error. */
+    dkCmdBufSetSampleMask(context->cmdbuf,0xffffu);
     dkCmdBufSetViewports(context->cmdbuf, 0, &viewport, 1);
     dkCmdBufSetScissors(context->cmdbuf, 0, &scissor, 1);
     DkRasterizerState rasterizer = gxm_effective_rasterizer(&context->state.rasterizer,
