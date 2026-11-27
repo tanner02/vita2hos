@@ -382,8 +382,7 @@ The whole batch is validated first, but completed writes are not rolled back on
 later failure. Required-size output is zeroed only on success and preserved on
 failure; accurate shortage/quota reporting is not implemented. Tests verify disk
 bytes, truncation, invalid-batch nonmutation, symlink denial and ENOSPC propagation.
-Removal, quota/search and metadata timestamp
-synthesis remain incomplete; Switch filesystem behavior is still unverified.
+Removal and quota/search remain incomplete; Switch filesystem behavior is still unverified.
 
 Generic file I/O now dispatches savedata0: through AppUtil's active resolver.
 The static callback is published/revoked atomically and rechecks readiness under
@@ -408,3 +407,10 @@ the exact installed backend and physical SD behavior still require the owned pro
 APPUTIL sysmodule load/query/unload now tracks the compiled provider. Loading
 does not initialize storage or establish a mount. Unload rejects an initialized
 AppUtil service; shutdown permits unload. Host integration covers these states.
+
+DataSave snapshots supplied slot metadata and obtains a UTC modifiedTime from
+SceRtc before file operations. Clock failure stops before writes. Caller timestamp
+fields change only after the metadata record commits; failed commits leave them
+and required-size output unchanged. Tests use a fixed UTC clock, persist/reopen the
+timestamp, and cover clock and staged-record failures. Physical device clock
+accuracy and commercial-title timestamp behavior remain unverified.

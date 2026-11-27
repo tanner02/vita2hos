@@ -1,4 +1,5 @@
 #include <psp2/apputil.h>
+#include <psp2/rtc.h>
 #include <psp2/kernel/error.h>
 #include <switch.h>
 #include <errno.h>
@@ -192,13 +193,20 @@ EXPORT(SceAppUtil,0x607647BA,int,sceAppUtilSaveDataDataSave,SceAppUtilSaveDataFi
     else if(mount || (file_count && !files) || file_count>1024)result=(int)SCE_APPUTIL_ERROR_PARAMETER;
     else {
         char path[1024];int native=0;
+        SceAppUtilSaveDataSlotParam metadata;
+        bool has_metadata=slot && slot->slotParam;
         /* Validate the entire batch before creating anything. Execution is
          * sequential, not a cross-file transaction; errors are never success. */
         for(unsigned i=0;i<file_count && !native;i++)native=validate_save_file(&files[i],path);
+        if(!native && has_metadata) {
+            metadata=*slot->slotParam;
+            if(sceRtcGetCurrentClockUtc(&metadata.modifiedTime))native=-EIO;
+        }
         for(unsigned i=0;i<file_count && !native;i++)native=write_save_file(&files[i]);
-        if(!native && slot && slot->slotParam) {
-            native=savedata_slot_put(save_root,slot->id,slot->slotParam,false);
-            if(native==-ENOENT)native=savedata_slot_put(save_root,slot->id,slot->slotParam,true);
+        if(!native && has_metadata) {
+            native=savedata_slot_put(save_root,slot->id,&metadata,false);
+            if(native==-ENOENT)native=savedata_slot_put(save_root,slot->id,&metadata,true);
+            if(!native)slot->slotParam->modifiedTime=metadata.modifiedTime;
         }
         result=native==-ENOENT ? (int)0x80010002 :
             native==-ENOTDIR ? (int)0x80010014 : app_error(native);

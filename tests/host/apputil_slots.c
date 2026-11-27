@@ -8,11 +8,18 @@ static char test_root[]="/tmp/vita2hos-apputil-XXXXXX";
 #include <unistd.h>
 #include "../../source/savedata_identity.c"
 #include "../../source/savedata_slots.c"
-static int fail_payload_write;
+static int fail_payload_write,fail_clock;
+#define sceRtcGetCurrentClock app_clock
 static ssize_t payload_write(int fd,const void *data,size_t size);
 #define write payload_write
 #include "../../source/modules/SceAppUtil.c"
 #undef write
+#undef sceRtcGetCurrentClock
+int app_clock(SceDateTime *date,int zone)
+{
+    assert(zone==0);if(fail_clock)return -1;
+    *date=(SceDateTime){.year=2026,.month=11,.day=27,.hour=12,.minute=34,.second=56,.microsecond=123456};return 0;
+}
 static ssize_t payload_write(int fd,const void *data,size_t size)
 {if(fail_payload_write){errno=ENOSPC;return -1;}return write(fd,data,size);}
 #include "../../source/modules/SceLibKernel.c"
@@ -67,8 +74,20 @@ int main(void)
     SceAppUtilSaveDataFile files[2]={{.filePath="data",.mode=2},
         {.filePath="data/save.bin",.buf="abcdef",.bufSize=6}};
     SceAppUtilSaveDataFileSlot slot={.id=2,.slotParam=&param};
+    SceDateTime before_time=param.modifiedTime;
+    fail_clock=1;
+    assert(sceAppUtilSaveDataDataSave(&slot,files,2,NULL,&required)==(int)0x80010005 && required==99);
+    assert(!memcmp(&param.modifiedTime,&before_time,sizeof(before_time)));fail_clock=0;
+    char not_created[1024];assert(!savedata_path("data",not_created));assert(access(not_created,F_OK)<0);
     assert(!sceAppUtilSaveDataDataSave(&slot,files,2,NULL,&required) && required==0);
-    assert(!sceAppUtilSaveDataSlotGetParam(2,&output,NULL) && output.userParam==7);
+    assert(param.modifiedTime.year==2026 && param.modifiedTime.microsecond==123456);
+    assert(!sceAppUtilSaveDataSlotGetParam(2,&output,NULL) && output.userParam==7 && !memcmp(&output.modifiedTime,&param.modifiedTime,sizeof(param.modifiedTime)));
+    SceAppUtilSaveDataSlotParam failed_param=param;failed_param.modifiedTime.year=1999;
+    SceAppUtilSaveDataFileSlot failed_slot={.id=3,.slotParam=&failed_param};
+    char occupied[1024];assert(!slot_path(occupied,save_root,3,true));
+    file=fopen(occupied,"wb");assert(file && !fclose(file));required=99;
+    assert(sceAppUtilSaveDataDataSave(&failed_slot,NULL,0,NULL,&required)==(int)SCE_APPUTIL_ERROR_BUSY);
+    assert(failed_param.modifiedTime.year==1999 && required==99);assert(!unlink(occupied));
     SceUID guest_file=sceIoOpen("savedata0:/data/save.bin",SCE_O_RDONLY,0);assert(guest_file>0);
     assert(!sceAppUtilShutdown());
     assert((uint32_t)sceIoOpen("savedata0:/data/save.bin",SCE_O_RDONLY,0)==SCE_ERROR_ERRNO_ENODEV);
