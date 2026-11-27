@@ -98,7 +98,7 @@ int main(void)
         assert((uint32_t)change(path,&request,SCE_CST_SIZE|SCE_CST_MODE|SCE_CST_AT)==SCE_ERROR_ERRNO_EINVAL);
         assert(!fstat(fd,&native) && native.st_size==2 && (native.st_mode&0777)==0600);
     }
-    assert((uint32_t)change(path,&request,SCE_CST_SIZE|SCE_CST_CT)==0x8001004e);
+    assert((uint32_t)change(path,&request,SCE_CST_SIZE|SCE_CST_CT)==0x80010058);
     assert((uint32_t)change(path,&request,SCE_CST_MODE|0x80)==SCE_ERROR_ERRNO_EINVAL);
     request.st_size=-1;
     assert((uint32_t)change(path,&request,SCE_CST_SIZE|SCE_CST_MODE)==SCE_ERROR_ERRNO_EINVAL);
@@ -106,7 +106,7 @@ int main(void)
     fail_operation=2;request.st_size=0;
     assert((uint32_t)change(path,&request,SCE_CST_SIZE)==0x80010005);
     fail_operation=1;
-    assert((uint32_t)change(path,&request,SCE_CST_SIZE|SCE_CST_MODE)==0x8001004e);
+    assert((uint32_t)change(path,&request,SCE_CST_SIZE|SCE_CST_MODE)==0x80010058);
     assert(!fstat(fd,&native) && !native.st_size); /* Earlier successful size change remains. */
     fail_operation=3;request.st_mtime=(SceDateTime){.year=2024,.month=1,.day=1};
     assert((uint32_t)change(path,&request,SCE_CST_MT)==0x80010005);

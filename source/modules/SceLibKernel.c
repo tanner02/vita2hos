@@ -180,6 +180,48 @@ static int vita_io_open_flags(int flags, int *native_flags)
     return 0;
 }
 
+/* Validate both rename paths before asking the native filesystem to mutate
+ * anything. Removal is nonrecursive: unlink for files, rmdir for directories. */
+static int mutation_path(const char *path,char resolved[PATH_MAX])
+{
+    int result=vita_io_path(path,resolved,PATH_MAX);
+    if (result) return result;
+    return *resolved ? 0 : (int)SCE_ERROR_ERRNO_ENODEV;
+}
+
+EXPORT(SceLibKernel,0x9670D39F,int,sceIoMkdir,const char *path,SceMode mode)
+{
+    char resolved[PATH_MAX];int result=mutation_path(path,resolved);
+    if (result) return result;
+    return mkdir(resolved,mode & 0707)<0 ? io_errno(errno) : 0;
+}
+
+EXPORT(SceLibKernel,0xE9F91EC8,int,sceIoRmdir,const char *path)
+{
+    char resolved[PATH_MAX];int result=mutation_path(path,resolved);
+    if (result) return result;
+    return rmdir(resolved)<0 ? io_errno(errno) : 0;
+}
+
+EXPORT(SceLibKernel,0xE20ED0F3,int,sceIoRemove,const char *path)
+{
+    char resolved[PATH_MAX];int result=mutation_path(path,resolved);
+    if (result) return result;
+    return unlink(resolved)<0 ? io_errno(errno) : 0;
+}
+
+EXPORT(SceLibKernel,0xF737E369,int,sceIoRename,const char *old_path,const char *new_path)
+{
+    char old_resolved[PATH_MAX],new_resolved[PATH_MAX];
+    int result=mutation_path(old_path,old_resolved);
+    if (result) return result;
+    result=mutation_path(new_path,new_resolved);
+    if (result) return result;
+    /* Native rename controls replacement and open-handle behavior. Do not
+     * emulate it with unlink/copy, or alter the guest descriptor registry. */
+    return rename(old_resolved,new_resolved)<0 ? io_errno(errno) : 0;
+}
+
 EXPORT(SceLibKernel, 0x6C60AC61, SceUID, sceIoOpen, const char *file, int flags, SceMode mode)
 {
     VitaOpenedFile *vfile;
@@ -487,7 +529,8 @@ static inline void tm_to_sce_datetime(SceDateTime *dt, const struct tm *tm)
 static int io_errno(int error)
 {
     /* Translate explicitly: host errno numbering is not identical for all
-     * POSIX errors. The Vita low word uses its own errno namespace. */
+     * POSIX errors. The Vita low word uses SDK libc errno values, not the
+     * separate SceNet/BSD error namespace. */
     switch (error) {
     case ENOENT: return (int)0x80010002;
     case EACCES: return (int)0x8001000d;
@@ -502,7 +545,13 @@ static int io_errno(int error)
     case EBADF: return SCE_ERROR_ERRNO_EBADF;
     case EINVAL: return SCE_ERROR_ERRNO_EINVAL;
     case ESPIPE: return (int)0x8001001d;
-    case ENOSYS: return (int)0x8001004e;
+    case ENOSYS: return (int)0x80010058;
+    case EPERM: return (int)0x80010001;
+    case EBUSY: return (int)0x80010010;
+    case EXDEV: return (int)0x80010012;
+    case EROFS: return (int)0x8001001e;
+    case ENOTEMPTY: return (int)0x8001005a;
+    case ELOOP: return (int)0x8001005c;
     default: return (int)0x80010005; /* EIO */
     }
 }

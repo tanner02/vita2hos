@@ -543,7 +543,8 @@
 - Added SceLibKernel sceIoChstat (NID 29482f7f): selected permissions, size,
   access time and modification time use native chmod/truncate/utimes. Paths use
   the existing app0 resolver and native failures propagate as Vita errno values.
-  The newly handled native ENOSYS maps to 0x8001004e.
+  The initial ENOSYS mapping was 0x8001004e; the following path-operation
+  change corrects it to the VitaSDK libc value 0x80010058.
 - Validate masks, negative sizes and selected calendar fields before mutation.
   Creation-time changes return ENOSYS before any other field changes: POSIX ctime
   is not a settable creation date. Unknown mask bits return EINVAL. Type bits do
@@ -566,6 +567,34 @@
   https://github.com/vitasdk/vita-headers/blob/master/include/psp2common/kernel/iofilemgr.h
   No Switch files or original game files were changed. This does not establish
   bundled-module startup or commercial-title boot.
+
+## Host filesystem path operations after 1a09342
+
+- Added SceLibKernel Mkdir (9670d39f), Rmdir (e9f91ec8), Remove (e20ed0f3)
+  and Rename (f737e369), all imported by the private bundled FIOS module.
+  Paths use the existing resolver; mkdir does not create missing parents,
+  file removal uses unlink, and rmdir is nonrecursive.
+- Both rename paths are resolved before the native operation. Replacement and
+  open-file semantics are left to native rename, without an unlink/copy fallback
+  or forced guest descriptor closure. Host tests verify replacement contents,
+  continued access through old open file descriptors, and source preservation
+  when destination validation or the native rename fails.
+- Corrected the previous ENOSYS mapping from the SceNet value 0x4e to SDK libc
+  88 (0x58). Added explicit EPERM, EBUSY, EXDEV, EROFS, ENOTEMPTY (90/0x5a)
+  and ELOOP (92/0x5c) mappings; Linux errno values must not leak into the Vita
+  low word. The pinned VitaSDK arm-vita-eabi sys/errno.h confirms these values.
+  https://github.com/vitasdk/newlib/blob/master/newlib/libc/include/sys/errno.h
+- Regression tests use temporary directories only and query actual NID exports.
+  They cover permissions, existing/missing entries, file/directory type errors,
+  empty/null/unsupported-device paths, lexical app0 escape rejection, oversized
+  rename destinations, open-file lifetime, and injected cross-device/read-only/
+  busy/unimplemented errors. The metadata test now checks the corrected ENOSYS.
+  The full ASan/UBSan suite and ARM Debug/Release builds passed.
+- Firmware-exact replacement/error precedence, SD behavior, asynchronous variants,
+  new writable mount policies and savedata routing remain unverified/unfinished.
+  Directory-entry metadata still uses stored paths: renaming an open directory
+  is not established by the open-file tests. No Switch or original game files
+  were changed, and commercial-title boot is not established.
 
 ## Runtime 15d400f48e5d3a3f5d811e2a67bd30a1388cc102
 
