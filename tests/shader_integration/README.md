@@ -22,3 +22,19 @@ cmake -S tests/shader_integration -B /tmp/vita2hos-shader-integration -G Ninja -
 cmake --build /tmp/vita2hos-shader-integration --target shader_integration -j 4
 ctest --test-dir /tmp/vita2hos-shader-integration --output-on-failure
 ```
+
+## Isolated corpus checks
+
+`shader_integration --single program.gxp` bounds the input, selected tables and
+parameter names, then extracts uniform layout and invokes GLSL translation with
+the production runtime feature flags. It does not mutate parameters or perform
+the pinned-fixture derivative/reflection checks. Vertex binding hints are absent.
+These are partial structural checks, not a hardened parser for adversarial inputs.
+
+Use `python3 tools/check-shader-corpus.py <translator> <corpus-directory>
+--output <private-report.json> --limit 32 --timeout 15` to isolate each program.
+The runner checkpoints after every result and records failures/timeouts rather
+than treating process exit alone as success. On POSIX it disables core dumps and
+limits each child to 2 GiB of address space. Keep proprietary corpora and reports
+outside the repository: diagnostics may contain program details. No GPU execution,
+UAM compilation or game rendering is established by a translation result.

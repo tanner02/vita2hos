@@ -1,3 +1,9 @@
+## 2026-11-27: savedata PASS, game layout retries, and offline shader failure
+
+Owned savedata v1 passes every report marker on f11a064, including metadata replacement, reopening, truncation and cleanup. Process/launch/image-close return zero. The original game/dependencies and its real PARAM.SFO were restored and readback-verified. A subsequent game run stops at fixed-address layout retries 24/64 and 25/64, before guest entry; no game startup or rendering was exercised. The user is asked to allow the bounded retry sequence to finish.
+
+An isolated offline translator mode passes all seven pinned shader fixtures. The first eight structurally checked private fragment programs abort on glslang's zero-ID assertion. A source-level host backtrace reaches the misaligned uniform-register copy path: vector-shuffle component literals are passed through the general createOp ID-operand API. This is a translator compatibility failure, not a game rendering result. Private corpus, dumps and backtrace remain outside the repository; no proprietary shader bytes are published. Dependency correction is pending.
+
 ## 2026-11-27: private shader-corpus discovery for LittleBigPlanet
 
 A read-only audit found no raw GXP headers in the private executable. The FARC index contains 21,792 in-range entries, including repeated hashes. Following the public FarcTool2 container layout, 9,504 unique compressed resources decoded with bounded output and verified stored SHA-1; 66 containers remain unsupported. The decoded resources yielded 21,294 unique GXP candidates (19,273,482 bytes total) with bounded program sizes, parameter tables and parameter names. These are structural candidates, not a successful translation or rendering result.

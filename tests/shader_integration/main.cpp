@@ -2,6 +2,9 @@
 #include <shader/spirv_recompiler.h>
 #include <spirv_glsl.hpp>
 #include <cstdlib>
+#include <cstring>
+#include <cstddef>
+#include <string_view>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -74,7 +77,47 @@ static GxmUniformLayout check_layout(const SceGxmProgram *program, const std::st
 int main(int argc, char **argv)
 {
     try {
-        require(argc == 2, "expected GXP fixture directory");
+        if (argc == 3 && std::string_view(argv[1]) == "--single") {
+            const auto size = std::filesystem::file_size(argv[2]);
+            require(size >= sizeof(SceGxmProgram) && size <= 64 * 1024 * 1024,
+                    "invalid corpus program size");
+            std::ifstream input(argv[2], std::ios::binary);
+            std::vector<char> data((std::istreambuf_iterator<char>(input)), {});
+            require(!input.bad() && data.size() == size, "corpus program read failed");
+            const auto *program = reinterpret_cast<const SceGxmProgram *>(data.data());
+            require(program->magic == 0x00505847 && program->size == size,
+                    "invalid corpus program header");
+            auto span = [&](size_t field, uint32_t relative, uint32_t count, size_t stride) {
+                if (!count) return;
+                require(field <= size && relative <= size - field &&
+                        count <= (size - field - relative) / stride, "corpus table out of bounds");
+            };
+            span(offsetof(SceGxmProgram, parameters_offset), program->parameters_offset,
+                 program->parameter_count, sizeof(SceGxmProgramParameter));
+            span(offsetof(SceGxmProgram, primary_program_offset), program->primary_program_offset,
+                 program->primary_program_instr_count, 8);
+            span(offsetof(SceGxmProgram, secondary_program_offset), program->secondary_program_offset,
+                 program->secondary_program_instr_count, 8);
+            for (uint32_t i = 0; i < program->parameter_count; ++i) {
+                const auto *parameter = &program->program_parameters()[i];
+                int64_t name = reinterpret_cast<const char *>(parameter) - data.data();
+                name += parameter->name_offset;
+                require(name >= 0 && static_cast<uint64_t>(name) < size &&
+                        std::memchr(data.data() + name, 0, size - name), "corpus name out of bounds");
+            }
+            GxmUniformLayout layout;
+            require(gxp_uniform_layout_c(program, &layout), "uniform layout extraction failed");
+            char *glsl = nullptr;
+            // Match runtime flags; vertex input hints are intentionally absent.
+            require(convert_gxp_to_glsl_c(&glsl, program, "corpus", false, false, false,
+                        false, nullptr, 0, false, false, nullptr), "runtime GLSL translation failed");
+            require(glsl && *glsl, "empty GLSL translation");
+            std::cout << "TRANSLATED stage=" << (program->is_fragment() ? "fragment" : "vertex")
+                      << " uniform_bytes=" << layout.size << " glsl_bytes=" << std::strlen(glsl) << '\n';
+            free(glsl);
+            return 0;
+        }
+        require(argc == 2, "expected fixture directory or --single <program.gxp>");
         unsigned checked = 0;
         unsigned named_checked = 0;
         for (const auto &entry : std::filesystem::directory_iterator(argv[1])) {
