@@ -11,6 +11,11 @@ for test in file_io file_io_threads util_io module_exports gxm_uniform gxm_draw 
 "$build_dir/$test"
 done
 
+"${CXX:-c++}" -std=c++17 -O2 -Wall -Wextra \
+    -fsanitize=address,undefined -fno-sanitize-recover=all \
+    -Itests/host/stubs -Iinclude tests/host/uam_compile.cpp -o "$build_dir/uam_compile"
+"$build_dir/uam_compile"
+
 # Switch builds use non-PIC objects; pointer tables must still permit relocation.
 "${CC:-cc}" -std=gnu11 -fno-pic -fno-pie -Iinclude \
     -c tests/host/module_exports.c -o "$build_dir/module_exports.o"

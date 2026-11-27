@@ -490,8 +490,8 @@ static int translate_shader(DkShader *shader, const SceGxmProgram *program, pipe
                             const SceGxmVertexAttribute *attributes, unsigned int attributeCount)
 {
     bool ret;
-    char *glsl;
-    uint32_t shader_size;
+    char *glsl = NULL;
+    uint32_t shader_size = 0;
     DkShaderMaker shader_maker;
     void *shader_load_addr = dkMemBlockGetCpuAddr(code_memblock) + *code_offset;
 
@@ -515,13 +515,17 @@ static int translate_shader(DkShader *shader, const SceGxmProgram *program, pipe
     if (ret)
         dump_shader_glsl(prefix, glsl);
 #endif
-    if (!ret)
+    if (!ret || !glsl) {
+        free(glsl);
         return SCE_GXM_ERROR_INVALID_VALUE;
+    }
 
     LOG("UAM compiling shader (%s)...", prefix);
     ret = uam_compiler_compile_glsl(stage, glsl, shader_load_addr, &shader_size);
     LOG("  compile ret: %d, size: 0x%x", ret, shader_size);
     free(glsl);
+    if (!ret || !shader_size)
+        return SCE_GXM_ERROR_INVALID_VALUE;
 
     dkShaderMakerDefaults(&shader_maker, code_memblock, *code_offset);
     dkShaderInitialize(shader, &shader_maker);
