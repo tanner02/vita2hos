@@ -53,6 +53,7 @@ add_executable(vita2hos
     source/gxm_blend.c
     source/gxm_shader_code.c
     source/gxm_program_registry.c
+    source/gxm_program_ref.c
     source/gxm_texture.c
     source/gxm_texture_layout.c
     source/gxm_texture_staging.c

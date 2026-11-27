@@ -26,6 +26,7 @@
 #include "gxm/blend.h"
 #include "gxm/shader_code.h"
 #include "gxm/program_registry.h"
+#include "gxm/program_ref.h"
 #include "gxm/texture_layout.h"
 #include "gxm/texture_staging.h"
 #include "modules/SceSysmem.h"
@@ -121,6 +122,7 @@ typedef struct SceGxmShaderPatcher {
 } SceGxmShaderPatcher;
 
 typedef struct SceGxmVertexProgram {
+    GxmProgramRef ref;
     uint32_t default_uniform_count;
     GxmUniformLayout uniform_layout;
     SceGxmVertexAttribute *attributes;
@@ -131,6 +133,7 @@ typedef struct SceGxmVertexProgram {
 } SceGxmVertexProgram;
 
 typedef struct SceGxmFragmentProgram {
+    GxmProgramRef ref;
     uint32_t default_uniform_count;
     GxmUniformLayout uniform_layout;
     SceGxmOutputRegisterFormat outputFormat;
@@ -614,6 +617,7 @@ EXPORT(SceGxm, 0xB7BBA6D5, int, sceGxmShaderPatcherCreateVertexProgram,
         return SCE_KERNEL_ERROR_NO_MEMORY;
 
     memset(vertex_program, 0, sizeof(*vertex_program));
+    atomic_init(&vertex_program->ref.count, 1);
     vertex_program->default_uniform_count = programId->programHeader->default_uniform_buffer_count;
     if (!gxp_uniform_layout_c(programId->programHeader, &vertex_program->uniform_layout)) {
         ret = SCE_GXM_ERROR_INVALID_VALUE;
@@ -657,6 +661,11 @@ fail:
 EXPORT(SceGxm, 0xAC1FF2DA, int, sceGxmShaderPatcherReleaseVertexProgram,
        SceGxmShaderPatcher *shaderPatcher, SceGxmVertexProgram *vertexProgram)
 {
+    if (!shaderPatcher || !vertexProgram) return SCE_GXM_ERROR_INVALID_POINTER;
+    bool destroy;
+    int ret = gxm_program_ref_release(&vertexProgram->ref, &destroy);
+    if (ret || !destroy) return ret;
+    /* GPU code has independent storage retained until GXM termination. */
     free(vertexProgram->attributes);
     free(vertexProgram->streams);
     free(vertexProgram);
@@ -687,6 +696,7 @@ EXPORT(SceGxm, 0x4ED2E49D, int, sceGxmShaderPatcherCreateFragmentProgram,
         return SCE_KERNEL_ERROR_NO_MEMORY;
 
     memset(fragment_program, 0, sizeof(*fragment_program));
+    atomic_init(&fragment_program->ref.count, 1);
     fragment_program->default_uniform_count = programId->programHeader->default_uniform_buffer_count;
     if (!gxp_uniform_layout_c(programId->programHeader, &fragment_program->uniform_layout)) {
         free(fragment_program);
@@ -725,8 +735,41 @@ EXPORT(SceGxm, 0x4ED2E49D, int, sceGxmShaderPatcherCreateFragmentProgram,
 EXPORT(SceGxm, 0xBE2743D1, int, sceGxmShaderPatcherReleaseFragmentProgram,
        SceGxmShaderPatcher *shaderPatcher, SceGxmFragmentProgram *fragmentProgram)
 {
+    if (!shaderPatcher || !fragmentProgram) return SCE_GXM_ERROR_INVALID_POINTER;
+    bool destroy;
+    int ret = gxm_program_ref_release(&fragmentProgram->ref, &destroy);
+    if (ret || !destroy) return ret;
+    /* GPU code has independent storage retained until GXM termination. */
     free(fragmentProgram);
     return 0;
+}
+
+EXPORT(SceGxm, 0x0FD1E589, int, sceGxmShaderPatcherAddRefVertexProgram,
+       SceGxmShaderPatcher *shaderPatcher, SceGxmVertexProgram *vertexProgram)
+{
+    if (!shaderPatcher || !vertexProgram) return SCE_GXM_ERROR_INVALID_POINTER;
+    return gxm_program_ref_add(&vertexProgram->ref);
+}
+
+EXPORT(SceGxm, 0x4CD2D19F, int, sceGxmShaderPatcherAddRefFragmentProgram,
+       SceGxmShaderPatcher *shaderPatcher, SceGxmFragmentProgram *fragmentProgram)
+{
+    if (!shaderPatcher || !fragmentProgram) return SCE_GXM_ERROR_INVALID_POINTER;
+    return gxm_program_ref_add(&fragmentProgram->ref);
+}
+
+EXPORT(SceGxm, 0xA1A16FF6, int, sceGxmShaderPatcherGetVertexProgramRefCount,
+       SceGxmShaderPatcher *shaderPatcher, SceGxmVertexProgram *vertexProgram, unsigned int *count)
+{
+    if (!shaderPatcher || !vertexProgram) return SCE_GXM_ERROR_INVALID_POINTER;
+    return gxm_program_ref_get(&vertexProgram->ref, count);
+}
+
+EXPORT(SceGxm, 0x2C5550F0, int, sceGxmShaderPatcherGetFragmentProgramRefCount,
+       SceGxmShaderPatcher *shaderPatcher, SceGxmFragmentProgram *fragmentProgram, unsigned int *count)
+{
+    if (!shaderPatcher || !fragmentProgram) return SCE_GXM_ERROR_INVALID_POINTER;
+    return gxm_program_ref_get(&fragmentProgram->ref, count);
 }
 
 EXPORT(SceGxm, 0xA949A803, const SceGxmProgram *, sceGxmShaderPatcherGetProgramFromId,
