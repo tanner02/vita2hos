@@ -20,6 +20,7 @@
 #include "gxm/gxm_to_dk.h"
 #include "gxm/util.h"
 #include "gxm/draw.h"
+#include "gxm/ring.h"
 #include "gxm/viewport.h"
 #include "gxm/region_clip.h"
 #include "gxm/notification.h"
@@ -45,7 +46,7 @@ typedef struct SceGxmContext {
     DkCmdBuf cmdbuf;
     struct {
         DkMemBlock memblock;
-        uint32_t size;
+        uint32_t size, offset;
     } vertex_rb, fragment_rb;
     DkMemBlock gxm_vert_unif_block_memblock;
     DkMemBlock gxm_frag_unif_block_memblock;
@@ -317,37 +318,29 @@ EXPORT(SceGxm, 0xE84CE5B4, int, sceGxmCreateContext, const SceGxmContextParams *
        SceGxmContext **context)
 {
     DkCmdBufMaker cmdbuf_maker;
-    SceGxmContext *ctx = params->hostMem;
-
-    if (params->hostMemSize < sizeof(SceGxmContext))
-        return SCE_GXM_ERROR_INVALID_VALUE;
-
-    memset(ctx, 0, sizeof(*ctx));
-    ctx->params = *params;
-
-    /* Get the passed backing storage buffer for the main command buffer */
-    ctx->cmdbuf_memblock = SceSysmem_get_dk_memblock_for_addr(params->vdmRingBufferMem);
-    assert(ctx->cmdbuf_memblock);
-
-    /* Create the command buffer */
-    dkCmdBufMakerDefaults(&cmdbuf_maker, g_dk_device);
-    ctx->cmdbuf = dkCmdBufCreate(&cmdbuf_maker);
+    if (!params || !context || !params->hostMem) return SCE_GXM_ERROR_INVALID_POINTER;
+    if (params->hostMemSize < sizeof(SceGxmContext)) return SCE_GXM_ERROR_INVALID_VALUE;
+    /* Snapshot before clearing host memory, which may contain the parameters. */
+    SceGxmContextParams snapshot=*params;
+    const void *addresses[]={snapshot.vdmRingBufferMem,snapshot.vertexRingBufferMem,snapshot.fragmentRingBufferMem};
+    uint32_t sizes[]={snapshot.vdmRingBufferMemSize,snapshot.vertexRingBufferMemSize,snapshot.fragmentRingBufferMemSize};
+    DkMemBlock blocks[3]; uint32_t offsets[3];
+    for (unsigned i=0;i<3;i++) {
+        VitaMemBlockInfo *block=SceSysmem_get_vita_memblock_info_for_addr(addresses[i]);
+        if (!block || !block->dk_memblock ||
+            !gxm_ring_span((uintptr_t)block->base,block->size,(uintptr_t)addresses[i],sizes[i],&offsets[i]))
+            return SCE_GXM_ERROR_INVALID_VALUE;
+        blocks[i]=block->dk_memblock;
+    }
+    SceGxmContext *ctx=snapshot.hostMem;
+    memset(ctx,0,sizeof(*ctx)); ctx->params=snapshot;
+    ctx->cmdbuf_memblock=blocks[0];
+    dkCmdBufMakerDefaults(&cmdbuf_maker,g_dk_device);
+    ctx->cmdbuf=dkCmdBufCreate(&cmdbuf_maker);
     assert(ctx->cmdbuf);
-
-    /* Assing the backing storage buffer to the main command buffer */
-    dkCmdBufAddMemory(ctx->cmdbuf, ctx->cmdbuf_memblock, 0, ctx->params.vdmRingBufferMemSize);
-
-    /* Get the passed vertex ringbuffer for vertex default uniform buffer reservations */
-    ctx->vertex_rb.memblock = SceSysmem_get_dk_memblock_for_addr(params->vertexRingBufferMem);
-    assert(ctx->vertex_rb.memblock);
-    assert(params->vertexRingBufferMem == dkMemBlockGetCpuAddr(ctx->vertex_rb.memblock));
-    ctx->vertex_rb.size = params->vertexRingBufferMemSize;
-
-    /* Get the passed fragment ringbuffer for fragment default uniform buffer reservations */
-    ctx->fragment_rb.memblock = SceSysmem_get_dk_memblock_for_addr(params->fragmentRingBufferMem);
-    assert(ctx->fragment_rb.memblock);
-    assert(params->fragmentRingBufferMem == dkMemBlockGetCpuAddr(ctx->fragment_rb.memblock));
-    ctx->fragment_rb.size = params->fragmentRingBufferMemSize;
+    dkCmdBufAddMemory(ctx->cmdbuf,blocks[0],offsets[0],sizes[0]);
+    ctx->vertex_rb.memblock=blocks[1]; ctx->vertex_rb.offset=offsets[1]; ctx->vertex_rb.size=sizes[1];
+    ctx->fragment_rb.memblock=blocks[2]; ctx->fragment_rb.offset=offsets[2]; ctx->fragment_rb.size=sizes[2];
 
     ctx->gxm_vert_unif_block_memblock = dk_alloc_memblock(
         g_dk_device, ALIGN(sizeof(GXMRenderVertUniformBlock), DK_UNIFORM_BUF_ALIGNMENT),
@@ -1505,6 +1498,7 @@ EXPORT(SceGxm, 0x97118913, int, sceGxmReserveVertexDefaultUniformBuffer, SceGxmC
        void **uniformBuffer)
 {
     uint32_t size;
+    if (!context || !uniformBuffer) return SCE_GXM_ERROR_INVALID_POINTER;
 
     if (!context->state.in_scene)
         return SCE_GXM_ERROR_NOT_WITHIN_SCENE;
@@ -1522,15 +1516,15 @@ EXPORT(SceGxm, 0x97118913, int, sceGxmReserveVertexDefaultUniformBuffer, SceGxmC
         return 0;
     }
 
-    if (context->state.vertex_rb.head + size > context->vertex_rb.size)
-        context->state.vertex_rb.head = 0;
+    uint32_t relative;
+    if (!gxm_ring_reserve(context->vertex_rb.size,size,&context->state.vertex_rb.head,&relative))
+        return SCE_GXM_ERROR_RESERVE_FAILED;
 
     *uniformBuffer = context->state.vertex_default_uniform.cpu_addr =
-        dkMemBlockGetCpuAddr(context->vertex_rb.memblock) + context->state.vertex_rb.head;
+        dkMemBlockGetCpuAddr(context->vertex_rb.memblock) + context->vertex_rb.offset + relative;
     context->state.vertex_default_uniform.gpu_addr =
-        dkMemBlockGetGpuAddr(context->vertex_rb.memblock) + context->state.vertex_rb.head;
+        dkMemBlockGetGpuAddr(context->vertex_rb.memblock) + context->vertex_rb.offset + relative;
 
-    context->state.vertex_rb.head += size;
     context->state.vertex_default_uniform.allocated = true;
     context->state.dirty.bit.vertex_default_uniform = true;
 
@@ -1564,6 +1558,7 @@ EXPORT(SceGxm, 0x7B1FABB6, int, sceGxmReserveFragmentDefaultUniformBuffer, SceGx
        void **uniformBuffer)
 {
     uint32_t size;
+    if (!context || !uniformBuffer) return SCE_GXM_ERROR_INVALID_POINTER;
 
     if (!context->state.in_scene)
         return SCE_GXM_ERROR_NOT_WITHIN_SCENE;
@@ -1581,15 +1576,15 @@ EXPORT(SceGxm, 0x7B1FABB6, int, sceGxmReserveFragmentDefaultUniformBuffer, SceGx
         return 0;
     }
 
-    if (context->state.fragment_rb.head + size > context->fragment_rb.size)
-        context->state.fragment_rb.head = 0;
+    uint32_t relative;
+    if (!gxm_ring_reserve(context->fragment_rb.size,size,&context->state.fragment_rb.head,&relative))
+        return SCE_GXM_ERROR_RESERVE_FAILED;
 
     *uniformBuffer = context->state.fragment_default_uniform.cpu_addr =
-        dkMemBlockGetCpuAddr(context->fragment_rb.memblock) + context->state.fragment_rb.head;
+        dkMemBlockGetCpuAddr(context->fragment_rb.memblock) + context->fragment_rb.offset + relative;
     context->state.fragment_default_uniform.gpu_addr =
-        dkMemBlockGetGpuAddr(context->fragment_rb.memblock) + context->state.fragment_rb.head;
+        dkMemBlockGetGpuAddr(context->fragment_rb.memblock) + context->fragment_rb.offset + relative;
 
-    context->state.fragment_rb.head += size;
     context->state.fragment_default_uniform.allocated = true;
     context->state.dirty.bit.fragment_default_uniform = true;
 

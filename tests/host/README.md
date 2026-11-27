@@ -335,3 +335,8 @@ logging. No guest pointers are dereferenced, stack arguments are not inspected,
 and register values are not interpreted as typed parameters. Reports retain
 optional first_argument_registers for new logs and accept older records without
 them. Unknown API return behavior remains the same (error r0, preserved r1).
+
+Ring-buffer bounds tests cover interior spans, exact allocation ends, oversized
+reservations, wraparound and integer-overflow boundaries. GXM context creation
+now carries suballocation offsets into command and uniform memory addresses.
+These host checks do not simulate deko3d or prove commercial-title rendering.
