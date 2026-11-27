@@ -13,8 +13,6 @@ trap 'rm -rf "$build_dir"' EXIT HUP INT TERM
     -Iinclude -c source/missing_import_stubs.cpp -o "$build_dir/missing_import_stubs.o"
 "${CC:-cc}" -std=gnu11 -O2 -fsanitize=address,undefined -fno-sanitize-recover=all \
     -Iinclude -c source/vita_sha1.c -o "$build_dir/vita_sha1.o"
-"${CC:-cc}" -std=gnu11 -O2 -fsanitize=address,undefined -Itests/host/stubs -Iinclude \
-    -c source/load_unbound_stubs.c -o "$build_dir/load_unbound_stubs.o"
 "${CC:-cc}" -std=gnu11 -O2 -fsanitize=address,undefined -fno-sanitize-recover=all \
     -Itests/host/stubs -Iinclude -c tests/host/crypto_adapter.c -o "$build_dir/trophy_archive.o"
 for source in source/trophy_metadata.cpp external/Vita3K/external/pugixml/src/pugixml.cpp; do
