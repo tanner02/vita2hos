@@ -40,6 +40,9 @@ static void *clear_alias(void *address, int value, size_t size)
 #include "../../source/load_fixed.c"
 #undef memset
 #undef aligned_alloc
+#include "../../source/module.c"
+EXPORT(TestLibrary, 1, int, test_export, void) { return 0; }
+DECLARE_LIBRARY(TestLibrary, 2);
 #include "../../source/load_image.c"
 #include "../../source/load_fixed_layout.c"
 
@@ -176,8 +179,14 @@ int main(void)
     assert(load_fixed_reserve(&fixed_image.fixed[1], 0x81879000, 4096, false) == 0);
     require_reservations = 2;
     assert(load_fixed_map(&fixed_image.fixed[0]) == 0 && load_fixed_map(&fixed_image.fixed[1]) == 0);
+    ModuleGuestSymbol symbol = {11, MODULE_SYMBOL_FUNCTION, (void *)0x81000000};
+    assert(module_guest_exports_register(&fixed_image.exports, &fixed_image, 100, &symbol, 1) == 0);
+    module_set_guest_exports(&fixed_image.exports);
+    assert(module_get_func_export(100, 11) == symbol.address);
     fail_operation = CodeMapOperation_UnmapSlave; failures = 1;
     assert(load_image_close(&fixed_image) != 0 && fixed_image.fixed_count == 2);
+    assert(fixed_image.exports.libraries == NULL);
+    assert(module_get_func_export(100, 11) == NULL);
     assert(fixed_image.fixed[0].backing && !fixed_image.fixed[1].backing);
     fail_operation = -1;
     assert(load_image_close(&fixed_image) == 0 && !fixed_image.fixed && !fixed_image.fixed_count);

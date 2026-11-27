@@ -6,6 +6,7 @@
 
 #include "arm-encode.h"
 #include "load.h"
+#include "load_exports.h"
 #include "load_layout.h"
 #include "load_format.h"
 #include "load_retry.h"
@@ -63,6 +64,26 @@ static void *map_loaded_address(const segment_info_t *segments, int count, uintp
         void *mapped = load_address_translate(&range, 1, address, size);
         if (mapped)
             return mapped;
+    }
+    return NULL;
+}
+
+typedef struct {
+    const segment_info_t *segments;
+    int count;
+} ExportReader;
+
+static const void *read_export_address(void *context, uint32_t address, size_t size,
+                                       bool executable)
+{
+    const ExportReader *reader = context;
+    for (int i = 0; i < reader->count; ++i) {
+        const segment_info_t *segment = &reader->segments[i];
+        if (segment->p_type != PT_LOAD || (executable && !(segment->p_flags & PF_X)))
+            continue;
+        LoadAddressRange range = {segment->rx_addr, segment->rw_addr, segment->p_memsz};
+        const void *alias = load_address_translate(&range, 1, address, size);
+        if (alias) return alias;
     }
     return NULL;
 }
@@ -135,7 +156,8 @@ int load_file(LoadImage *image, const char *filename, void **entry)
     uint32_t size;
     int ret = 0;
 
-    if (!image || !entry || image->jit_active || image->data || image->fixed) return -1;
+    if (!image || !entry || image->jit_active || image->data || image->fixed ||
+        image->exports.libraries) return -1;
     *entry = NULL;
 
     LOG("Opening '%s' for reading.", filename);
@@ -549,6 +571,23 @@ static int load_segments(LoadImage *image, void **entry, Elf32_Addr e_entry, seg
     LOG("  tls start: 0x%" PRIx32, mod_info->tls_start);
     LOG("  tls filesz: 0x%" PRIx32, mod_info->tls_filesz);
     LOG("  tls memsz: 0x%" PRIx32, mod_info->tls_memsz);
+
+    if (mod_info->export_top > mod_info->export_end ||
+        mod_info->export_end > segments[mod_info_idx].p_memsz ||
+        mod_info->export_top % 4 != 0) {
+        LOG("Invalid module export range.");
+        goto err_free_data;
+    }
+    ExportReader reader = {segments, num_segments};
+    const void *export_records = (const void *)(segments[mod_info_idx].rw_addr + mod_info->export_top);
+    if (load_exports_register(&image->exports, image, export_records,
+            mod_info->export_end - mod_info->export_top, read_export_address, &reader) < 0) {
+        LOG("Invalid or unsupported guest library exports.");
+        goto err_free_data;
+    }
+    /* One process image is active today. A future module group must register
+     * every provider before binding imports, using a shared process registry. */
+    module_set_guest_exports(&image->exports);
 
     /* Resolve NIDs */
     if (mod_info->import_top > mod_info->import_end ||

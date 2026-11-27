@@ -6,6 +6,9 @@ Result load_image_close(LoadImage *image)
 {
     if (!image)
         return MAKERESULT(Module_Libnx, LibnxError_BadInput);
+    /* Stop publishing guest addresses before any backing mapping is removed.
+     * The caller has already stopped execution of this image. */
+    module_guest_exports_clear(&image->exports);
     Result result = 0;
     for (int i = 0; i < image->fixed_count; ++i) {
         Result close = load_fixed_close(&image->fixed[i]);

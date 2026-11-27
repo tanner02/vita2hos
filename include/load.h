@@ -3,6 +3,7 @@
 
 #include <switch.h>
 #include "load_fixed.h"
+#include "module.h"
 
 typedef struct {
     Jit jit;
@@ -11,6 +12,7 @@ typedef struct {
     LoadFixedMemory *fixed;
     int fixed_count;
     uint64_t source_tag;
+    ModuleGuestExports exports;
 } LoadImage;
 
 enum { LOAD_LAYOUT_CONFLICT = -2 };

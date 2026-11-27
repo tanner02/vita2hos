@@ -262,7 +262,10 @@ The export decoder accepts relocated 32-byte public-library records through a
 bounded image-reader callback. It validates function targets as executable,
 preserves Thumb bits, and registers all libraries atomically. TLS exports are
 rejected, and lifecycle records are left for the module-startup phase. This is
-host-tested groundwork; it is not yet called by the runtime image loader.
+host-tested groundwork. The runtime registers the loaded image's public exports
+before binding imports, and removes them before releasing image mappings,
+including cleanup failures. The current loader still supports one process image;
+it does not yet discover, load, or start bundled SUPRX dependencies.
 
 ### Experimental title-specific launch profile
 
