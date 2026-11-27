@@ -1,5 +1,22 @@
 # Hardware observations
 
+## Runtime 76a91883c32536f0db3713f05e809d90868b1060
+
+- The user reported that the corrected standalone HOME title launched, then
+  displayed the runtime's executable-loading error dialog.
+- USB readback recovered `log.txt` and confirmed the guest executable matched
+  the deployed SHA-256 `150f41d4ea661fa24492c973f74cfea02af271ed608898e0ecc34cb2e5992eb7`.
+- The log reached JIT allocation, segment loading, and module `surface_probe`,
+  then reported `Invalid module entry function.` No guest code ran.
+- Inspection found the probe export configuration set `imagemodule: true`.
+  Vita SDK intentionally emits no module-start entry and clears the runtime
+  import range for that module type. This was a probe packaging error, not a
+  missing SD file or evidence of a general loader-format incompatibility.
+- The corrected `imagemodule: false` guest passed entry-point/import validation
+  and was uploaded by itself. Readback SHA-256:
+  `a8898d953e49835e398a1f62d0d5dd4e1e60f0d608f24f367001a6db626f9485`.
+  Its hardware result is pending; the installed runtime was unchanged.
+
 ## Runtime f55edbf626acb6ff46d510a55bdd026dd78ac5ad
 
 - Experimental route: a retargeted ARM32 ExeFS NSP at
