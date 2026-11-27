@@ -33,6 +33,7 @@ def main():
     parser.add_argument("--samples-dir", type=Path, help="Optional local pinned sample ZIPs")
     parser.add_argument("--surface-probe", type=Path, help="Optional locally built freestanding Vita probe")
     parser.add_argument("--draw-probe", type=Path, help="Optional locally built shader/depth/stencil probe")
+    parser.add_argument("--visible-cube", type=Path, help="Optional locally built animated textured cube")
     args = parser.parse_args()
     if len(args.commit) != 40 or any(c not in "0123456789abcdef" for c in args.commit):
         parser.error("--commit must be a full lowercase Git commit SHA")
@@ -68,14 +69,15 @@ def main():
         samples.append({"name": name, "url": url, "archive_sha256": expected,
                         "executable_sha256": sha256(executable)})
 
-    for name, path in (("surface_probe", args.surface_probe), ("draw_probe", args.draw_probe)):
+    for name, path in (("surface_probe", args.surface_probe), ("draw_probe", args.draw_probe),
+                       ("visible_cube", args.visible_cube)):
         if not path: continue
         probe = path.read_bytes()
         guest_elf.validate_guest(probe)
         files[f"samples/{name}/executable"] = probe
         samples.append({"name": name, "source": "tests/hardware/surface_probe",
                         "executable_sha256": sha256(probe)})
-        if name == "draw_probe":
+        if name in ("draw_probe", "visible_cube"):
             files["DRAW-PROBE-COPYING.txt"] = (repository / "tests/hardware/surface_probe/COPYING.txt").read_bytes()
 
     files["tools/capture-netlog.ps1"] = (repository / "tools/capture-netlog.ps1").read_bytes()

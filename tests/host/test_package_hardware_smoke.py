@@ -38,13 +38,14 @@ class PackagingTests(unittest.TestCase):
         self.probe = guest_fixture()
         self.output = self.root / "bundle.zip"
 
-    def package(self, probe=None, draw=False):
+    def package(self, probe=None, draw=False, visible=False):
         args = ["package", str(self.artifact), "--commit", "a" * 40, "--build-run", "offline-test",
                 "--output", str(self.output), "--samples-dir", str(self.root)]
         if probe is not None:
             path = self.root / "probe"
             path.write_bytes(probe)
-            args += ["--draw-probe" if draw else "--surface-probe", str(path)]
+            option = "--visible-cube" if visible else "--draw-probe" if draw else "--surface-probe"
+            args += [option, str(path)]
         with patch("sys.argv", args), patch.object(package, "SAMPLES", {"gxm_cube_sample": self.expected}):
             package.main()
 
@@ -80,6 +81,20 @@ class PackagingTests(unittest.TestCase):
             with self.subTest(header=data[:20]):
                 with self.assertRaises(ValueError): self.package(data)
                 self.assertFalse(self.output.exists())
+
+    def test_visible_cube_packaged_with_license_and_selected_by_deployer(self):
+        self.package(self.probe, visible=True)
+        deploy_spec = importlib.util.spec_from_file_location("deploy", source.with_name("deploy-switch.py"))
+        deploy = importlib.util.module_from_spec(deploy_spec)
+        deploy_spec.loader.exec_module(deploy)
+        manifest, (runtime, executable) = deploy.read_bundle(self.output, "visible_cube")
+        self.assertEqual(runtime, b"PFS0runtime")
+        self.assertEqual(executable, self.probe)
+        with zipfile.ZipFile(self.output) as archive:
+            self.assertEqual(archive.read("sd/vita2hos/executable"), self.cube)
+            self.assertIn(b"GNU GENERAL PUBLIC LICENSE", archive.read("DRAW-PROBE-COPYING.txt"))
+            self.assertEqual(hashlib.sha256(executable).hexdigest(),
+                             manifest["files"]["samples/visible_cube/executable"])
 
 
 if __name__ == "__main__": unittest.main()

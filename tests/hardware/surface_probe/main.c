@@ -1,5 +1,5 @@
-/* Freestanding Vita guest: no libc startup or precompiled shader dependency.
- * A passing report proves only no-draw surface copies and notification handling. */
+/* Freestanding Vita guests with no libc startup. The surface variant performs
+ * no draws; draw/cube variants embed the pinned shader fixtures. */
 #include <psp2/gxm.h>
 #include <psp2/io/fcntl.h>
 #include <psp2/kernel/sysmem.h>
@@ -8,9 +8,15 @@
 #include <stddef.h>
 #ifdef VITA2HOS_DRAW_PROBE
 #include "draw_probe.h"
+#ifdef VITA2HOS_VISIBLE_CUBE
+#define PROBE_NAME "visible_cube"
+#define PROBE_VERSION "1"
+#define PROBE_REPORT "app0:/visible-cube.txt"
+#else
 #define PROBE_NAME "draw_probe"
 #define PROBE_VERSION "5"
 #define PROBE_REPORT "app0:/draw-probe.txt"
+#endif
 #else
 #define PROBE_NAME "surface_probe"
 #define PROBE_VERSION "1"
@@ -185,7 +191,9 @@ done:
     if (context) sceGxmDestroyContext(context);
     if (target) sceGxmDestroyRenderTarget(target);
     if (initialized) sceGxmTerminate();
+#ifndef VITA2HOS_VISIBLE_CUBE
     while (allocation_count) sceKernelFreeMemBlock(allocations[--allocation_count]);
+#endif
     record(status ? "FAIL " PROBE_NAME "\n" : "PASS " PROBE_NAME "\n");
     if (report >= 0) sceIoClose(report);
     sceKernelExitProcess(status);

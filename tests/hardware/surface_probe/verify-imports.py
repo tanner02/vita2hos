@@ -8,7 +8,7 @@ import subprocess
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--sdk", type=Path, required=True)
 parser.add_argument("--build-dir", type=Path, required=True)
-parser.add_argument("--variant", choices=("surface_probe", "draw_probe"), default="surface_probe")
+parser.add_argument("--variant", choices=("surface_probe", "draw_probe", "visible_cube"), default="surface_probe")
 args = parser.parse_args()
 here = Path(__file__).resolve().parent
 repo = here.parents[2]
@@ -29,7 +29,9 @@ if not imports:
 missing = [name for library, nid, name in imports if (int(library, 16), int(nid, 16)) not in exports]
 if missing:
     raise SystemExit("Missing runtime source exports: " + ", ".join(missing))
-data = (args.build_dir / ("draw-probe/executable" if args.variant == "draw_probe" else "executable")).read_bytes()
+guest_path = {"surface_probe": "executable", "draw_probe": "draw-probe/executable",
+              "visible_cube": "visible-cube/executable"}[args.variant]
+data = (args.build_dir / guest_path).read_bytes()
 spec = importlib.util.spec_from_file_location("guest_elf", repo / "tools/guest_elf.py")
 guest_elf = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(guest_elf)

@@ -91,7 +91,7 @@ def main():
     parser.add_argument("--port", type=int, default=5000)
     parser.add_argument("--user", default="anonymous")
     parser.add_argument("--ask-password", action="store_true")
-    parser.add_argument("--sample", choices=["gxm_cube_sample", "gxm_textured_cube_sample", "surface_probe", "draw_probe"],
+    parser.add_argument("--sample", choices=["gxm_cube_sample", "gxm_textured_cube_sample", "surface_probe", "draw_probe", "visible_cube"],
                         default="gxm_cube_sample")
     parser.add_argument("--sd-root", default="/", help="FTP path corresponding to SD root")
     parser.add_argument("--backup-dir", type=Path, default=Path("switch-backups"))

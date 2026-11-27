@@ -192,6 +192,32 @@ report so the runtime can return to HOME. No visible 3D scene is expected: rende
 pixels are compared directly. A pass establishes these draw cases, not commercial
 game compatibility or a complete GPU conformance result.
 
+### Visible textured cube
+
+The same build emits `build-surface-probe/visible-cube/executable`. Audit it with
+`verify-imports.py --variant visible_cube`. It uses the runtime's GXM VFP fix
+(`38972ed` or later), runs all version 5 offscreen checks, then presents a
+960-by-544 rotating checker-textured cube with perspective and depth testing.
+It generates its own vertices, indices and texture; no game files or additional
+libraries are needed. The shaders and license are the same pinned fixtures.
+
+Package using `--visible-cube build-surface-probe/visible-cube/executable` and
+select `--sample visible_cube` when deploying. This selects the guest without
+changing the bundle's default upstream cube. Confirm the expected runtime before
+switching guests; the standalone HOME-menu title must already contain the fix.
+
+The animation runs for 360 frames, logging progress every 120 frames, then holds
+the last frame briefly and exits. Expect roughly 15 seconds at normal display
+timing, with no interactive completion prompt. The result is
+`/vita2hos/visible-cube.txt`; `PASS cube_frames` proves completion of the render
+loop, and the final `PASS visible_cube` closes the report. Report whether a
+rotating textured cube was actually visible: these markers alone do not prove
+correct presentation or broad commercial-game compatibility.
+
+The visible variant keeps its guest allocations until process exit so the
+presenter cannot read a freed framebuffer during shutdown. This bounded test
+process relies on process cleanup rather than freeing displayed memory early.
+
 ### Experimental title-specific launch profile
 
 **Hardware status:** this route failed to start Mario Kart 8 Deluxe on the tested

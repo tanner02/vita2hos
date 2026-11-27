@@ -235,6 +235,9 @@ int probe_draw(SceGxmContext *context, SceGxmRenderTarget *target,
             "PASS texture_restore_viewport\n");
     }
     if (texture_failures) ret = -1;
+#ifdef VITA2HOS_VISIBLE_CUBE
+    if (!texture_failures) ret = probe_cube(context, vertex, fragment, matrix, sampler, hooks);
+#endif
 done:
     if (fragment) sceGxmShaderPatcherReleaseFragmentProgram(patcher, fragment);
     if (vertex) sceGxmShaderPatcherReleaseVertexProgram(patcher, vertex);

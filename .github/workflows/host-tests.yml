@@ -66,6 +66,7 @@ jobs:
           cmake --build /tmp/surface-probe
           python3 -B tests/hardware/surface_probe/verify-imports.py --sdk /tmp/vita-probe-sdk/vitasdk --build-dir /tmp/surface-probe
           python3 -B tests/hardware/surface_probe/verify-imports.py --sdk /tmp/vita-probe-sdk/vitasdk --build-dir /tmp/surface-probe --variant draw_probe
+          python3 -B tests/hardware/surface_probe/verify-imports.py --sdk /tmp/vita-probe-sdk/vitasdk --build-dir /tmp/surface-probe --variant visible_cube
       - name: Upload hardware diagnostic guest
         uses: actions/upload-artifact@v4
         with:
@@ -75,4 +76,6 @@ jobs:
             /tmp/surface-probe/surface_probe.elf
             /tmp/surface-probe/draw-probe/executable
             /tmp/surface-probe/draw_probe.elf
+            /tmp/surface-probe/visible-cube/executable
+            /tmp/surface-probe/visible_cube.elf
             /tmp/surface-probe/DRAW-PROBE-COPYING.txt

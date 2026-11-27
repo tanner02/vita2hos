@@ -9,4 +9,7 @@ typedef struct {
 } ProbeHooks;
 int probe_draw(SceGxmContext *context, SceGxmRenderTarget *target,
                SceGxmColorSurface *surface, uint32_t *pixels, const ProbeHooks *hooks);
+int probe_cube(SceGxmContext *context, SceGxmVertexProgram *vertex,
+               SceGxmFragmentProgram *fragment, const SceGxmProgramParameter *matrix,
+               const SceGxmProgramParameter *sampler, const ProbeHooks *hooks);
 #endif
