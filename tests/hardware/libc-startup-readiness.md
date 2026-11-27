@@ -2,8 +2,8 @@
 
 Source baseline: 65ee83d (2026-11-27). Owned dependency startup, main TLS,
 function imports and writable variable aliases passed on runtime 006d5c4.
-Owned rendering/gamma/cube probes passed on 4d1233b. Commercial initialization
-and game execution have not been verified on hardware.
+Owned rendering/gamma/cube probes passed on 4d1233b. Commercial libc/FIOS startup now returns success on runtime 3dda5cf; game
+execution has not been verified on hardware.
 
 ## Structural binding replay
 
@@ -22,8 +22,8 @@ All four images bind successfully; unresolved functions become error stubs:
 
 The main process parameter address is 0x8187a3b4, its libc parameter address is
 0x817c5cdc, priority is 64, stack is 0x40000, and main TLS is 56 initialized / 128
-total bytes. Fixed main mapping at 0x81000000 still needs hardware verification
-for this actual image. The reviewed libc TP plan applies one Thumb site and
+total bytes. Fixed main mapping at 0x81000000 was verified on hardware for this image
+on runtime 3dda5cf after ten layout restarts. The reviewed libc TP plan applies one Thumb site and
 rejects a stale fingerprint without writes. No main/FIOS/Ult TP byte candidates
 were found in the earlier inventory; byte scans do not prove control-flow coverage.
 
@@ -54,10 +54,10 @@ A zero status establishes successful startup returns only, not full correctness.
 Close the title manually and reconnect USB to collect logs. Set the file to
 `normal` or remove it before ordinary probes or game entry. Absence means normal;
 malformed files fail before guest loading. The first private diagnostic payload
-is now deployed; execution results remain pending. No proprietary code, assets,
+is now deployed; both library startup entries returned success on hardware. No proprietary code, assets,
 disassembly or keys are stored in this document.
 
-## First preload phase deployed; hardware result pending
+## First preload phase: hardware startup success
 
 The first private payload retains the unmodified audited main, libc and FIOS
 plaintext images, the reviewed source-bound libc TP sidecar, an explicit
@@ -80,11 +80,13 @@ launch-mode file were then copied over USB/MTP and individually readback-checked
 against the private manifest. The previous kernel executable is preserved on
 the SD card under a timestamped backup filename. The game main executable was
 activated last, after its dependencies and launch mode were verified. No game
-assets were copied. This records deployment only: commercial initialization,
-actual fixed-address mapping and a game boot remain unverified.
+assets were copied. The subsequent run mapped the real main image at its required addresses and
+returned success from both dependency startup entries, reaching the deliberate
+resident hold. Main entry and a game boot remain unverified. Manual closure
+does not establish successful process teardown.
 
 Source commit 9a7eb87 adds bounded first-use diagnostics for missing functions
 and separates those records from the binding inventory in report-imports.py.
 Host sanitizer tests and ARM builds pass, but this tracer has not been run on
-hardware and is not in the installed 3dda5cf runtime. The pending first startup
+hardware and is not in the installed 3dda5cf runtime. The collected first startup
 run therefore provides binding/startup logs, without first-use call evidence.
