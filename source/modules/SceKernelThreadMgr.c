@@ -361,6 +361,12 @@ EXPORT(SceLibKernel, 0xC53A9848, int, sceKernelGetThreadCurrentPriority)
     return thread ? thread->priority : (int)SCE_KERNEL_ERROR_UNKNOWN_THREAD_ID;
 }
 
+/* Bundled FIOS imports the syscall NID through SceThreadmgr directly. */
+EXPORT(SceThreadmgr,0x01414F0B,int,_sceKernelGetThreadCurrentPriority,void)
+{
+    return sceKernelGetThreadCurrentPriority();
+}
+
 EXPORT(SceThreadmgr, 0xBACA6891, void *, sceKernelGetThreadTLSAddr, SceUID thid, int key)
 {
     VitaThreadInfo *ti = get_thread_info_for_uid(thid);

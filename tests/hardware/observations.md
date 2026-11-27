@@ -596,6 +596,32 @@
   is not established by the open-file tests. No Switch or original game files
   were changed, and commercial-title boot is not established.
 
+## Host FIOS process/thread queries after 180670e
+
+- Bounded static Capstone disassembly of the private FIOS ELF (not execution,
+  and not an REA provider result) followed module_start at original guest VA
+  0x81000001 into initialization at 0x81001b74. It creates lightweight mutexes
+  and conditions, then calls import stub 0x8101ad04 at 0x81001c08. The import
+  table identifies SceThreadmgr sceKernelGetProcessId (9dcb4b7a). Initialization
+  then enters an overlay-list wrapper; its packed syscall argument layout still
+  needs validation before implementing that query. REA native tools/providers
+  remain unavailable in this chat; no registration/setup retry was performed.
+- Processmgr init now allocates a guest process UID from the shared Sysmem UID
+  namespace. The atomic GetProcessId query returns the same UID for every thread
+  until finish, which clears it. A later successful process init obtains a new
+  UID; duplicate/invalid init cannot replace an active one. UID allocation failure
+  publishes neither identity nor parameter address. Host queries outside the
+  registered process return UNKNOWN_UID; that is not a hardware-observed case.
+- The FIOS import table also contains SceThreadmgr library 859a24b1, NID 01414f0b.
+  The SDK kernel table names that NID GetThreadCurrentPriority. Added its direct
+  import alias to the existing current-guest-thread implementation, returning
+  the resolved Vita priority rather than Horizon's mapped scheduler priority.
+- Host tests resolve both NIDs, check stable process identity across concurrent
+  readers, fresh identity after reinit, failure preservation and teardown, and
+  raw/public priority agreement with and without a current guest thread.
+  The full ASan/UBSan suite and ARM Debug/Release builds passed.
+  No new Switch run or bundled-FIOS/commercial-title boot is established.
+
 ## Runtime 15d400f48e5d3a3f5d811e2a67bd30a1388cc102
 
 - Standalone HOME title, owned fixed-address CPU probe SHA-256

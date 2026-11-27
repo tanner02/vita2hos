@@ -26,6 +26,7 @@ static char *test_strdup(const char *text)
 #undef strdup
 #include "../../source/modules/SceProcessmgr.c"
 #include "../../source/module.c"
+DECLARE_LIBRARY(SceThreadmgr,0x859a24b1);
 void log_printf(const char *format,...) { (void)format; }
 void SceKernelThreadMgr_prepare_current_exit(int status) { (void)status; }
 VitaThreadInfo *SceKernelThreadMgr_get_thread_info(void) { return NULL; }

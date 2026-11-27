@@ -6,6 +6,8 @@
 #include "../../source/guest_tls.c"
 #include "../../source/thread_events.c"
 #include "../../source/modules/SceKernelThreadMgr.c"
+#include "../../source/module.c"
+DECLARE_LIBRARY(SceLibKernel,0xcae9ace6);
 
 static jmp_buf thread_return;
 static void *tls_value;
@@ -67,11 +69,14 @@ static int entry(SceSize size, void *argument)
 
 int main(void)
 {
+    int (*raw_priority)(void)=(void *)module_get_func_export(0x859a24b1,0x01414F0B);
+    assert(raw_priority);
     GuestTlsTemplate tls={0}; uint32_t seed=0x12345678;
     assert(guest_tls_template_create(&tls, &seed, 4, 16) == 0);
     seed=0; /* Threads use the immutable snapshot, not mutable source storage. */
     assert(SceKernelThreadMgr_init(&tls, false) == 0);
     assert((uint32_t)sceKernelGetThreadCurrentPriority() == SCE_KERNEL_ERROR_UNKNOWN_THREAD_ID);
+    assert((uint32_t)raw_priority()==SCE_KERNEL_ERROR_UNKNOWN_THREAD_ID);
     assert(resolve_vita_priority(SCE_KERNEL_DEFAULT_PRIORITY) == 160);
     assert(resolve_vita_priority(SCE_KERNEL_DEFAULT_PRIORITY + 3) == 163);
     assert(vita_priority_to_hos_priority(64) == vita_priority_to_hos_priority(65));
@@ -108,7 +113,7 @@ int main(void)
         info->thread.entry(info->thread.argument);
     assert(info->return_status == 1234);
     assert(tp_exchanges == 0);
-    assert(sceKernelGetThreadCurrentPriority() == 160);
+    assert(sceKernelGetThreadCurrentPriority() == 160 && raw_priority()==160);
     int status = -1;
     assert(sceKernelWaitThreadEnd(uid, &status, NULL) == 0 && status == 1234);
     wait_result = 0xEA01;
