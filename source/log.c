@@ -5,30 +5,23 @@
 #include "log.h"
 #include "netlog.h"
 #include "util.h"
+#include "log_file.h"
 
 static Mutex g_log_mutex;
 static uint32_t g_device_mask;
 
-const char log_file_path[] = "sdmc:/vita2hos/log.txt";
-
-void file_log(const char *str)
-{
-    FILE *fp;
-
-    fp = fopen(log_file_path, "a");
-    if (!fp)
-        return;
-
-    fputs(str, fp);
-    fputc('\n', fp);
-
-    fclose(fp);
-}
+static LogFile g_file_log;
 
 void log_init(uint32_t device_mask)
 {
     mutexInit(&g_log_mutex);
     g_device_mask = device_mask;
+    if ((device_mask & LOG_DEVICE_FILE) &&
+        !log_file_init(&g_file_log, "sdmc:/vita2hos/log.txt",
+                       "sdmc:/vita2hos/log.previous.txt", 1024U * 1024U)) {
+        g_device_mask &= ~LOG_DEVICE_FILE;
+        log_print("SD diagnostic log unavailable; continuing with other log sinks");
+    }
 }
 
 void log_print(const char *str)
@@ -48,7 +41,7 @@ void log_print(const char *str)
     }
 
     if (g_device_mask & LOG_DEVICE_FILE)
-        file_log(str);
+        log_file_write(&g_file_log, str);
 
     mutexUnlock(&g_log_mutex);
 }

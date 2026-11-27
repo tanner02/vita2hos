@@ -121,7 +121,12 @@ int main(int argc, char *argv[])
     /* Initialize netlog */
     netlog_init();
 
+    create_vita2hos_paths();
+#ifndef NDEBUG
+    log_init(LOG_DEVICE_SVC | LOG_DEVICE_NETLOG | LOG_DEVICE_FILE);
+#else
     log_init(LOG_DEVICE_SVC | LOG_DEVICE_NETLOG);
+#endif
 
     LOG("vita2hos " VITA2HOS_MAJOR "." VITA2HOS_MINOR "." VITA2HOS_PATCH "-" VITA2HOS_HASH
         " (" __DATE__ " " __TIME__ ")");
@@ -129,8 +134,6 @@ int main(int argc, char *argv[])
     now = time(NULL);
     strftime(timestr, sizeof(timestr), "%c", localtime(&now));
     LOG("Starting at %s", timestr);
-
-    create_vita2hos_paths();
 
     ret = load_file(&jit, VITA2HOS_EXE_FILE, &entry);
     if (ret == 0) {

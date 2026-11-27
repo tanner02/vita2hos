@@ -1,5 +1,14 @@
 # 3D hardware smoke test
 
+Current Debug builds write `SD Card/vita2hos/log.txt` automatically. After a
+test, retrieve that file and `log.previous.txt` through MTP, FTP, or an SD reader.
+The current file rotates on startup and before exceeding 1 MiB; the previous
+file may therefore contain an earlier run or an earlier chunk of the same run.
+Copy both before running another test. Each line is closed to the filesystem;
+this does not guarantee recovery after storage failure or sudden power loss.
+Release builds keep file logging disabled. Console and UDP logging remain
+available, including when the SD log cannot be opened.
+
 After capturing a log from a current build, summarize missing APIs with:
 
 ```sh
