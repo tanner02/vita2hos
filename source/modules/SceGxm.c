@@ -84,7 +84,7 @@ typedef struct SceGxmContext {
             uint8_t compare_mask;
             uint8_t write_mask;
         } front_stencil, back_stencil;
-        SceGxmTextureInner fragment_textures[SCE_GXM_MAX_TEXTURE_UNITS];
+        SceGxmTextureInner textures[GXM_TEXTURE_BINDING_COUNT];
         dk_surface_t background_ds;
         struct {
             void *cpu_addr;
@@ -100,7 +100,7 @@ typedef struct SceGxmContext {
                 uint32_t front_stencil : 1;
                 uint32_t back_stencil : 1;
                 uint32_t color_write : 1;
-                uint32_t fragment_textures : 1;
+                uint32_t textures : 1;
                 uint32_t vertex_default_uniform : 1;
                 uint32_t fragment_default_uniform : 1;
                 uint32_t vertex_streams : 1;
@@ -1448,9 +1448,25 @@ EXPORT(SceGxm, 0xAD2F48D9, void, sceGxmSetFragmentProgram, SceGxmContext *contex
 EXPORT(SceGxm, 0x29C34DF5, int, sceGxmSetFragmentTexture, SceGxmContext *context,
        unsigned int textureIndex, const SceGxmTexture *texture)
 {
-    context->state.fragment_textures[textureIndex] = *(SceGxmTextureInner *)texture;
-    context->state.dirty.bit.fragment_textures = true;
-    return 0;
+    if (!context) return SCE_GXM_ERROR_INVALID_POINTER;
+    int result = gxm_texture_set_binding(context->state.textures, false, textureIndex, texture);
+    if (!result) context->state.dirty.bit.textures = true;
+    return result;
+}
+
+EXPORT(SceGxm, 0x9EB4380F, int, sceGxmSetVertexTexture, SceGxmContext *context,
+       unsigned int textureIndex, const SceGxmTexture *texture)
+{
+    if (!context) return SCE_GXM_ERROR_INVALID_POINTER;
+    int result = gxm_texture_set_binding(context->state.textures, true, textureIndex, texture);
+    if (!result) context->state.dirty.bit.textures = true;
+    return result;
+}
+
+EXPORT(SceGxm, 0x16C9D339, int, _sceGxmSetVertexTexture, SceGxmContext *context,
+       unsigned int textureIndex, const SceGxmTexture *texture)
+{
+    return sceGxmSetVertexTexture(context, textureIndex, texture);
 }
 
 EXPORT(SceGxm, 0x895DF2E9, int, sceGxmSetVertexStream, SceGxmContext *context,
@@ -1857,7 +1873,7 @@ static int upload_texture_mip_chain(SceGxmContext *context, const GxmTextureMipC
     return 0;
 }
 
-static int upload_fragment_texture_descriptors(SceGxmContext *context)
+static int upload_texture_descriptors(SceGxmContext *context)
 {
     const SceGxmTextureInner *texture;
     VitaMemBlockInfo *tex_block;
@@ -1873,12 +1889,12 @@ static int upload_fragment_texture_descriptors(SceGxmContext *context)
     int ret;
     bool staged = false;
     struct {
-        DkImageDescriptor images[SCE_GXM_MAX_TEXTURE_UNITS];
-        DkSamplerDescriptor samplers[SCE_GXM_MAX_TEXTURE_UNITS];
+        DkImageDescriptor images[GXM_TEXTURE_BINDING_COUNT];
+        DkSamplerDescriptor samplers[GXM_TEXTURE_BINDING_COUNT];
     } descriptors = {0};
 
-    for (int i = 0; i < SCE_GXM_MAX_TEXTURE_UNITS; i++) {
-        texture = &context->state.fragment_textures[i];
+    for (int i = 0; i < GXM_TEXTURE_BINDING_COUNT; i++) {
+        texture = &context->state.textures[i];
         if (!texture->data_addr)
             continue;
 
@@ -1948,7 +1964,10 @@ static int upload_fragment_texture_descriptors(SceGxmContext *context)
         dkImageViewDefaults(&image_view, &image);
         memcpy(image_view.swizzle, texture_layout.swizzle, sizeof(image_view.swizzle));
         dkImageDescriptorInitialize(&descriptors.images[i], &image_view, false, false);
-        dkCmdBufBindTexture(context->cmdbuf, DkStage_Fragment, i, dkMakeTextureHandle(i, i));
+        /* Shader units are local to a stage; descriptor handles are global. */
+        dkCmdBufBindTexture(context->cmdbuf,
+            i < SCE_GXM_MAX_TEXTURE_UNITS ? DkStage_Fragment : DkStage_Vertex,
+            i % SCE_GXM_MAX_TEXTURE_UNITS, dkMakeTextureHandle(i, i));
     }
 
     /* Each recorded update owns immutable descriptor storage until scene
@@ -1961,10 +1980,10 @@ static int upload_fragment_texture_descriptors(SceGxmContext *context)
                       DkInvalidateFlags_Descriptors | DkInvalidateFlags_L2Cache |
                       (staged ? DkInvalidateFlags_Image : 0));
     desc_addr = dkMemBlockGetGpuAddr(descriptor_block);
-    dkCmdBufBindImageDescriptorSet(context->cmdbuf, desc_addr, SCE_GXM_MAX_TEXTURE_UNITS);
+    dkCmdBufBindImageDescriptorSet(context->cmdbuf, desc_addr, GXM_TEXTURE_BINDING_COUNT);
     dkCmdBufBindSamplerDescriptorSet(
-        context->cmdbuf, desc_addr + SCE_GXM_MAX_TEXTURE_UNITS * sizeof(DkImageDescriptor),
-        SCE_GXM_MAX_TEXTURE_UNITS);
+        context->cmdbuf, desc_addr + GXM_TEXTURE_BINDING_COUNT * sizeof(DkImageDescriptor),
+        GXM_TEXTURE_BINDING_COUNT);
     return 0;
 }
 
@@ -2155,8 +2174,8 @@ static int context_flush_dirty_state(SceGxmContext *context)
         dkCmdBufBindBlendStates(context->cmdbuf, 0, &context->state.blend, 1);
     }
 
-    if (context->state.dirty.bit.fragment_textures) {
-        int ret = upload_fragment_texture_descriptors(context);
+    if (context->state.dirty.bit.textures) {
+        int ret = upload_texture_descriptors(context);
         if (ret != 0)
             return ret;
     }

@@ -106,6 +106,34 @@ int main(void)
     saved=texture;
     assert((uint32_t)sceGxmTextureSetHeight(&texture,3)==SCE_GXM_ERROR_INVALID_VALUE);
     assert(!memcmp(&texture,&saved,sizeof(texture)));
+    /* Each stage's same-numbered unit owns a descriptor snapshot, rather than
+     * aliasing the caller descriptor or the other stage's texture. */
+    SceGxmTextureInner bindings[GXM_TEXTURE_BINDING_COUNT] = {0};
+    SceGxmTexture fragment, vertex;
+    assert(!sceGxmTextureInitLinear(&fragment,(void *)(uintptr_t)0x1000,
+        SCE_GXM_TEXTURE_FORMAT_R8,8,8,1));
+    assert(!sceGxmTextureInitLinear(&vertex,(void *)(uintptr_t)0x2000,
+        SCE_GXM_TEXTURE_FORMAT_R8,16,16,1));
+    for (unsigned unit=0;unit<SCE_GXM_MAX_TEXTURE_UNITS;++unit) {
+        assert(!gxm_texture_set_binding(bindings,false,unit,&fragment));
+        assert(!gxm_texture_set_binding(bindings,true,unit,&vertex));
+    }
+    SceGxmTextureInner snapshot[GXM_TEXTURE_BINDING_COUNT];
+    memcpy(snapshot,bindings,sizeof(bindings));
+    assert(!sceGxmTextureSetData(&fragment,(void *)(uintptr_t)0x3000));
+    for (unsigned unit=0;unit<SCE_GXM_MAX_TEXTURE_UNITS;++unit) {
+        assert(bindings[unit].data_addr==0x1000/4);
+        assert(bindings[unit+SCE_GXM_MAX_TEXTURE_UNITS].data_addr==0x2000/4);
+    }
+    assert((uint32_t)gxm_texture_set_binding(bindings,false,SCE_GXM_MAX_TEXTURE_UNITS,&vertex)==
+        SCE_GXM_ERROR_INVALID_VALUE);
+    assert((uint32_t)gxm_texture_set_binding(bindings,true,UINT32_MAX,&vertex)==SCE_GXM_ERROR_INVALID_VALUE);
+    assert((uint32_t)gxm_texture_set_binding(bindings,true,0,NULL)==SCE_GXM_ERROR_INVALID_POINTER);
+    assert((uint32_t)gxm_texture_set_binding(NULL,true,0,&vertex)==SCE_GXM_ERROR_INVALID_POINTER);
+    assert(!memcmp(bindings,snapshot,sizeof(bindings)));
+    assert(!gxm_texture_set_binding(bindings,false,0,&fragment));
+    assert(bindings[0].data_addr==0x3000/4);
+    assert(!memcmp(&bindings[1],&snapshot[1],sizeof(bindings)-sizeof(bindings[0])));
     puts("GXM texture-state regression checks passed.");
     return 0;
 }

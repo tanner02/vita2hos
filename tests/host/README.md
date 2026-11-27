@@ -414,3 +414,7 @@ fields change only after the metadata record commits; failed commits leave them
 and required-size output unchanged. Tests use a fixed UTC clock, persist/reopen the
 timestamp, and cover clock and staged-record failures. Physical device clock
 accuracy and commercial-title timestamp behavior remain unverified.
+
+Texture binding checks cover independent fragment/vertex descriptor snapshots,
+all 16 units per stage, rebinding and non-mutating invalid input rejection.
+They do not exercise GPU sampling; vertex-stage hardware validation is pending.

@@ -1,3 +1,16 @@
+## 2026-11-27: vertex-stage texture bindings
+
+The runtime previously exposed only fragment texture binding. It now exports
+sceGxmSetVertexTexture and its internal alias, snapshots descriptors separately
+for both stages, and uploads a shared 32-slot descriptor table with disjoint
+16-slot ranges. Each native shader stage binds its local unit to the appropriate
+global image/sampler handle. Fragment setters now validate context, texture and
+unit bounds. Existing texture format/layout/staging restrictions still apply.
+
+Host regressions cover independent stages, all unit bounds, descriptor snapshot
+ownership, rebinding and unchanged state on invalid calls. Actual vertex texture
+sampling remains unverified on Switch; no commercial frame is claimed.
+
 ## 2026-11-27: offline GLSL-to-DKSH pipeline checks
 
 Host UAM 1.1.0 compiles all 32 first-by-hash and 32 largest private fragment GXP

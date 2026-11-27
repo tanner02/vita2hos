@@ -4,6 +4,16 @@
 #include "gxm/texture.h"
 #include "module.h"
 
+int gxm_texture_set_binding(SceGxmTextureInner bindings[GXM_TEXTURE_BINDING_COUNT],
+                            bool vertex, unsigned int unit, const SceGxmTexture *texture)
+{
+    if (!bindings || !texture) return SCE_GXM_ERROR_INVALID_POINTER;
+    if (unit >= SCE_GXM_MAX_TEXTURE_UNITS) return SCE_GXM_ERROR_INVALID_VALUE;
+    unsigned index = unit + (vertex ? SCE_GXM_MAX_TEXTURE_UNITS : 0);
+    memcpy(&bindings[index], texture, sizeof(*texture));
+    return 0;
+}
+
 static uint32_t texture_type(const SceGxmTextureInner *texture)
 {
     return (uint32_t)texture->type << 29;
