@@ -1,3 +1,9 @@
+## 2026-11-27: owned kernel probe on runtime 3dda5cf - PASS
+
+User ran kernel_probe v1 and reconnected USB/MTP. The active executable matches SHA256 71f3ec8dca3d9bbc823f94ce499e9c04c97652603bb5bc8bc189aade2f890879 (17243 bytes). The collected report passes retained/duplicate/timeout signals, mspace pool bounds and exhaustion, 128 signal/mspace worker roundtrips, and named-condition mutex release/reacquire. Runtime log identifies 0.4.0-3dda5cf, contains no unresolved imports, and reports guest/process/launch/close zero.
+
+This verifies the owned kernel paths exercised by this probe. It does not verify RWlocks, affinity, power tick, missing-import tracing, commercial library startup, or LittleBigPlanet boot. The startup-capable runtime is now confirmed installed; the active payload remains the owned kernel probe. Raw report and log were collected privately in result-20261127-140649.
+
 ## 2026-11-27: ABGR8 surface gamma on runtime 4d1233b — PASS
 
 User installed HOME title 4d1233b and ran visible_cube v3. Active guest SHA256 9f61826b2e5bcfebb0ff2788ef97fa5adaddf8090c0e6593d9b0144c74eb9d40 matches the transferred probe. Collected report passes color_surface_gamma_rgb_alpha_and_reset: nine interior pixel samples per pass check mid-gray RGB near 188 with linear alpha near 128 under BGR gamma, then RGB/alpha near 128 after switching to NONE on the same target (tolerance two). The report also passes driver memory, framebuffer switching, null color, shader red, depth-only occlusion, stencil replacement, texture changes/viewports and all 360 animated cube frames. Runtime log identifies 4d1233b, has no unresolved imports, and guest/process/launch/close return zero.
