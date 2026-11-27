@@ -1,3 +1,6 @@
+#ifndef _POSIX_C_SOURCE
+#define _POSIX_C_SOURCE 200809L
+#endif
 #include <uam/compiler_iface.h>
 #include <cstdio>
 #include <cstdlib>
