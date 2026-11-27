@@ -1,3 +1,9 @@
+## 2026-11-27: savedata call shape on runtime febb799
+
+The new hardware log identifies runtime febb799 and records the first four argument registers. The observed SaveDataSlotGetParam call selects slot zero and a null mount pointer. SaveDataDataSave supplies one item, a non-null slot descriptor and a null mount pointer. The message-dialog initialization is followed by NetCheckDialogGetStatus with the unsupported error still in r0, consistent with the statically identified retry path. No normal exit or rendering is established by this log.
+
+Evidence is retained privately in result-20261127-165112. The newer AppUtil storage implementation has not run on hardware. Owned savedata probe v1 is built and import-audited to validate real filesystem flush/replacement and generic savedata0 reads before a game test; no hardware pass is claimed.
+
 ## 2026-11-27: static savedata failure path after 613762b startup
 
 Read-only inspection of the user-owned executable identifies the observed message-dialog call as system-message mode. The path selects the SDK no-space or no-memory-card message and retries MsgDialogInit on failure. The exact selected message has not been captured dynamically. The unsupported dialog return can therefore keep this path retrying without displaying its intended UI; an absent normal-exit marker does not prove a crash.
