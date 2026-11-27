@@ -2,13 +2,32 @@
 
 #include "load.h"
 
+int load_image_publish(LoadImage *image, ModuleGuestExports *exports)
+{
+    if (!image || !exports || !image->prepared || image->bound || image->export_registry ||
+        exports == &image->exports) return -1;
+    if (module_guest_exports_merge(exports, &image->exports) < 0) return -1;
+    image->export_registry = exports;
+    return 0;
+}
+
 Result load_image_close(LoadImage *image)
 {
     if (!image)
         return MAKERESULT(Module_Libnx, LibnxError_BadInput);
     /* Stop publishing guest addresses before any backing mapping is removed.
      * The caller has already stopped execution of this image. */
+    if (image->export_registry) {
+        module_guest_exports_remove(image->export_registry, image);
+        image->export_registry = NULL;
+    }
     module_guest_exports_clear(&image->exports);
+    free(image->segments);
+    image->segments = NULL;
+    image->segment_count = 0;
+    image->imports = image->entry = NULL;
+    image->imports_size = 0;
+    image->prepared = image->bound = false;
     Result result = 0;
     for (int i = 0; i < image->fixed_count; ++i) {
         Result close = load_fixed_close(&image->fixed[i]);

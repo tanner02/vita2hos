@@ -17,56 +17,13 @@
 #include "self.h"
 #include "util.h"
 
-#define IMP_GET_NEXT(imp) ((sce_module_imports_u_t *)((char *)imp + imp->size))
-#define IMP_GET_FUNC_COUNT(imp)                                                                    \
-    (imp->size == sizeof(sce_module_imports_short_raw) ? imp->imports_short.num_syms_funcs         \
-                                                       : imp->imports.num_syms_funcs)
-#define IMP_GET_VARS_COUNT(imp)                                                                    \
-    (imp->size == sizeof(sce_module_imports_short_raw) ? imp->imports_short.num_syms_vars          \
-                                                       : imp->imports.num_syms_vars)
-#define IMP_GET_NID(imp)                                                                           \
-    (imp->size == sizeof(sce_module_imports_short_raw) ? imp->imports_short.library_nid            \
-                                                       : imp->imports.library_nid)
-#define IMP_GET_NAME(imp)                                                                          \
-    (imp->size == sizeof(sce_module_imports_short_raw) ? imp->imports_short.library_name           \
-                                                       : imp->imports.library_name)
-#define IMP_GET_FUNC_TABLE(imp)                                                                    \
-    (imp->size == sizeof(sce_module_imports_short_raw) ? imp->imports_short.func_nid_table         \
-                                                       : imp->imports.func_nid_table)
-#define IMP_GET_FUNC_ENTRIES(imp)                                                                  \
-    (imp->size == sizeof(sce_module_imports_short_raw) ? imp->imports_short.func_entry_table       \
-                                                       : imp->imports.func_entry_table)
-#define IMP_GET_VARS_TABLE(imp)                                                                    \
-    (imp->size == sizeof(sce_module_imports_short_raw) ? imp->imports_short.var_nid_table          \
-                                                       : imp->imports.var_nid_table)
-#define IMP_GET_VARS_ENTRIES(imp)                                                                  \
-    (imp->size == sizeof(sce_module_imports_short_raw) ? imp->imports_short.var_entry_table        \
-                                                       : imp->imports.var_entry_table)
-
-
-
 static int load_vpk(LoadImage *image, const void *data, uint32_t size, void **entry);
 static int load_executable(LoadImage *image, const uint8_t *data, size_t size, void **entry);
 static int load_elf(LoadImage *image, const void *data, size_t size, void **entry);
 static int load_self(LoadImage *image, const void *data, size_t size, void **entry);
 static int load_segments(LoadImage *image, void **entry, Elf32_Addr e_entry, segment_info_t *segments,
                          int num_segments, Elf32_Half type);
-static int resolve_imports(const segment_info_t *segments, int count, sce_module_imports_u_t *import);
 
-
-static void *map_loaded_address(const segment_info_t *segments, int count, uintptr_t address,
-                                 size_t size)
-{
-    for (int i = 0; i < count; i++) {
-        if (segments[i].p_type != PT_LOAD)
-            continue;
-        LoadAddressRange range = {segments[i].rx_addr, segments[i].rw_addr, segments[i].p_memsz};
-        void *mapped = load_address_translate(&range, 1, address, size);
-        if (mapped)
-            return mapped;
-    }
-    return NULL;
-}
 
 typedef struct {
     const segment_info_t *segments;
@@ -152,13 +109,27 @@ static int elf_get_sce_module_info(Elf32_Addr e_entry, const segment_info_t *seg
 
 int load_file(LoadImage *image, const char *filename, void **entry)
 {
+    if (!entry) return -1;
+    *entry = NULL;
+    int result = load_file_prepare(image, filename);
+    if (result < 0) return result;
+    if (load_image_bind(image, &image->exports) < 0) {
+        Result close = load_image_close(image);
+        if (R_FAILED(close)) LOG("Executable binding rollback failed: 0x%x", close);
+        return -1;
+    }
+    *entry = image->entry;
+    return 0;
+}
+
+int load_file_prepare(LoadImage *image, const char *filename)
+{
     void *data;
     uint32_t size;
     int ret = 0;
-
-    if (!image || !entry || image->jit_active || image->data || image->fixed ||
-        image->exports.libraries) return -1;
-    *entry = NULL;
+    void *entry = NULL;
+    if (!image || !filename || image->prepared || image->segments || image->jit_active ||
+        image->data || image->fixed || image->exports.libraries) return -1;
 
     LOG("Opening '%s' for reading.", filename);
     if (util_load_file(filename, &data, &size) != 0) {
@@ -168,7 +139,7 @@ int load_file(LoadImage *image, const char *filename, void **entry)
 
     image->source_tag = load_source_tag(data, size);
     ret = load_detect_format(data, size) == LOAD_FORMAT_INVALID ?
-        load_vpk(image, data, size, entry) : load_executable(image, data, size, entry);
+        load_vpk(image, data, size, &entry) : load_executable(image, data, size, &entry);
     if (ret < 0) LOG("Unsupported file or executable load failed.");
 
     free(data);
@@ -585,35 +556,12 @@ static int load_segments(LoadImage *image, void **entry, Elf32_Addr e_entry, seg
         LOG("Invalid or unsupported guest library exports.");
         goto err_free_data;
     }
-    /* One process image is active today. A future module group must register
-     * every provider before binding imports, using a shared process registry. */
-    module_set_guest_exports(&image->exports);
-
     /* Resolve NIDs */
     if (mod_info->import_top > mod_info->import_end ||
         mod_info->import_end > segments[mod_info_idx].p_memsz || mod_info->import_top % 4 != 0) {
         LOG("Invalid module import range.");
         goto err_free_data;
     }
-    sce_module_imports_u_t *import =
-        (void *)(segments[mod_info_idx].rw_addr + mod_info->import_top);
-    void *end = (void *)(segments[mod_info_idx].rw_addr + mod_info->import_end);
-
-    for (; (void *)import < end; import = IMP_GET_NEXT(import)) {
-        size_t remaining = (uintptr_t)end - (uintptr_t)import;
-        if (remaining < sizeof(import->size) ||
-            (import->size != sizeof(sce_module_imports_short_raw) &&
-             import->size != sizeof(sce_module_imports_raw)) || import->size > remaining) {
-            LOG("Invalid import record size.");
-            goto err_free_data;
-        }
-        LOG("Resolving imports for library NID 0x%08" PRIx32, IMP_GET_NID(import));
-        if (resolve_imports(segments, num_segments, import) < 0) {
-            LOG("Failed to resolve imports for library NID 0x%08" PRIx32, IMP_GET_NID(import));
-            goto err_free_data;
-        }
-    }
-
     /* Find the entry point (address belonging to the RX JIT area) */
     *entry = (char *)segments[mod_info_idx].rx_addr + mod_info->module_start;
     if (!(segments[mod_info_idx].p_flags & PF_X) ||
@@ -622,15 +570,19 @@ static int load_segments(LoadImage *image, void **entry, Elf32_Addr e_entry, seg
         goto err_free_data;
     }
 
-    if (fixed) {
-        for (int i = 0; i < num_segments; ++i)
-            if (image->fixed[i].writable_mapped) load_fixed_flush(&image->fixed[i]);
-        res = 0;
-    } else res = jitTransitionToExecutable(jit);
-    if (R_FAILED(res)) {
-        LOG("Could not transition JIT to executable: 0x%" PRIx32, res);
-        goto err_free_data;
+    image->segments = calloc(num_segments, sizeof(*image->segments));
+    if (!image->segments) goto err_free_data;
+    for (int i = 0; i < num_segments; ++i) {
+        if (segments[i].p_type != PT_LOAD) continue;
+        image->segments[i] = segments[i];
+        image->segments[i].src_data = NULL;
+        image->segments[i].needs_free = false;
     }
+    image->segment_count = num_segments;
+    image->imports = (void *)(segments[mod_info_idx].rw_addr + mod_info->import_top);
+    image->imports_size = mod_info->import_end - mod_info->import_top;
+    image->entry = *entry;
+    image->prepared = true;
 
     return 0;
 
@@ -644,66 +596,4 @@ err_jit_close:
     }
 
     return layout_conflict ? LOAD_LAYOUT_CONFLICT : -1;
-}
-
-static int resolve_imports(const segment_info_t *segments, int count, sce_module_imports_u_t *import)
-{
-    const void *addr;
-    uint32_t nid;
-    uint32_t *stub;
-    uint32_t lib_nid = IMP_GET_NID(import);
-
-    const uint32_t num_funcs = IMP_GET_FUNC_COUNT(import);
-    if (num_funcs && (((uintptr_t)IMP_GET_FUNC_TABLE(import) & 3) ||
-                     ((uintptr_t)IMP_GET_FUNC_ENTRIES(import) & 3)))
-        return -1;
-    const uint32_t *nids = map_loaded_address(segments, count,
-        (uintptr_t)IMP_GET_FUNC_TABLE(import), num_funcs * sizeof(uint32_t));
-    const uint32_t *entries = map_loaded_address(segments, count,
-        (uintptr_t)IMP_GET_FUNC_ENTRIES(import), num_funcs * sizeof(uint32_t));
-    if (num_funcs && (!nids || !entries))
-        return -1;
-
-    for (uint32_t i = 0; i < IMP_GET_FUNC_COUNT(import); i++) {
-        memcpy(&nid, &nids[i], sizeof(nid));
-        uint32_t stub_address;
-        memcpy(&stub_address, &entries[i], sizeof(stub_address));
-        if (stub_address % 4 != 0)
-            return -1;
-        stub = map_loaded_address(segments, count, stub_address, 3 * sizeof(uint32_t));
-        if (!stub)
-            return -1;
-        addr = module_get_func_export(lib_nid, nid);
-
-        if (addr) {
-            stub[0] = arm_encode_movw(12, (uint16_t)(uintptr_t)addr);
-            stub[1] = arm_encode_movt(12, (uint16_t)(((uintptr_t)addr) >> 16));
-            stub[2] = arm_encode_bx(12);
-        } else {
-            stub[0] = arm_encode_movw(0, (uint16_t)SCE_KERNEL_ERROR_MODULEMGR_NO_FUNC_NID);
-            stub[1] = arm_encode_movt(0, (uint16_t)(SCE_KERNEL_ERROR_MODULEMGR_NO_FUNC_NID >> 16));
-            stub[2] = arm_encode_ret();
-            LOG("  Could not resolve NID 0x%08" PRIx32 ", export not found!", nid);
-            LOG("UNRESOLVED_IMPORT kind=function library=0x%08" PRIx32 " nid=0x%08" PRIx32,
-                lib_nid, nid);
-        }
-    }
-
-    const uint32_t num_vars = IMP_GET_VARS_COUNT(import);
-    if (num_vars && ((uintptr_t)IMP_GET_VARS_TABLE(import) & 3))
-        return -1;
-    const uint32_t *var_nids = map_loaded_address(segments, count,
-        (uintptr_t)IMP_GET_VARS_TABLE(import), num_vars * sizeof(uint32_t));
-    if (num_vars && !var_nids)
-        return -1;
-    for (uint32_t i = 0; i < num_vars; i++) {
-        memcpy(&nid, &var_nids[i], sizeof(nid));
-        LOG("  Trying to resolve variable NID 0x%08" PRIx32, nid);
-        /* TODO */
-        LOG("    Variable NID resolving currently not implemented!");
-        LOG("UNRESOLVED_IMPORT kind=variable library=0x%08" PRIx32 " nid=0x%08" PRIx32,
-            lib_nid, nid);
-    }
-
-    return 0;
 }

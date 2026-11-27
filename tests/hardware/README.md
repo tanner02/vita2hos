@@ -267,6 +267,18 @@ before binding imports, and removes them before releasing image mappings,
 including cleanup failures. The current loader still supports one process image;
 it does not yet discover, load, or start bundled SUPRX dependencies.
 
+The loader also exposes explicit preparation, publication, and binding phases:
+`load_file_prepare` maps and relocates without resolving imports;
+`load_image_publish` transfers exports into a caller-owned process registry;
+`load_image_bind` resolves imports using that registry and finalizes code caches
+and permissions. A process can prepare and publish every image before binding
+any image, allowing dependencies to resolve each other's functions. Images must
+have stable addresses, and their shared registry must outlive them. Close every
+image before clearing that registry, including after a binding failure. The
+existing `load_file` entry point performs these phases for one executable.
+Host tests cover cross-image function binding and shared-registry cleanup; the
+new multi-image API has not yet been exercised on Switch hardware.
+
 ### Experimental title-specific launch profile
 
 **Hardware status:** this route failed to start Mario Kart 8 Deluxe on the tested
