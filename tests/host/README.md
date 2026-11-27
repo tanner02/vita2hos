@@ -245,3 +245,23 @@ TRP metadata/progress, icons, unlocks and synchronization remain unsupported.
 The 64-handle cap, non-null-option rejection and active-provider unload policy
 are explicit local limits, not firmware-verified behavior. Abort currently marks
 handle state; no asynchronous trophy operation is implemented or cancelled.
+
+Trophy archive tests require OpenSSL development headers and libcrypto on the
+host (for example libssl-dev on Ubuntu). The Switch build uses libnx SHA-1.
+Owned version-2/3 fixtures exercise stream hashing with the embedded digest
+zeroed, exact-name lookup, partial reads, empty reads, corrupt payloads,
+malformed sizes/counts/strides, unterminated or path-like names, duplicate names,
+metadata/data range separation, 64-bit overflow and allocation failure.
+
+The reader borrows immutable bytes and owns only its validated entry index.
+It limits archives to 64 MiB / 4096 entries, accepts flat printable ASCII names,
+and supports version 2/3 with 64-byte headers/records. Payload aliases are safe
+for read-only access and are allowed. No files are extracted or modified.
+SHA-1 checks archive integrity; publisher signatures/authenticity are not checked.
+This helper is not yet connected to trophy contexts or guest API exports.
+Layout references: the pinned Vita3K TRP reader and
+https://github.com/RPCS3/rpcs3/blob/master/rpcs3/Loader/TRP.h .
+The size field at header offset 0x14 is record size, not a general table offset.
+A private host run validated the user-owned version-2 archive's SHA-1 and all
+107 entry ranges without extracting content or executing guest instructions.
+This does not establish trophy-context registration or hardware SHA-1 execution.
