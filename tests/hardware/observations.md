@@ -1,3 +1,29 @@
+## 2026-11-27: real title reaches shader compilation, reserved code tail fixed
+
+The unchanged frozen073ee41 HLE runtime first passes the entire owned cube7
+batch:35 PASS tags, all360 cube frames, process0 and image cleanup0. Original
+LittleBigPlanet files and the newly restored index then ran on that runtime.
+A Windows multicast receiver captured live Switch netlog without opening the
+running title's SD log. The game reaches actual shader translation and host UAM
+compilation, then deko3d rejects a4096-byte DKSH at dkShaderInitialize because
+its code extends into DK_SHADER_CODE_UNUSABLE_SIZE at the block's end. The
+application error dialog was closed remotely; HOME/Start shows it closed.
+
+The allocator previously rounded only the DKSH byte count to a page. It now
+adds deko3d's required1024-byte unusable tail before page rounding, rejecting
+sizes that would overflow either addition. Copy and zero-fill still cover the
+payload and all remaining allocation bytes. The installed SDK header defines
+the constant, and [deko3d's admission check](https://github.com/devkitPro/deko3d/blob/master/source/dk_shader.cpp)
+requires code-end <= block-size minus that tail. A page-sized blob therefore
+needs a larger block; smaller sample shaders happened to fit the old padding.
+
+Host ASan/UBSan checks pass for page/tail boundaries, the real4096-byte case,
+copy/padding preservation, near-UINT32_MAX rejection before allocation and
+existing failure/cleanup ownership. Hardware verification of this correction
+is pending. No commercial 3D scene is established yet. HLE code remains with
+its owner; the correction changes only Codex's shader allocator and host tests.
+Detailed shader code, game logs and source assets remain private.
+
 ## 2026-11-27: missing game resource index restored and content verified
 
 A fresh SD listing confirmed that the original game payload contained data.farc,

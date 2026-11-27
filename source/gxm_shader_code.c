@@ -15,11 +15,14 @@ int gxm_shader_code_upload(DkDevice device, GxmShaderCode **list, const void *da
     *block = NULL;
     if (!device || !list || !data) return SCE_GXM_ERROR_INVALID_POINTER;
     if (!size) return SCE_GXM_ERROR_INVALID_VALUE;
-    if (size > UINT32_MAX - (DK_MEMBLOCK_ALIGNMENT - 1U))
+    /* deko3d reserves the end of each code block for instruction prefetch.
+     * Page rounding alone leaves no tail when DKSH fills a page exactly. */
+    if (size > UINT32_MAX - DK_SHADER_CODE_UNUSABLE_SIZE - (DK_MEMBLOCK_ALIGNMENT - 1U))
         return SCE_GXM_ERROR_OUT_OF_MEMORY;
     GxmShaderCode *code = calloc(1, sizeof(*code));
     if (!code) return SCE_GXM_ERROR_OUT_OF_MEMORY;
-    uint32_t allocation = (size + DK_MEMBLOCK_ALIGNMENT - 1U) & ~(DK_MEMBLOCK_ALIGNMENT - 1U);
+    uint32_t allocation = (size + DK_SHADER_CODE_UNUSABLE_SIZE + DK_MEMBLOCK_ALIGNMENT - 1U) &
+                          ~(DK_MEMBLOCK_ALIGNMENT - 1U);
     DkMemBlockMaker maker;
     dkMemBlockMakerDefaults(&maker, device, allocation);
     maker.flags = DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached | DkMemBlockFlags_Code;

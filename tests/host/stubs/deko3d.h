@@ -73,6 +73,7 @@ enum {
 };
 void dkMemBlockDestroy(DkMemBlock block);
 #define DK_MEMBLOCK_ALIGNMENT 4096U
+#define DK_SHADER_CODE_UNUSABLE_SIZE 0x400U
 typedef struct {
     DkDevice device;
     uint32_t size, flags;
