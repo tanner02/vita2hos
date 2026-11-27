@@ -340,3 +340,15 @@ Ring-buffer bounds tests cover interior spans, exact allocation ends, oversized
 reservations, wraparound and integer-overflow boundaries. GXM context creation
 now carries suballocation offsets into command and uniform memory addresses.
 These host checks do not simulate deko3d or prove commercial-title rendering.
+
+Savedata slot storage is an internal backend, not an AppUtil implementation.
+The caller must supply an existing title-scoped directory and serialize access.
+Records contain a version marker, the fixed 0x34c-byte SDK metadata payload and
+an integrity digest; this is a vita2hos format, not Sony savedata encryption or
+publisher authentication. Reads preserve outputs on malformed/truncated records.
+Writes use exclusive staging, checked writes and fsync before rename. Tests
+reopen records and inject write/flush/rename failures to check preservation.
+A stale staging file returns EEXIST and is retained for explicit recovery.
+Filesystem rename and power-loss guarantees still require Switch validation;
+parent-directory durability is not established. No savedata mount, title identity,
+file payload API, quota calculation, or SDK success is supplied by this backend.
