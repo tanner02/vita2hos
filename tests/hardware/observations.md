@@ -2155,3 +2155,21 @@ dispatch bypassing logs, unchanged raw results and preservation of an independen
 slot replacement. The VitaSDK module built and its four imports were audited.
 Version2 writes startup-init-v2.txt and remains PC-only; current SD still has
 version1 with the root29plan. Expanded62 testing requires deploying version2.
+
+
+## Positive texture usage hardware verification
+
+Runtime09047b8 and the opt-in visible cube v10 were installed/readback verified,
+with the previous report backed up and absent before launch. The first run
+reported all50checks and process0/HOME, but the final cleanup UDP line was
+missing. That run was preserved; an unchanged fresh-report retry independently
+passed50checks with process0 and cleanup0. Only the retry supplies the complete
+acceptance receipt; logs from the two launches were not combined.
+
+Fresh logs show bounded extraction for vertex/flat fragment mask0 and texture
+fragment mask1. The inactive invalid slots15/31 and within-scene fragment switch
+without texture rebind passed, as did all prior pixels, ring guards and360cube
+frames. Median framebuffer submission gap33333us is not physical scanout FPS.
+HOME was observed; original executable/modules/mode were restored exactly.
+Observerv2/62plan was then staged for a separate realgame run. No game speedup,
+cleared alpha artifacts or interactive3D boot is established by this batch.
