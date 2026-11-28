@@ -2202,3 +2202,23 @@ The candidate explicitly selects oneGOB for affected native tiled base layouts
 Focused ASan/UBSan row-boundary tests pass. A separate opt-in cubev11 batch adds
 red-base/green-mip tests forRGBA8,BC1,BC2,BC3; all use controlled4096byte backing.
 Its native build/import audit passed. Baseline and fixed hardware runs pending.
+
+
+## Small mip-layout differential hardware verification
+
+The exact same visible-cube v11 guest ran on unchanged09047b8 and fixede5f48ec
+(SHA25694da4a93d93f672e2f3a7fbb0b82501dbe2c7ec33126e5eb7649f93f4756e3fb).
+The baseline completed its moving cube but all four mip cases produced wrong
+pixels: zeroes in RGBA8/BC1 and wrong colors/alpha in BC2/BC3. Its controlled
+report failed, with process1 and cleanup0. The fixed run independently passed
+all54checks, process0/cleanup0, with HOME observed. Reports were absent before
+each launch and preserved separately. Only three production paths differ
+(layout.c,layout.h,SceGxm.c); the SDK library is unchanged.
+
+This establishes corrected rendering of the tested small base mip layouts,
+including protection from the differently colored uploaded second level. It
+does not establish correct sampling of every LOD, every texture format, or
+that the original game failure was caused by this issue. Full host suite and
+focused ASan/UBSan row-boundary checks passed; native/source/package verified.
+Original LBP/modules/mode were restored exactly and a separate fixed-runtime
+game run started with observerv2. No interactive3D boot is claimed.
