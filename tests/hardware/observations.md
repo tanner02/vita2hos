@@ -2136,3 +2136,22 @@ respectively). Independent source review found no actionable issues in state
 setup, fixture/fragment lifetimes or failure cleanup. This adds positive-path
 coverage needed by the candidate; it has not been deployed or run on hardware.
 Console remains user-owned pending recovery handback.
+
+
+## Startup observer pointer-identity correction
+
+Read-only dispatcher analysis shows that later partial initialization selects
+a record by comparing its init callback with an original function address.
+Persistent wrappers in the expanded62 plan would hide that identity. The root29
+plan previously run did not wrap this selected game-stage callback; the62plan
+has not been deployed. Observer v2 now compare/exchanges each slot back to its
+original pointer before invoking it, preserving later original-address selection
+after its first observed call. A separately replaced pointer is not clobbered.
+The reviewed initial worker starts at the beginning of the table; any other
+plan must also exclude original-address selection before a first invocation.
+
+Focused ASan/UBSan tests passed for restoration before guest entry, later direct
+dispatch bypassing logs, unchanged raw results and preservation of an independent
+slot replacement. The VitaSDK module built and its four imports were audited.
+Version2 writes startup-init-v2.txt and remains PC-only; current SD still has
+version1 with the root29plan. Expanded62 testing requires deploying version2.
