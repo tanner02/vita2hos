@@ -1223,7 +1223,7 @@ EXPORT(SceGxm, 0x8734FF4E, int, sceGxmBeginScene, SceGxmContext *context, unsign
     }
     context->depth_staging=next_depth;
 
-    LOG("sceGxmBeginScene to renderTarget %p, fragmentSyncObject: %p, "
+    LOG_DEBUG("sceGxmBeginScene to renderTarget %p, fragmentSyncObject: %p, "
         "w: %" PRId32 ", h: %" PRId32 ", stride: %" PRId32 ", CPU addr: %p",
         renderTarget, fragmentSyncObject,
         color_surface_inner ? color_surface_inner->width : 0,
@@ -1326,7 +1326,7 @@ EXPORT(SceGxm, 0xFE300E2F, int, sceGxmEndScene, SceGxmContext *context,
     bool discard_color;
     bool discard_stencil;
 
-    LOG("sceGxmEndScene");
+    LOG_DEBUG("sceGxmEndScene");
 
     /* Validate both addresses before appending any completion commands. */
     const SceGxmNotification *notifications[2] = {vertexNotification, fragmentNotification};
@@ -1358,7 +1358,7 @@ EXPORT(SceGxm, 0xFE300E2F, int, sceGxmEndScene, SceGxmContext *context,
         dkCmdBufDiscardColor(context->cmdbuf, 0);
     } else {
         if (dk_image_for_gxm_color_surface(g_dk_device, &color_surface_image, gxm_color_surface)) {
-            LOG("Copying color surface: shadow -> GXM");
+            LOG_DEBUG("Copying color surface: shadow -> GXM");
             const DkImage *source=dk_surface_resolve_color(context->cmdbuf,shadow_color_surface,
                 &render_target->resolved_color_surface);
             if (!source) return SCE_GXM_ERROR_DRIVER;
@@ -1471,7 +1471,7 @@ EXPORT(SceGxm, 0xEC5C26B5, int, sceGxmDisplayQueueAddEntry, SceGxmSyncObject *ol
 {
     DisplayQueueControlBlock *queue = g_display_queue;
 
-    LOG("sceGxmDisplayQueueAddEntry: old: %p, new: %p", oldBuffer, newBuffer);
+    LOG_DEBUG("sceGxmDisplayQueueAddEntry: old: %p, new: %p", oldBuffer, newBuffer);
 
     /* Throttle down if we already have enough pending display queue entries */
     while (CIRC_CNT(queue->head, queue->tail, queue->num_entries) ==
@@ -2340,7 +2340,7 @@ static int draw_indexed(SceGxmContext *context, SceGxmPrimitiveType primType,
     DkPrimitive primitive;
     int ret;
 
-    LOG("sceGxmDraw: primType: 0x%x, indexCount: %d", primType, indexCount);
+    LOG_DEBUG("sceGxmDraw: primType: 0x%x, indexCount: %d", primType, indexCount);
 
     if (!context || !indexData)
         return SCE_GXM_ERROR_INVALID_POINTER;
