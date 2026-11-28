@@ -15,7 +15,7 @@ void test_compiler_leave();
 class DekoCompiler {
 public:
     explicit DekoCompiler(pipeline_stage, int optLevel = 3) {
-        assert(optLevel == 1); /* Higher levels reproduce the native SSBO fault. */
+        assert(optLevel == 3); /* Build-time clone fix permits normal optimization. */
         test_compiler_enter();
     }
     ~DekoCompiler() { test_compiler_leave(); }

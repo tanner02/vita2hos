@@ -182,6 +182,9 @@ target_compile_definitions(vita2hos PRIVATE
     VITA2HOS_HASH="${VITA2HOS_HASH}"
 )
 
+include("${CMAKE_SOURCE_DIR}/cmake/UamCloneFix.cmake")
+vita2hos_fix_uam_clone("${NX_ROOT}")
+
 target_link_libraries(vita2hos PRIVATE
     vita_mspace
     vita_trophy_xml
@@ -189,7 +192,7 @@ target_link_libraries(vita2hos PRIVATE
     shader
     spirv-cross-core
     fmt
-    uam
+    vita_uam
     miniz
     mlib
     $<$<CONFIG:Debug>:deko3dd>

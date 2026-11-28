@@ -167,13 +167,26 @@ whether capture succeeded. Remove the enabled file after collection to avoid
 per-shader SD writes during ordinary runs. The identity is diagnostic, not a
 cryptographic integrity check. Game-derived inputs must remain private.
 
-## UAM SSBO optimization workaround
+## UAM SSBO clone metadata fix
 
-The runtime explicitly selects UAM optimization level 1. A private captured
-vertex shader crashes serially at levels 2 and 3 in GM107 `emitLDG`: an SSBO
-load reaches emission without its indirect address. The same input compiles
-at levels 0 and 1. The wrapper regression checks that every compiler receives
-level 1, including failed and overlapping calls. This avoids the reproduced
-optimizer fault without changing the installed SDK or encoding a missing
-address as zero. It does not establish rendered correctness or performance;
-those require hardware checks. Captured game input remains outside the repo.
+UAM's level-2 memory optimization combines loads. Dead-code elimination may
+then split a combined load by cloning its instruction. The SDK clone copied
+source values and modifiers but lost both indirect indices and `usedAsPtr`.
+The resulting global load retained an orphaned address source, then crashed
+in GM107 `emitLDG`. A private captured vertex input reproduces at levels 2/3;
+levels 0/1 avoid it. A level-1 workaround was verified on the Switch before
+the underlying clone defect was isolated.
+
+`cmake/UamCloneFix.cmake` now compiles a patched build-directory copy of the
+SDK's own `nv50_ir.cpp`, copies `libuam.a`, and replaces only its IR object.
+The installed SDK stays unchanged. Source and archive-layout guards stop
+configuration when an SDK update needs review. This allows the wrapper to
+use normal optimization level 3 again. Builds use a single-config generator,
+as in the existing Ninja presets. The patch is also supplied separately in
+`patches/uam/preserve-clone-address-metadata.patch`.
+
+The original IR-only test in `tests/uam` fails against unmodified UAM and passes
+with the patch, checking both address dimensions and pointer-source flags.
+The private captured shader also compiles at level 3 with the patch; game
+inputs remain outside the repository. Host/compiler checks do not establish
+rendered correctness or performance; native hardware validation is separate.

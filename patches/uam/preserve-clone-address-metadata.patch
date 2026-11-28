@@ -1,0 +1,8 @@
+--- a/mesa-imported/codegen/nv50_ir.cpp
++++ b/mesa-imported/codegen/nv50_ir.cpp
+@@ -780,2 +780,5 @@
+       i->src(s).mod = src(s).mod;
++      i->src(s).indirect[0] = src(s).indirect[0];
++      i->src(s).indirect[1] = src(s).indirect[1];
++      i->src(s).usedAsPtr = src(s).usedAsPtr;
+    }
