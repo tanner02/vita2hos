@@ -47,10 +47,10 @@ def build(sdk, output, media_probe=False):
     (output / "disassembly.txt").write_text(disassembly, encoding="utf-8")
     for symbol in ("call_missing_arm", "call_missing_thumb"):
         assert "<" + symbol + ">:" in disassembly
-    manifest = {"probe": "missing_import_media_probe" if media_probe else "missing_import_probe", "version": 2 if media_probe else 1, "runtime_minimum": "media-probe gate support" if media_probe else "9a7eb87",
+    manifest = {"probe": "missing_import_media_probe" if media_probe else "missing_import_probe", "version": 3 if media_probe else 1, "runtime_minimum": "media-probe gate and NULL MP4 open support" if media_probe else "9a7eb87",
         "hardware_execution": "not performed", "bytes": len(data), "sha256": hashlib.sha256(data).hexdigest(),
         "function_imports": len(imports), "expected_unresolved_pairs": [list(x) for x in sorted(expected)],
-        "expected_first_use_records": 2, "expected_report": "/vita2hos/missing-import-media-probe-v2.txt" if media_probe else "/vita2hos/missing-import-probe.txt"}
+        "expected_first_use_records": 2, "expected_report": "/vita2hos/missing-import-media-probe-v3.txt" if media_probe else "/vita2hos/missing-import-probe.txt"}
     (output / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(manifest, indent=2))
 

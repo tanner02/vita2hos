@@ -13,6 +13,7 @@ static char flag_path[512],report_path[512];
 #define MEDIA_PROBE_REPORT report_path
 #include "../../source/media_probe.c"
 #include "../../source/modules/SceSysmodule.c"
+#include "../../source/modules/SceMp4.c"
 #include "../../source/missing_imports.c"
 #include "../../source/module.c"
 bool SceNet_host_ready(void){return false;}
@@ -48,6 +49,14 @@ int main(void)
     assert(!sceSysmoduleIsLoaded(SCE_SYSMODULE_MP4));
     assert(!sceSysmoduleUnloadModule(SCE_SYSMODULE_MP4));
     assert(sceSysmoduleIsLoaded(SCE_SYSMODULE_MP4)==(int)SCE_SYSMODULE_ERROR_UNLOADED);
+    uint32_t (*open_export)(uint32_t,uint32_t,uint32_t,uint32_t)=
+        module_get_func_export(0x8feacabd,0x05474af0);
+    assert(open_export==(void *)sceMp4OpenFile);
+    uint32_t guard[4]={0x13579bdf,0x2468ace0,0x12345678,0xa5a55a5a},before_guard[4];
+    memcpy(before_guard,guard,sizeof(guard));
+    assert(open_export((uint32_t)(uintptr_t)guard,0,UINT32_MAX,0x8002d00b)==0);
+    assert(!memcmp(guard,before_guard,sizeof(guard)));
+    assert(open_export(0,1,2,3)==0);
     unsigned owner=0;
     assert(missing_import_bind(&owner,0x8feacabd,0x05474af0,0x8177bad0)==missing_import_stub_address(0));
     assert(missing_import_report(0,0x8153470f,0x11,0x22,0x33,0x44)==(int)SCE_KERNEL_ERROR_MODULEMGR_NO_FUNC_NID);
@@ -57,6 +66,7 @@ int main(void)
     char output[65536];read_report(output,sizeof(output));
     assert(strstr(output,"SYSMODULE_LOAD id=0x002d result=0x00000000"));
     assert(strstr(output,"module_presence_only=1 decoder_implemented=0"));
+    assert(strstr(output,"MP4_OPEN_UNAVAILABLE result=0x00000000"));
     assert(strstr(output,"library=0x8feacabd nid=0x05474af0 stub=0x8177bad0"));
     assert(strstr(output,"return_address=0x8153470f r0=0x00000011 r1=0x00000022 r2=0x00000033 r3=0x00000044"));
     assert(strstr(output,"result=0x8002d00b"));

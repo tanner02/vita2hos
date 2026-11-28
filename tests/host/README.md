@@ -568,3 +568,8 @@ concurrent record budgeting, report IO failure and lifecycle reset.
 Controller trace guest-poll counts cover valid positive read/peek requests;
 invalid arguments are rejected before this counter. A frozen counter alone
 cannot rule out invalid requests or other APIs.
+
+The media fixture also verifies the SceMp4 OpenFile export returns a NULL handle
+without dereferencing opaque argument words or changing guards. The reviewed
+SDK caller checks only for zero; a generic negative error would be a non-NULL
+handle. Argument roles and a functioning MP4 demux/decoder remain unimplemented.

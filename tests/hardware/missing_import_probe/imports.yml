@@ -10,3 +10,8 @@ modules:
         functions:
           missing_arm: 0xAABB1011
           missing_thumb: 0xAABB1022
+      SceMp4:
+        kernel: false
+        nid: 0x8FEACABD
+        functions:
+          owned_mp4_open: 0x05474AF0

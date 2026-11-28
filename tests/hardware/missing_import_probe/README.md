@@ -39,3 +39,9 @@ media-probe report has one module record and two first-use owned-import records.
 This exercises diagnostic plumbing, not MP4 parsing, decoding, video playback
 or a game-specific failure path. Preserve reports and remove the diagnostic flag
 after the requested experiment.
+
+The current `--media-probe` variant is v3, with a distinct v3 report. It also
+imports SceMp4 OpenFile and checks a NULL result with untouched guarded words
+for the unavailable backend. The enabled persistent report therefore adds one
+MP4_OPEN_UNAVAILABLE record to the module and two owned missing-call records.
+Its seven checks verify rejection and diagnostic ABI contracts only.
