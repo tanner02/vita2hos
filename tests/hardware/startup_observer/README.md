@@ -1,6 +1,6 @@
 # Startup callback observer
 
-An optional, owned diagnostic module for a **reviewed table of no-argument,
+An optional, owned diagnostic module for a **reviewed table of register-argument,
 uint32-returning Thumb startup callbacks**. This is not a general function hook.
 It records BEGIN/END and the unchanged raw return value, restoring each table
 pointer on entry and leaving finalizers and guest instructions untouched. It does not turn failed initialization into success.
@@ -19,7 +19,7 @@ diagnostic input. They must correspond to the loaded executable's layout.
 Module startup must complete before any thread can call the observed table.
 Callbacks must be dispatched serially. Review any dispatcher that selects entries
 by function address: no observed entry may be selected by its original address
-before its first wrapped invocation. Version 2 restores each pointer **before**
+before its first wrapped invocation. Versions 2 and 3 restore each pointer **before**
 calling the guest, preserving original-address lookups on subsequent dispatches.
 A compare/exchange leaves an independently replaced pointer untouched. This is
 one-shot table instrumentation; subsequent calls through a restored slot bypass
@@ -32,7 +32,12 @@ callback address, then a 48-byte printable ASCII name with a NUL terminator.
 Slots must be distinct aligned data words; originals must lie in the declared
 code region. There must be no trailing bytes. Source path is `app0:/executable`.
 
-The version-2 fresh report is `app0:/startup-init-v2.txt`. GUARD must be zero. A BEGIN with
+Version 3 preserves all four integer argument registers (R0-R3), including a
+64-bit clock argument in R0/R1, before logging and calling the original target.
+No stack or VFP arguments are supported; return values must use R0. Review the
+actual call-site ABI before adding a callback.
+
+The version-3 fresh report is `app0:/startup-init-v3.txt`. GUARD must be zero. A BEGIN with
 no END means the callback has not returned; a zero END is only failure if the
 reviewed dispatcher interprets zero that way. After installation, report I/O is
 best effort so a logging failure cannot change the original callback result.

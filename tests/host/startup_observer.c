@@ -97,7 +97,7 @@ static void rejected(int code)
     char expected[96];
     assert(module_start(0, NULL) == -3);
     unchanged(2); assert(stage_count == 0);
-    snprintf(expected, sizeof(expected), "GUARD startup_observer_v2 0x%08x\n", (unsigned)code);
+    snprintf(expected, sizeof(expected), "GUARD startup_observer_v3 0x%08x\n", (unsigned)code);
     assert(!strcmp(report, expected));
 }
 static void test_plan_guards(void)
@@ -136,7 +136,7 @@ static void test_plan_guards(void)
     put32(HEADER, 4); put32(HEADER+ROW, 4); rejected(-8);
     reset(LIMIT); ++input_size;
     assert(module_start(0, NULL) == -3); unchanged(LIMIT); assert(stage_count == 0);
-    assert(!strcmp(report, "GUARD startup_observer_v2 0xfffffffe\n"));
+    assert(!strcmp(report, "GUARD startup_observer_v3 0xfffffffe\n"));
 }
 static void test_io_guards(void)
 {
@@ -161,23 +161,38 @@ static void test_io_guards(void)
     reset(2); assert(module_start(1, NULL) == -1); assert(opens == 0); unchanged(2);
     assert(module_start(0, (void *)1) == -1); assert(opens == 0); unchanged(2);
 }
-static uint32_t inner(void)
+/* a0/a1 model the raw low/high halves of a 64-bit clock argument. */
+#define A0 UINT32_C(0x89abcdef)
+#define A1 UINT32_C(0x01234567)
+#define A2 UINT32_C(0xdeadbeef)
+#define A3 UINT32_C(0x8055aa11)
+static void check_args(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3)
 {
+    assert(a0 == A0 && a1 == A1 && a2 == A2 && a3 == A3);
+    assert(((uint64_t)a1 << 32 | a0) == UINT64_C(0x0123456789abcdef));
+}
+static uint32_t run(unsigned i) { return wrappers[i](A0, A1, A2, A3); }
+static uint32_t inner(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3)
+{
+    check_args(a0, a1, a2, a3);
     assert(slots[1]==(uint32_t)(uintptr_t)inner);
     ++callbacks; return UINT32_C(0x80000001);
 }
-static uint32_t outer(void)
+static uint32_t outer(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3)
 {
+    check_args(a0, a1, a2, a3);
     assert(slots[0]==(uint32_t)(uintptr_t)outer);
-    ++callbacks; assert(wrappers[1]() == UINT32_C(0x80000001));
+    ++callbacks; assert(run(1) == UINT32_C(0x80000001));
+    check_args(a0, a1, a2, a3);
     return UINT32_MAX;
 }
-static uint32_t zero_result(void) { ++callbacks; return 0; }
+static uint32_t zero_result(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3)
+{ check_args(a0, a1, a2, a3); ++callbacks; return 0; }
 static void test_success_and_callbacks(void)
 {
     reset(LIMIT); read_chunk = 7; write_chunk = 3;
     assert(module_start(0, NULL) == 0); assert(stage_count == LIMIT);
-    assert(!strcmp(report, "GUARD startup_observer_v2 0x00000000\n"));
+    assert(!strcmp(report, "GUARD startup_observer_v3 0x00000000\n"));
     for (unsigned i = 0; i < LIMIT; ++i) {
         char name[48]; snprintf(name, sizeof(name), "stage_%u", i);
         assert(slots[i] == (uint32_t)(uintptr_t)wrappers[i]);
@@ -188,38 +203,40 @@ static void test_success_and_callbacks(void)
     unsigned old_opens = opens;
     assert(module_start(0, NULL) == -1); assert(opens == old_opens);
     stages[0].original = outer; stages[1].original = inner;
-    assert(wrappers[0]() == UINT32_MAX && callbacks == 2);
+    assert(run(0) == UINT32_MAX && callbacks == 2);
     assert(!strcmp(report,
-        "GUARD startup_observer_v2 0x00000000\n"
+        "GUARD startup_observer_v3 0x00000000\n"
         "BEGIN stage_0 0x00000000\nBEGIN stage_1 0x00000001\n"
         "END stage_1 0x80000001\nEND stage_0 0xffffffff\n"));
     stages[63].original = zero_result;
-    assert(wrappers[63]() == 0 && callbacks == 3);
+    assert(run(63) == 0 && callbacks == 3);
     assert(strstr(report, "BEGIN stage_63 0x0000003f\nEND stage_63 0x00000000\n"));
     assert(slots[63]==(uint32_t)(uintptr_t)zero_result);
     unsigned saved_report_size=report_size;
-    assert(((callback)(uintptr_t)slots[63])()==0 && callbacks==4);
+    assert(((callback)(uintptr_t)slots[63])(A0,A1,A2,A3)==0 && callbacks==4);
+    assert(((callback)(uintptr_t)slots[1])(A0,A1,A2,A3)==UINT32_C(0x80000001) && callbacks==5);
     assert(report_size==saved_report_size); /* Later dispatch bypasses observer. */
 
-    /* Failure of either log event must still invoke once and preserve all bits. */
+    /* Failure of either log event must still forward all four registers once
+     * and preserve every return bit, even when invoked through a cached wrapper. */
     stages[0].original = inner;
-    open_failure = REPORT_FD; assert(wrappers[0]() == 0x80000001 && callbacks == 5);
+    open_failure = REPORT_FD; assert(run(0) == 0x80000001 && callbacks == 6);
     open_failure = 0; write_failure = 1;
-    assert(wrappers[0]() == 0x80000001 && callbacks == 6);
+    assert(run(0) == 0x80000001 && callbacks == 7);
     write_failure = 0; close_failure = REPORT_FD;
-    assert(wrappers[0]() == 0x80000001 && callbacks == 7);
+    assert(run(0) == 0x80000001 && callbacks == 8);
     assert(strstr(report, "END stage_0 0x80000001\n"));
     slots[0]=0x12345678;
-    assert(wrappers[0]()==UINT32_C(0x80000001) && callbacks==8);
+    assert(run(0)==UINT32_C(0x80000001) && callbacks==9);
     assert(slots[0]==0x12345678);
     assert(writes > 50); /* Short writes were completed, rather than dropped. */
     reset(1); memset(input+HEADER+8, '~', 47); input[HEADER+8+47] = 0;
     assert(module_start(0, NULL) == 0 && strlen(stages[0].name) == 47);
-    stages[0].original = zero_result; assert(wrappers[0]() == 0);
+    stages[0].original = zero_result; assert(run(0) == 0);
 }
 int main(void)
 {
     test_plan_guards(); test_io_guards(); test_success_and_callbacks();
-    puts("Startup observer: plan guards, atomic validation, FNV binding, no-argument callbacks, raw results and logging passed.");
+    puts("Startup observer v3: plan guards, atomic restoration, FNV binding, four raw argument words, raw results and logging passed.");
     return 0;
 }

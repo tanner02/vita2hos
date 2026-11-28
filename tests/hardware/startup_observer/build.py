@@ -44,7 +44,7 @@ def build(sdk, output):
     assert imports, 'No audited imports found'
     for library, nid, name in imports:
         assert (int(library, 16), int(nid, 16)) in exports, name
-    manifest = {'version': 2, 'imports': sorted({name for _, _, name in imports}),
+    manifest = {'version': 3, 'imports': sorted({name for _, _, name in imports}),
                 'module_sha256': hashlib.sha256(guest.read_bytes()).hexdigest(),
                 'source_sha256': hashlib.sha256((here/'observer.c').read_bytes()).hexdigest(),
                 'hardware_execution': 'not performed by build script'}

@@ -1,4 +1,4 @@
-/* Owned diagnostic module: observe reviewed no-argument startup callbacks.
+/* Owned diagnostic module: observe reviewed register-argument startup callbacks.
  * Never patch executable instructions or change a callback's return value. */
 #include <stdint.h>
 #include <stddef.h>
@@ -14,8 +14,8 @@
 #define ROW 56
 #define PLAN "app0:/startup-init.plan"
 #define SOURCE "app0:/executable"
-#define REPORT "app0:/startup-init-v2.txt"
-typedef uint32_t (*callback)(void);
+#define REPORT "app0:/startup-init-v3.txt"
+typedef uint32_t (*callback)(uint32_t, uint32_t, uint32_t, uint32_t);
 struct stage { volatile uint32_t *slot; callback original; char name[48]; };
 static struct stage stages[LIMIT];
 static uint32_t stage_count;
@@ -48,15 +48,16 @@ static int line(const char *event, const char *name, uint32_t value)
     return result;
 }
 static void restore(unsigned i);
-static uint32_t invoke(unsigned i)
+static uint32_t invoke(unsigned i, uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3)
 {
     restore(i);
     line("BEGIN", stages[i].name, i);
-    uint32_t result = stages[i].original();
+    uint32_t result = stages[i].original(a0,a1,a2,a3);
     line("END", stages[i].name, result);
     return result;
 }
-#define WRAP(N) static uint32_t wrap_##N(void) { return invoke(N); }
+#define WRAP(N) static uint32_t wrap_##N(uint32_t a0,uint32_t a1,uint32_t a2,uint32_t a3) \
+    { return invoke(N,a0,a1,a2,a3); }
 #define EACH(M) \
  M(0) M(1) M(2) M(3) M(4) M(5) M(6) M(7) \
  M(8) M(9) M(10) M(11) M(12) M(13) M(14) M(15) \
@@ -151,7 +152,7 @@ int module_start(unsigned args, void *argp)
     if (fd < 0) return -2;
     if (sceIoClose(fd) < 0) return -2;
     int result = prepare();
-    if (line("GUARD", "startup_observer_v2", (uint32_t)result) || result) return -3;
+    if (line("GUARD", "startup_observer_v3", (uint32_t)result) || result) return -3;
     /* This module starts before the main executable and creates no threads. */
     __sync_synchronize();
     for (unsigned i = 0; i < stage_count; ++i)
