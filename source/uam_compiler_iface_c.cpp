@@ -66,9 +66,16 @@ bool capture_input(pipeline_stage stage, const char *source)
         return false;
     }
     file = fopen(UAM_CAPTURE_PREFIX ".txt", "wb");
-    if (!file) return false;
+    if (!file) {
+        unlink(UAM_CAPTURE_PREFIX ".glsl");
+        return false;
+    }
     ok = fprintf(file, "stage=%d\nbytes=%zu\nfnv1a64=%016llx\n", (int)stage, length, hash) > 0;
     if (fclose(file) != 0) ok = false;
+    if (!ok) {
+        unlink(UAM_CAPTURE_PREFIX ".glsl");
+        unlink(UAM_CAPTURE_PREFIX ".txt");
+    }
 #ifdef __SWITCH__
     uint64_t tid = 0;
     svcGetThreadId(&tid, CUR_THREAD_HANDLE);

@@ -7,6 +7,7 @@
 #include <thread>
 #include <vector>
 #include <fstream>
+#include <sys/stat.h>
 
 unsigned int test_compilations, test_outputs;
 int test_output_mode;
@@ -104,6 +105,12 @@ int main()
     assert(!uam_compiler_compile_glsl_alloc(pipeline_stage_vertex, oversized.c_str(), &allocated, &size));
     assert(access(UAM_CAPTURE_PREFIX ".glsl", F_OK) != 0);
     assert(access(UAM_CAPTURE_PREFIX ".txt", F_OK) != 0);
+    /* A metadata destination that cannot be opened must not leave a source
+     * file falsely appearing to be a complete captured input. */
+    assert(mkdir(UAM_CAPTURE_PREFIX ".txt", 0700) == 0);
+    assert(!uam_compiler_compile_glsl_alloc(pipeline_stage_vertex, "invalid", &allocated, &size));
+    assert(access(UAM_CAPTURE_PREFIX ".glsl", F_OK) != 0);
+    assert(rmdir(UAM_CAPTURE_PREFIX ".txt") == 0);
     assert(uam_compiler_compile_glsl_alloc(pipeline_stage_vertex, "valid", &allocated, &size));
     std::free(allocated);
     assert(access(UAM_CAPTURE_PREFIX ".glsl", F_OK) != 0);
