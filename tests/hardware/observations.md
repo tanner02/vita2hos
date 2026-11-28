@@ -2175,10 +2175,10 @@ Observerv2/62plan was then staged for a separate realgame run. No game speedup,
 cleared alpha artifacts or interactive3D boot is established by this batch.
 
 
-## Full startup-table diagnostic and late exit
+## Initializer-table diagnostic and late exit
 
 On09047b8, observer v2 passed its source guard and recorded61 BEGIN/END pairs,
-all returning raw1, matching every planned record except the enable-gated
+all returning raw1, matching every planned initializer except the enable-gated
 SmallGfxMemPools entry. ProfileCache and RequestInitialLevel completed. The
 game remained on its loading/autosave screen and later closed with an error
 after1099captured shader timing markers. The trace ends during shutdown and
@@ -2222,3 +2222,24 @@ that the original game failure was caused by this issue. Full host suite and
 focused ASan/UBSan row-boundary checks passed; native/source/package verified.
 Original LBP/modules/mode were restored exactly and a separate fixed-runtime
 game run started with observerv2. No interactive3D boot is claimed.
+
+
+## Later startup pass and observer argument preservation
+
+The v2/62-slot result covers initializer callbacks only. A separate reviewed
+post-initialization dispatcher calls another callback field and aborts when
+its raw result is zero; none of these callbacks was included in the v2 plan.
+Completing the initializers therefore does not prove completion of startup.
+The later call site leaves a clock value in R0/R1 before BLX. Observer v3 now
+preserves all four integer argument registers across report I/O and forwards
+them unchanged; stack/VFP arguments remain unsupported. The STI1 plan format
+and64-record bound are unchanged. Focused ASan/UBSan forwarding, restoration,
+nested-call and logging-failure checks passed; native build/import audit passed.
+
+The first restored-game launch on e5f48ec exhausted64 address-layout retries
+before guest entry. Its error was closed and HOME observed. A separate launch
+with the unchanged game and a private45-slot plan (33 initializers and12 later
+callbacks) passed the v3 source guard and completed all33 game initializers
+with raw1. At this checkpoint it is still compiling shaders on the loading
+screen, with alpha artifacts visible. No later-callback result or interactive
+3D boot has been observed. The game is left active for this diagnostic.
