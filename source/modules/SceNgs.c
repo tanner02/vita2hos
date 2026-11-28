@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "module.h"
+#include "log.h"
 #include "modules/SceNgs.h"
 
 /* Stateful offline NGS contract. Handles and parameter storage are real owned
@@ -19,6 +20,16 @@ _Static_assert(sizeof(NgsBufferInfo) == 8, "NGS buffer ABI");
 _Static_assert(sizeof(NgsRackDescription) == 24, "NGS rack ABI");
 _Static_assert(sizeof(NgsPatchSetup) == 20, "NGS patch ABI");
 #endif
+
+/* Bound diagnostics even when a guest retries an unsupported operation. */
+static unsigned ngs_failure_reports;
+static int ngs_result(const char *operation, int result)
+{
+    if (result && __atomic_load_n(&ngs_failure_reports, __ATOMIC_RELAXED) < 64 &&
+        __atomic_fetch_add(&ngs_failure_reports, 1, __ATOMIC_RELAXED) < 64)
+        LOG("NGS_API_FAIL operation=%s result=0x%x", operation, (unsigned)result);
+    return result;
+}
 
 enum { NGS_SYSTEM_BYTES = 4096, NGS_MAX_SYSTEMS = 16,
        NGS_MAX_TOTAL_VOICES = 65536, NGS_MAX_TOTAL_RACKS = 4096,
@@ -120,10 +131,10 @@ static int rack_size(NgsSystem *s, const NgsRackDescription *d, uint32_t *size)
     if (!d || !known_definition(d->definition) || d->voice_count <= 0 ||
         d->channels_per_voice < 1 || d->channels_per_voice > 2 ||
         d->max_patches_per_input < 0 || d->max_patches_per_input > 64 ||
-        d->patches_per_output < 0 || d->patches_per_output > 64) return NGS_INVALID_ARG;
+        d->patches_per_output < 0 || d->patches_per_output > 64) return ngs_result(__func__, NGS_INVALID_ARG);
     if (s->racks_used >= (uint32_t)s->params.max_racks ||
         (uint32_t)d->voice_count > (uint32_t)s->params.max_voices-s->voices_used)
-        return NGS_PARAM_OUT_OF_RANGE;
+        return ngs_result(__func__, NGS_PARAM_OUT_OF_RANGE);
     *size = 64 + (uint32_t)d->voice_count*64;
     return 0;
 }
@@ -183,15 +194,15 @@ void SceNgs_finish(void)
 EXPORT(SceNgs,0x6CE8B36F,int,sceNgsSystemGetRequiredMemorySize,
        const NgsSystemParams *params, uint32_t *size)
 {
-    if (!valid_params(params) || !size) return NGS_INVALID_ARG;
+    if (!valid_params(params) || !size) return ngs_result(__func__, NGS_INVALID_ARG);
     *size = NGS_SYSTEM_BYTES;
     return 0;
 }
 EXPORT(SceNgs,0xED14CF4A,int,sceNgsSystemInit,void *buffer, uint32_t bytes,
        const NgsSystemParams *params, NgsHandle *output)
 {
-    if (!buffer || !output || !valid_params(params)) return NGS_INVALID_ARG;
-    if (bytes < NGS_SYSTEM_BYTES) return NGS_SIZE_MISMATCH;
+    if (!buffer || !output || !valid_params(params)) return ngs_result(__func__, NGS_INVALID_ARG);
+    if (bytes < NGS_SYSTEM_BYTES) return ngs_result(__func__, NGS_SIZE_MISMATCH);
     mutexLock(&ngs_lock);
     int result = NGS_ERROR;
     if (ngs_system_count < NGS_MAX_SYSTEMS && handles_available(1)) {
@@ -207,7 +218,7 @@ EXPORT(SceNgs,0xED14CF4A,int,sceNgsSystemInit,void *buffer, uint32_t bytes,
         }
     }
     mutexUnlock(&ngs_lock);
-    return result;
+    return ngs_result(__func__, result);
 }
 EXPORT(SceNgs,0x64D80013,int,sceNgsSystemSetFlags,NgsHandle id, uint32_t flags)
 {
@@ -216,7 +227,7 @@ EXPORT(SceNgs,0x64D80013,int,sceNgsSystemSetFlags,NgsHandle id, uint32_t flags)
     if (s) s->flags = flags;
     int result = s ? 0 : NGS_INVALID_HANDLE;
     mutexUnlock(&ngs_lock);
-    return result;
+    return ngs_result(__func__, result);
 }
 EXPORT(SceNgs,0x684F080C,int,sceNgsSystemUpdate,NgsHandle id)
 {
@@ -238,7 +249,7 @@ EXPORT(SceNgs,0x684F080C,int,sceNgsSystemUpdate,NgsHandle id)
     }
     int result = s ? 0 : NGS_INVALID_HANDLE;
     mutexUnlock(&ngs_lock);
-    return result;
+    return ngs_result(__func__, result);
 }
 EXPORT(SceNgs,0x4A25BEBC,int,sceNgsSystemRelease,NgsHandle id)
 {
@@ -249,24 +260,24 @@ EXPORT(SceNgs,0x4A25BEBC,int,sceNgsSystemRelease,NgsHandle id)
         if (rack_borrowed(r)) result = NGS_INVALID_STATE;
     if (!result) release_system(s);
     mutexUnlock(&ngs_lock);
-    return result;
+    return ngs_result(__func__, result);
 }
 EXPORT(SceNgs,0x477318C0,int,sceNgsRackGetRequiredMemorySize,NgsHandle id,
        const NgsRackDescription *description, uint32_t *output)
 {
-    if (!output) return NGS_INVALID_ARG;
+    if (!output) return ngs_result(__func__, NGS_INVALID_ARG);
     mutexLock(&ngs_lock);
     NgsSystem *s = find_system(id);
     uint32_t size = 0;
     int result = s ? rack_size(s, description, &size) : NGS_INVALID_HANDLE;
     if (!result) *output = size;
     mutexUnlock(&ngs_lock);
-    return result;
+    return ngs_result(__func__, result);
 }
 EXPORT(SceNgs,0x0A92E4EC,int,sceNgsRackInit,NgsHandle id, const NgsBufferInfo *memory,
        const NgsRackDescription *description, NgsHandle *output)
 {
-    if (!memory || !memory->data || !output) return NGS_INVALID_ARG;
+    if (!memory || !memory->data || !output) return ngs_result(__func__, NGS_INVALID_ARG);
     mutexLock(&ngs_lock);
     NgsSystem *s = find_system(id);
     uint32_t size = 0;
@@ -301,17 +312,17 @@ EXPORT(SceNgs,0x0A92E4EC,int,sceNgsRackInit,NgsHandle id, const NgsBufferInfo *m
         }
     }
     mutexUnlock(&ngs_lock);
-    return result;
+    return ngs_result(__func__, result);
 }
 EXPORT(SceNgs,0xFE1A98E9,int,sceNgsRackGetVoiceHandle,NgsHandle id, uint32_t index, NgsHandle *output)
 {
-    if (!output) return NGS_INVALID_ARG;
+    if (!output) return ngs_result(__func__, NGS_INVALID_ARG);
     mutexLock(&ngs_lock);
     NgsRack *r = find_rack(id);
     int result = !r ? NGS_INVALID_HANDLE : index >= (uint32_t)r->description.voice_count ? NGS_INVALID_ARG : 0;
     if (!result) *output = r->voices[index].id;
     mutexUnlock(&ngs_lock);
-    return result;
+    return ngs_result(__func__, result);
 }
 EXPORT(SceNgs,0xDD5CA10B,int,sceNgsRackRelease,NgsHandle id, NgsRackReleaseCallback callback)
 {
@@ -320,7 +331,7 @@ EXPORT(SceNgs,0xDD5CA10B,int,sceNgsRackRelease,NgsHandle id, NgsRackReleaseCallb
     int result = !r ? NGS_INVALID_HANDLE : callback ? NGS_UNSUPPORTED : rack_borrowed(r) ? NGS_INVALID_STATE : 0;
     if (!result) release_rack(r);
     mutexUnlock(&ngs_lock);
-    return result;
+    return ngs_result(__func__, result);
 }
 EXPORT(SceNgs,0x0D5399CF,const NgsVoiceDefinition *,sceNgsVoiceDefGetSimpleVoice,void)
 { return &simple_definition; }
@@ -350,7 +361,7 @@ static int voice_action(NgsHandle id, unsigned action)
         else v->paused = action == 2;
     }
     mutexUnlock(&ngs_lock);
-    return result;
+    return ngs_result(__func__, result);
 }
 EXPORT(SceNgs,0xFA0A0F34,int,sceNgsVoicePlay,NgsHandle id) { return voice_action(id, 0); }
 EXPORT(SceNgs,0x0E291AAD,int,sceNgsVoiceKill,NgsHandle id) { return voice_action(id, 1); }
@@ -358,7 +369,7 @@ EXPORT(SceNgs,0xD7786E99,int,sceNgsVoicePause,NgsHandle id) { return voice_actio
 EXPORT(SceNgs,0x54CFB981,int,sceNgsVoiceResume,NgsHandle id) { return voice_action(id, 3); }
 EXPORT(SceNgs,0x5551410D,int,sceNgsVoiceGetInfo,NgsHandle id, NgsVoiceInfo *output)
 {
-    if (!output) return NGS_INVALID_ARG;
+    if (!output) return ngs_result(__func__, NGS_INVALID_ARG);
     mutexLock(&ngs_lock);
     NgsVoice *v = find_voice(id);
     if (v) {
@@ -369,11 +380,11 @@ EXPORT(SceNgs,0x5551410D,int,sceNgsVoiceGetInfo,NgsHandle id, NgsVoiceInfo *outp
     }
     int result = v ? 0 : NGS_INVALID_HANDLE;
     mutexUnlock(&ngs_lock);
-    return result;
+    return ngs_result(__func__, result);
 }
 EXPORT(SceNgs,0xC9B8C0B4,int,sceNgsVoiceGetStateData,NgsHandle id, uint32_t module, void *output, uint32_t bytes)
 {
-    if ((!output && bytes) || bytes > NGS_MAX_STATE_BYTES) return NGS_INVALID_ARG;
+    if ((!output && bytes) || bytes > NGS_MAX_STATE_BYTES) return ngs_result(__func__, NGS_INVALID_ARG);
     mutexLock(&ngs_lock);
     NgsVoice *v = find_voice(id);
     int result = !v ? NGS_INVALID_HANDLE : module >= v->rack->description.definition->modules ? NGS_INVALID_ARG : 0;
@@ -387,7 +398,7 @@ EXPORT(SceNgs,0xC9B8C0B4,int,sceNgsVoiceGetStateData,NgsHandle id, uint32_t modu
          * supported modules expose zero state, including Envelope's20byte prefix. */
     }
     mutexUnlock(&ngs_lock);
-    return result;
+    return ngs_result(__func__, result);
 }
 
 static uint32_t interface_size(const NgsModuleSpec *spec, uint32_t interface)
@@ -402,7 +413,7 @@ static uint32_t interface_size(const NgsModuleSpec *spec, uint32_t interface)
 EXPORT(SceNgs,0xAB6BEF8F,int,sceNgsVoiceLockParams,NgsHandle id, uint32_t module,
        uint32_t interface, NgsBufferInfo *output)
 {
-    if (!output) return NGS_INVALID_ARG;
+    if (!output) return ngs_result(__func__, NGS_INVALID_ARG);
     mutexLock(&ngs_lock);
     NgsVoice *v = find_voice(id);
     int result = !v ? NGS_INVALID_HANDLE : module >= v->rack->description.definition->modules ? NGS_INVALID_ARG : 0;
@@ -424,7 +435,7 @@ EXPORT(SceNgs,0xAB6BEF8F,int,sceNgsVoiceLockParams,NgsHandle id, uint32_t module
         }
     }
     mutexUnlock(&ngs_lock);
-    return result;
+    return ngs_result(__func__, result);
 }
 EXPORT(SceNgs,0x3D46D8A7,int,sceNgsVoiceUnlockParams,NgsHandle id, uint32_t module)
 {
@@ -436,7 +447,7 @@ EXPORT(SceNgs,0x3D46D8A7,int,sceNgsVoiceUnlockParams,NgsHandle id, uint32_t modu
         else v->module[module].locked = false;
     }
     mutexUnlock(&ngs_lock);
-    return result;
+    return ngs_result(__func__, result);
 }
 EXPORT(SceNgs,0xFB8174B1,int,sceNgsVoiceSetParamsBlock,NgsHandle id,
        const NgsModuleParamHeader *records, uint32_t bytes, int32_t *errors)
@@ -444,7 +455,7 @@ EXPORT(SceNgs,0xFB8174B1,int,sceNgsVoiceSetParamsBlock,NgsHandle id,
     if ((!records && bytes) || bytes > NGS_MAX_PARAM_BYTES ||
         (uintptr_t)records > UINTPTR_MAX-bytes) {
         if (errors) *errors = 1;
-        return NGS_INVALID_ARG;
+        return ngs_result(__func__, NGS_INVALID_ARG);
     }
     mutexLock(&ngs_lock);
     NgsVoice *v = find_voice(id);
@@ -496,7 +507,7 @@ EXPORT(SceNgs,0xFB8174B1,int,sceNgsVoiceSetParamsBlock,NgsHandle id,
     if (errors) *errors = result ? 1 : 0;
     free(data);
     mutexUnlock(&ngs_lock);
-    return result;
+    return ngs_result(__func__, result);
 }
 EXPORT(SceNgs,0x9AB87E71,int,sceNgsVoiceBypassModule,NgsHandle id, uint32_t module, uint32_t bypass)
 {
@@ -506,12 +517,12 @@ EXPORT(SceNgs,0x9AB87E71,int,sceNgsVoiceBypassModule,NgsHandle id, uint32_t modu
         (bypass != 0 && bypass != 2) ? NGS_INVALID_ARG : 0;
     if (!result) v->module[module].bypassed = bypass == 2;
     mutexUnlock(&ngs_lock);
-    return result;
+    return ngs_result(__func__, result);
 }
 
 EXPORT(SceNgs,0xD668B49C,int,sceNgsPatchCreateRouting,const NgsPatchSetup *setup, NgsHandle *output)
 {
-    if (!setup || !output) return NGS_INVALID_ARG;
+    if (!setup || !output) return ngs_result(__func__, NGS_INVALID_ARG);
     mutexLock(&ngs_lock);
     NgsVoice *source = find_voice(setup->source), *dest = find_voice(setup->dest);
     int result = !source || !dest ? NGS_INVALID_HANDLE : 0;
@@ -556,7 +567,7 @@ EXPORT(SceNgs,0xD668B49C,int,sceNgsPatchCreateRouting,const NgsPatchSetup *setup
         }
     }
     mutexUnlock(&ngs_lock);
-    return result;
+    return ngs_result(__func__, result);
 }
 EXPORT(SceNgs,0xD0C9AE5A,int,sceNgsPatchRemoveRouting,NgsHandle id)
 {
@@ -565,17 +576,17 @@ EXPORT(SceNgs,0xD0C9AE5A,int,sceNgsPatchRemoveRouting,NgsHandle id)
     int result = p ? 0 : NGS_INVALID_HANDLE;
     if (p) remove_patch(p->source->rack->system, p);
     mutexUnlock(&ngs_lock);
-    return result;
+    return ngs_result(__func__, result);
 }
 EXPORT(SceNgs,0xA0F5402D,int,sceNgsVoicePatchSetVolumesMatrix,NgsHandle id, const NgsVolumeMatrix *matrix)
 {
-    if (!matrix) return NGS_INVALID_ARG;
+    if (!matrix) return ngs_result(__func__, NGS_INVALID_ARG);
     mutexLock(&ngs_lock);
     NgsPatch *p = find_patch(id);
     int result = p ? 0 : NGS_INVALID_HANDLE;
     if (p) p->matrix = *matrix;
     mutexUnlock(&ngs_lock);
-    return result;
+    return ngs_result(__func__, result);
 }
 
 DECLARE_LIBRARY(SceNgs,0xB01598D9);
