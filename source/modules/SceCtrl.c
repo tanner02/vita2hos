@@ -1,7 +1,9 @@
+#include <string.h>
 #include <psp2/ctrl.h>
 #include <psp2/kernel/processmgr.h>
 #include <switch.h>
 #include "log.h"
+#include "config.h"
 #include "module.h"
 #include "modules/SceCtrl.h"
 #define CTRL_HISTORY 64
@@ -17,6 +19,47 @@ static bool g_ctrl_sync_ready,g_ctrl_ready,g_ctrl_created,g_ctrl_started,g_ctrl_
 static uint64_t g_ctrl_written,g_ctrl_read,g_ctrl_generation;
 static SceCtrlData g_ctrl_history[CTRL_HISTORY];
 static SceCtrlPadInputMode g_sampling_mode=SCE_CTRL_MODE_DIGITAL;
+
+#ifndef CTRL_TRACE_FLAG
+#define CTRL_TRACE_FLAG VITA2HOS_ROOT_PATH "/ctrl-trace.enabled"
+#endif
+#define CTRL_TRACE_LIMIT 512U
+#define CTRL_TRACE_PERIOD_US UINT64_C(30000000)
+/* Opt-in evidence: presence/buttons sampled by the native pad and samples
+ * actually returned to the guest are separate events. All fields share the
+ * controller lock; the record budget never affects sampling or delivery. */
+static struct {
+    bool enabled,native_seen,connected,delivery_seen;
+    unsigned records;
+    uint64_t polls,native_buttons,last_native_us;
+    uint32_t delivered_buttons;
+} g_ctrl_trace;
+static void ctrl_trace_native_locked(const SceCtrlData *sample,uint64_t buttons)
+{
+    if(!g_ctrl_trace.enabled || g_ctrl_trace.records>=CTRL_TRACE_LIMIT)return;
+    bool connected=padIsConnected(&g_pad);
+    if(g_ctrl_trace.native_seen && connected==g_ctrl_trace.connected &&
+        buttons==g_ctrl_trace.native_buttons &&
+        sample->timeStamp-g_ctrl_trace.last_native_us<CTRL_TRACE_PERIOD_US)return;
+    g_ctrl_trace.native_seen=true;g_ctrl_trace.connected=connected;
+    g_ctrl_trace.native_buttons=buttons;g_ctrl_trace.last_native_us=sample->timeStamp;
+    ++g_ctrl_trace.records;
+    LOG("CTRL_NATIVE connected=%u native=0x%016" PRIx64 " vita=0x%08x samples=%" PRIu64
+        " guest_polls=%" PRIu64 " last_delivered=0x%08x sample_us=%" PRIu64,
+        (unsigned)connected,buttons,sample->buttons,g_ctrl_written,g_ctrl_trace.polls,
+        g_ctrl_trace.delivered_buttons,(uint64_t)sample->timeStamp);
+}
+static void ctrl_trace_delivery_locked(bool peek,int requested,unsigned returned,const SceCtrlData *sample)
+{
+    if(!g_ctrl_trace.enabled || g_ctrl_trace.records>=CTRL_TRACE_LIMIT || !returned)return;
+    if(g_ctrl_trace.delivery_seen && sample->buttons==g_ctrl_trace.delivered_buttons)return;
+    g_ctrl_trace.delivery_seen=true;g_ctrl_trace.delivered_buttons=sample->buttons;
+    ++g_ctrl_trace.records;
+    LOG("CTRL_DELIVERY peek=%u requested=%d returned=%u buttons=0x%08x sample_us=%" PRIu64
+        " guest_polls=%" PRIu64,(unsigned)peek,requested,returned,sample->buttons,
+        (uint64_t)sample->timeStamp,g_ctrl_trace.polls);
+}
+
 EXPORT(SceCtrl,0xA497B150,int,sceCtrlSetSamplingMode,SceCtrlPadInputMode mode)
 {
     if((unsigned)mode>(unsigned)SCE_CTRL_MODE_ANALOG_WIDE)return (int)SCE_CTRL_ERROR_INVALID_ARG;
@@ -102,6 +145,7 @@ static void ctrl_capture_locked(void)
     }
     g_ctrl_history[g_ctrl_written%CTRL_HISTORY]=sample;
     ++g_ctrl_written;
+    ctrl_trace_native_locked(&sample,buttons);
     condvarWakeAll(&g_ctrl_changed);
 }
 static void ctrl_sampler(void *argument)
@@ -124,6 +168,14 @@ static int ctrl_buffer(int port,SceCtrlData *data,int count,bool peek)
 {
     if(port!=0 || !data || count<1 || count>CTRL_HISTORY)return (int)SCE_CTRL_ERROR_INVALID_ARG;
     mutexLock(&g_ctrl_lock);
+    if(g_ctrl_trace.enabled) {
+        ++g_ctrl_trace.polls;
+        if(g_ctrl_trace.polls==1 && g_ctrl_trace.records<CTRL_TRACE_LIMIT) {
+            ++g_ctrl_trace.records;
+            LOG("CTRL_REQUEST peek=%u count=%d ready=%u samples=%" PRIu64,
+                (unsigned)peek,count,(unsigned)g_ctrl_ready,g_ctrl_written);
+        }
+    }
     uint64_t generation=g_ctrl_generation;
     while(!peek && g_ctrl_ready && g_ctrl_written==g_ctrl_read && generation==g_ctrl_generation) {
         if(R_FAILED(condvarWaitTimeout(&g_ctrl_changed,&g_ctrl_lock,UINT64_MAX))) {
@@ -140,6 +192,7 @@ static int ctrl_buffer(int port,SceCtrlData *data,int count,bool peek)
      * samples the caller did not request, so a count-one reader cannot lag. */
     for(unsigned i=0;i<(unsigned)available;i++)data[i]=g_ctrl_history[(g_ctrl_written-1-i)%CTRL_HISTORY];
     if(!peek)g_ctrl_read=g_ctrl_written;
+    ctrl_trace_delivery_locked(peek,count,(unsigned)available,data);
     mutexUnlock(&g_ctrl_lock);return (int)available;
 }
 EXPORT(SceCtrl,0xA9C3CED6,int,sceCtrlPeekBufferPositive,int port,SceCtrlData *data,int count)
@@ -157,6 +210,9 @@ int SceCtrl_init(void)
     if(!g_ctrl_sync_ready){condvarInit(&g_ctrl_changed);g_ctrl_sync_ready=true;}
     ueventCreate(&g_ctrl_stop,true);
     ++g_ctrl_generation;g_ctrl_written=g_ctrl_read=0;g_sampling_mode=SCE_CTRL_MODE_DIGITAL;
+    memset(&g_ctrl_trace,0,sizeof(g_ctrl_trace));
+    FILE *trace_file=fopen(CTRL_TRACE_FLAG,"rb");
+    if(trace_file){g_ctrl_trace.enabled=true;fclose(trace_file);}
     padConfigureInput(1,HidNpadStyleSet_NpadStandard);padInitializeAny(&g_pad);
     g_ctrl_ready=true;g_ctrl_started=false;ctrl_capture_locked();
     Result result=threadCreate(&g_ctrl_sampler,ctrl_sampler,NULL,NULL,0x4000,28,-2);
@@ -183,7 +239,7 @@ int SceCtrl_finish(void)
     Result result=started ? waitSingle(waiterForThread(&g_ctrl_sampler),CTRL_JOIN_TIMEOUT_NS) : 0;
     if(!R_FAILED(result))result=threadClose(&g_ctrl_sampler);
     mutexLock(&g_ctrl_lock);g_ctrl_joining=false;
-    if(!R_FAILED(result)){g_ctrl_created=false;g_ctrl_started=false;}
+    if(!R_FAILED(result)){g_ctrl_created=false;g_ctrl_started=false;g_ctrl_trace.enabled=false;}
     mutexUnlock(&g_ctrl_lock);
     if(R_FAILED(result))LOG("Controller sampler cleanup failed: 0x%x",result);
     return R_FAILED(result) ? (int)SCE_CTRL_ERROR_FATAL : 0;

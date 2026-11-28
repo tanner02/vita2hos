@@ -19,25 +19,45 @@ enum { HidNpadButton_Minus=1<<0,HidNpadButton_StickL=1<<1,HidNpadButton_StickR=1
     HidNpadButton_X=1<<12,HidNpadButton_A=1<<13,HidNpadButton_B=1<<14,
     HidNpadButton_Y=1<<15,HidNpadStyleSet_NpadStandard=1 };
 static uint64_t native_buttons;
+static bool native_connected,trace_flag;
+static unsigned trace_logs;
+static char last_native_trace[512],last_delivery_trace[512];
+#define CTRL_TRACE_FLAG "/codex-owned-controller-trace-test.enabled"
+static FILE *trace_fopen(const char *path,const char *mode)
+{
+    assert(!strcmp(path,CTRL_TRACE_FLAG) && !strcmp(mode,"rb"));
+    if(!trace_flag)return NULL;
+    FILE *file=tmpfile();assert(file);return file;
+}
 static HidAnalogStickState sticks[2];
 static unsigned updates;
 static void padConfigureInput(int count,int style){assert(count==1 && style==1);}
 static void padInitializeAny(PadState *pad){(void)pad;}
 static void padUpdate(PadState *pad){(void)pad;updates++;}
 static uint64_t padGetButtons(PadState *pad){(void)pad;return native_buttons;}
+static bool padIsConnected(const PadState *pad){(void)pad;return native_connected;}
 static HidAnalogStickState padGetStickPos(PadState *pad,int side){(void)pad;return sticks[side];}
 static atomic_uint permits,event_failure,condition_waits;
 static atomic_ullong sample_time;
 static unsigned fail_create,fail_start,fail_wait,fail_close,create_calls,close_calls,join_calls;
 static Result observed_cond_wait(CondVar *condition,Mutex *mutex,uint64_t ns);
 #define condvarWaitTimeout observed_cond_wait
+#define fopen trace_fopen
 #include "../../source/modules/SceCtrl.c"
+#undef fopen
 #undef condvarWaitTimeout
 #include "../../source/module.c"
 static Result observed_cond_wait(CondVar *condition,Mutex *mutex,uint64_t ns)
 {atomic_fetch_add(&condition_waits,1);return condvarWaitTimeout(condition,mutex,ns);}
 SceUInt64 sceKernelGetProcessTimeWide(void){return atomic_fetch_add(&sample_time,1000)+1000;}
-void log_printf(const char *format,...){(void)format;}
+void log_printf(const char *format,...)
+{
+    if(strncmp(format,"CTRL_",5))return;
+    ++trace_logs;
+    char line[512];va_list args;va_start(args,format);vsnprintf(line,sizeof(line),format,args);va_end(args);
+    if(!strncmp(format,"CTRL_NATIVE",11))snprintf(last_native_trace,sizeof(last_native_trace),"%s",line);
+    if(!strncmp(format,"CTRL_DELIVERY",13))snprintf(last_delivery_trace,sizeof(last_delivery_trace),"%s",line);
+}
 static void *native_entry(void *argument)
 {Thread *thread=argument;thread->entry(thread->argument);return NULL;}
 Result threadCreate(Thread *thread,void (*entry)(void *),void *argument,void *stack,size_t size,int priority,int cpu)
@@ -178,5 +198,31 @@ int main(void)
     assert(ctrl_axis(INT32_MIN,false)==0 && ctrl_axis(INT32_MAX,true)==0);
     assert(module_get_func_export(0xd197e3c7,0x67e7ab83));
     assert(!SceCtrl_finish());
+    assert(!trace_logs);
+    trace_flag=true;native_connected=false;native_buttons=0;
+    assert(!SceCtrl_init() && g_ctrl_trace.enabled && trace_logs==1);
+    assert(strstr(last_native_trace,"connected=0") && strstr(last_native_trace,"guest_polls=0"));
+    native_connected=true;native_buttons=HidNpadButton_B;tick();
+    assert(strstr(last_native_trace,"connected=1") && g_ctrl_trace.native_buttons==HidNpadButton_B);
+    assert(sceCtrlPeekBufferPositive(0,samples,1)==1 && samples[0].buttons==SCE_CTRL_CROSS);
+    char cross[48];snprintf(cross,sizeof(cross),"buttons=0x%08x",SCE_CTRL_CROSS);
+    assert(strstr(last_delivery_trace,cross) && g_ctrl_trace.polls==1);
+    native_buttons=0;tick();
+    assert(sceCtrlReadBufferPositive(0,samples,1)==1 && !samples[0].buttons);
+    assert(strstr(last_delivery_trace,"buttons=0x00000000"));
+    before=trace_logs;atomic_fetch_add(&sample_time,CTRL_TRACE_PERIOD_US);tick();
+    assert(trace_logs==before+1 && strstr(last_native_trace,"guest_polls=2"));
+    for(unsigned i=0;i<CTRL_TRACE_LIMIT+10;i++) {
+        native_buttons=(i&1)?HidNpadButton_B:0;tick();
+        assert(sceCtrlPeekBufferPositive(0,samples,1)==1);
+        assert(samples[0].buttons==((i&1)?SCE_CTRL_CROSS:0));
+    }
+    assert(trace_logs==CTRL_TRACE_LIMIT && g_ctrl_trace.records==CTRL_TRACE_LIMIT);
+    assert(g_ctrl_trace.polls==CTRL_TRACE_LIMIT+12);
+    assert(!SceCtrl_finish() && !g_ctrl_trace.enabled);
+    trace_flag=false;assert(!SceCtrl_init() && !g_ctrl_trace.enabled);tick();
+    assert(sceCtrlPeekBufferPositive(0,samples,1)==1 && trace_logs==CTRL_TRACE_LIMIT);
+    assert(!SceCtrl_finish());
+    puts("Controller diagnostics: opt-in presence/native buttons, actual guest delivery, periodic poll counts, bounded records and continued sampling passed.");
     puts("Controller buffering: real history, fresh blocking reads, overrun, mode transitions, shutdown generations and native failure ownership passed.");
 }

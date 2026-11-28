@@ -544,3 +544,13 @@ guards must remain correct. Constant-size copies remove variable-size memcpy
 calls from common swizzled inner loops; a masked coordinate increment replaces
 per-texel bit spreading while the independent oracle checks its carries. Host timing does not establish native
 conversion speed or gameplay FPS.
+
+Controller diagnostics are enabled only when `/vita2hos/ctrl-trace.enabled` exists
+at controller initialization. They report native connection/button samples and
+samples actually delivered by guest read/peek calls as distinct events. Native
+heartbeats include guest poll counts every 30 seconds; button/connection edges
+and delivered-button changes report immediately, within a shared 512-record
+budget. The host fixture verifies opt-in behavior, connection and Cross mapping,
+actual delivery, heartbeat counters, the budget, continued input after the budget
+and reset on shutdown/reinitialization. Missing hardware records remain unknown;
+these diagnostics do not prove input reached any specific game state.
