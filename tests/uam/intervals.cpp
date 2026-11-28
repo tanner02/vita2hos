@@ -58,6 +58,11 @@ static void worker(unsigned seed,unsigned count)
             }
             for(unsigned i=0;i<12;i++) {
                 require(iv[i]->isEmpty()==expected[i].empty());
+                if (!expected[i].empty()) {
+                    require(iv[i]->begin()==expected[i].front().first);
+                    require(iv[i]->end()==expected[i].back().second);
+                    require(iv[i]->extent()==expected[i].back().second-expected[i].front().first);
+                }
                 for(unsigned j=0;j<12;j++)
                     require(iv[i]->overlaps(*iv[j])==overlap(expected[i],expected[j]));
                 int pos=int(random()%240)-120;bool contains=false;
@@ -70,6 +75,24 @@ static void worker(unsigned seed,unsigned count)
 }
 int main()
 {
+    // Monotonic appends, a contained tail, extending a tail and coalescing the
+    // complete list exercise both constant-time tail paths and tail retention.
+    {
+        nv50_ir::Interval interval;
+        for (int i=0;i<4096;++i) {
+            interval.extend(3*i,3*i+1);
+            require(interval.begin()==0 && interval.end()==3*i+1);
+            interval.extend(3*i,3*i);
+            require(interval.end()==3*i+1);
+        }
+        interval.extend(3*4095,3*4095+2);
+        require(interval.end()==3*4095+2);
+        interval.extend(-2,-1);
+        require(interval.begin()==-2 && interval.end()==3*4095+2);
+        interval.extend(-1,3*4095+3);
+        require(interval.begin()==-2 && interval.end()==3*4095+3);
+        for(int p=-2;p<3*4095+3;++p)require(interval.contains(p));
+    }
     worker(12345,100);
 #ifdef UAM_INTERVAL_INDEXED
     require(nv50_ir::interval_indices.empty());

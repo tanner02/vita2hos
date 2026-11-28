@@ -63,6 +63,22 @@ void invalidate_interval_index(const Interval *interval)
     for signature in ['Interval::clear()', 'Interval::extend(int a, int b)']:
         before = signature + '\n{'
         source = replace_once(source, before, before + '\n   invalidate_interval_index(this);')
+    source = replace_once(source, '   assert(a <= b);', '''   assert(a <= b);
+   // Only the final range can overlap when a begins at or beyond its start.
+   // Appending and extending it need no scan of all preceding live ranges.
+   if (head && a >= tail->bgn) {
+      if (a > tail->end) {
+         tail->next = new Range(a, b);
+         tail = tail->next;
+      } else if (b > tail->end) {
+         tail->end = b;
+      }
+      return true;
+   }''')
+    source = replace_once(source,
+        '   for (r = (*nextp); r->next; r = r->next);\n   tail = r;',
+        '   // Insertion before an existing node cannot change the tail.\n'
+        '   if (!r)\n      tail = *nextp;')
     before = 'void Interval::unify(Interval &that)\n{'
     source = replace_once(source, before, before + '\n   invalidate_interval_index(&that);')
     before = '''bool Interval::overlaps(const Interval &that) const

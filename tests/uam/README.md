@@ -55,3 +55,11 @@ the remaining existing UAM objects retain their original build flags.
 Private shader replay timing and output-byte comparisons are separate from this
 semantic test. Host speed improvements do not prove Switch compilation speed or
 GPU correctness; those require native validation.
+
+Interval extension also uses the final range directly when the new range starts
+at or beyond its beginning. Inserting before an existing node retains the
+existing tail rather than rescanning the list. The fixture checks begin/end/extent
+against the independent oracle after each nonempty mutation and adds monotonic
+append, contained-tail, tail-extension and complete-coalescing cases.
+Changing this guarded backend invalidates persistent shader cache entries; native
+performance and a full packaged runtime still require separate validation.
