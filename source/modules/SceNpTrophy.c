@@ -77,12 +77,16 @@ static TrophyContext *find_context(int32_t uid)
 /* Session persistence: unlock bits live in a compact file under the game's
  * savedata root (via the AppUtil mount resolver). Absent mount, absent file
  * or a communication-id mismatch simply means "start empty" - persistence
- * failures never fail the unlock itself. File layout (48 bytes):
- * magic 'VTSU', version 1, communication id (13 bytes), trophy count,
- * unlocked count, 4 flag words. */
+ * failures never fail the unlock itself. One state file per communication
+ * id (name carries the id; stored identity carries data+num). File layout
+ * (48 bytes): magic 'VTSU', version 1, communication id (13 bytes, data
+ * plus zero-padded num), trophy count, unlocked count, 4 flag words. */
 #define TROPHY_STATE_MAGIC 0x55535456u
 #define TROPHY_STATE_VERSION 1u
-#define TROPHY_STATE_FILE "trophy_state.bin"
+/* One state file per communication id (Codex counterexample: NPWR00042_00
+ * and _01 both count=3 collided on a shared name, so _01 loaded _00's
+ * unlock bits). The stored identity carries data AND num; the load
+ * compares the full communication id. */
 typedef struct {
     uint32_t magic,version;
     char communication[13];
@@ -91,14 +95,21 @@ typedef struct {
 } TrophyStateFile;
 _Static_assert(sizeof(TrophyStateFile)==48,"TrophyStateFile must be 48 bytes");
 
-static void trophy_state_save(const TrophyContext *context)
+static void trophy_state_path(const TrophyCommunicationId *id,char *path,size_t capacity)
 {
-    char root[1024],path[1120];
+    char root[1024];
+    path[0]=0;
     if(savedata_mount_resolve("savedata0:/",root,sizeof(root))<0)return;
     size_t length=strlen(root);
-    if(length+1+sizeof(TROPHY_STATE_FILE)>=sizeof(path))return;
-    memcpy(path,root,length);path[length]='/';
-    memcpy(path+length+1,TROPHY_STATE_FILE,sizeof(TROPHY_STATE_FILE));
+    int written=snprintf(path,capacity,"%s/trophy_state_%.9s_%02u.bin",root,id->data,(unsigned)id->num);
+    if(written<0 || (size_t)written>=capacity)path[0]=0;
+}
+
+static void trophy_state_save(const TrophyContext *context)
+{
+    char path[1120];
+    trophy_state_path(&context->communication,path,sizeof(path));
+    if(!path[0])return;
     FILE *file=fopen(path,"wb");
     if(!file){LOG("Trophy state save failed: %s",path);return;}
     TrophyStateFile state={TROPHY_STATE_MAGIC,TROPHY_STATE_VERSION,
@@ -106,26 +117,30 @@ static void trophy_state_save(const TrophyContext *context)
         {context->unlocked[0],context->unlocked[1],
          context->unlocked[2],context->unlocked[3]}};
     memcpy(state.communication,context->communication.data,9);
+    state.communication[9]=(char)('0'+context->communication.num/10);
+    state.communication[10]=(char)('0'+context->communication.num%10);
     if(fwrite(&state,1,sizeof(state),file)==sizeof(state))fclose(file);
     else fclose(file);
 }
 
 static void trophy_state_load(TrophyContext *context)
 {
-    char root[1024],path[1120];
-    if(savedata_mount_resolve("savedata0:/",root,sizeof(root))<0)return;
-    size_t length=strlen(root);
-    if(length+1+sizeof(TROPHY_STATE_FILE)>=sizeof(path))return;
-    memcpy(path,root,length);path[length]='/';
-    memcpy(path+length+1,TROPHY_STATE_FILE,sizeof(TROPHY_STATE_FILE));
+    char path[1120];
+    trophy_state_path(&context->communication,path,sizeof(path));
+    if(!path[0])return;
     FILE *file=fopen(path,"rb");
     if(!file)return;
     TrophyStateFile state;
     size_t read=fread(&state,1,sizeof(state),file);
     fclose(file);
+    /* Stored identity is data[9] + zero-padded num (no separator), 11
+     * characters; byte 12 stays zero from the save's zero-init. */
+    char expected[13];
+    snprintf(expected,sizeof(expected),"%.9s%02u",context->communication.data,
+             (unsigned)context->communication.num);
     if(read!=sizeof(state) || state.magic!=TROPHY_STATE_MAGIC
        || state.version!=TROPHY_STATE_VERSION
-       || memcmp(state.communication,context->communication.data,9)
+       || memcmp(state.communication,expected,13)
        || state.trophy_count!=context->metadata.trophy_count
        || state.unlocked_count>TROPHY_METADATA_MAX_TROPHIES)
         return;

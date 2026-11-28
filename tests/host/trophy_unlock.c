@@ -40,9 +40,9 @@ static void write_fixture(const TrophyCommunicationId *id)
     archive_path(path,sizeof(path),id);FILE *file=fopen(path,"wb");assert(file);
     assert(fwrite(data,1,bytes,file)==bytes && !fclose(file));free(data);
 }
-static TrophyCommunicationId communication(void)
+static TrophyCommunicationId communication(unsigned num)
 {
-    TrophyCommunicationId id={0};memcpy(id.data,"NPWR00042",9);id.num=0;return id;
+    TrophyCommunicationId id={0};memcpy(id.data,"NPWR00042",9);id.num=(uint8_t)num;return id;
 }
 static char mount_root[512];
 static int test_resolver(const char *path,char *output,size_t capacity)
@@ -60,7 +60,7 @@ int main(void)
     strcpy(test_root,temporary);char path[1024];snprintf(path,sizeof(path),"%s/sce_sys",test_root);assert(!mkdir(path,0700));
     snprintf(path,sizeof(path),"%s/sce_sys/trophy",test_root);assert(!mkdir(path,0700));
     snprintf(mount_root,sizeof(mount_root),"%s/sce_persist",test_root);assert(!mkdir(mount_root,0700));
-    TrophyCommunicationId id=communication();unsigned char signature=1;int32_t context=777,handle;
+    TrophyCommunicationId id=communication(0);unsigned char signature=1;int32_t context=777,handle;
     uint32_t flags[4]={0,0,0,0};uint32_t count=0;
 
     /* Without the mount installed the state is session-only: unlocks succeed
@@ -96,7 +96,7 @@ int main(void)
     assert(sceNpTrophyUnlockTrophy(context,handle,0,NULL)==TROPHY_PLATINUM_CANNOT_UNLOCK);
     /* The state file exists on the mounted root with the unlock bits. */
     char state_path[1120];
-    assert(snprintf(state_path,sizeof(state_path),"%s/trophy_state.bin",mount_root)>0);
+    assert(snprintf(state_path,sizeof(state_path),"%s/trophy_state_NPWR00042_00.bin",mount_root)>0);
     FILE *check=fopen(state_path,"rb");assert(check);
     TrophyStateFile stored;
     size_t got=fread(&stored,1,sizeof(stored),check);
@@ -120,6 +120,31 @@ int main(void)
     assert(!sceNpTrophyAbortHandle(handle));
     assert(sceNpTrophyUnlockTrophy(context,handle,1,NULL)==TROPHY_ABORT);
     assert(sceNpTrophyGetTrophyUnlockState(context,handle,flags,&count)==TROPHY_ABORT);
+    assert(!sceNpTrophyDestroyHandle(handle));
+    assert(!sceNpTrophyTerm() && !SceNpTrophy_is_initialized());
+    /* Identity collision regression (Codex counterexample): a second trophy
+     * set sharing the 9-char prefix but with num=1 must NOT load the num=0
+     * state, and both sets keep independent files while co-existing. */
+    assert(!sceSysmoduleLoadModule(SCE_SYSMODULE_NP_TROPHY));
+    assert(!sceNpTrophyInit(NULL));
+    TrophyCommunicationId other=communication(1);
+    write_fixture(&other);
+    int32_t context_other=888,handle_other;
+    assert(!sceNpTrophyCreateContext(&context_other,&other,&signature,0) && context_other>0);
+    TrophyContext *other_record=find_context(context_other);
+    assert(other_record && other_record->unlocked_count==0);
+    assert(!sceNpTrophyCreateHandle(&handle_other));
+    assert(!sceNpTrophyGetTrophyUnlockState(context_other,handle_other,flags,&count) && count==3);
+    assert(!flags[0] && !flags[1] && !flags[2] && !flags[3]);
+    assert(!sceNpTrophyDestroyHandle(handle_other));
+    /* Re-create the num=0 context fresh: its own file still restores 3,
+     * proving the num=1 creation neither consumed nor overwrote it. */
+    assert(!sceNpTrophyCreateContext(&context,&id,&signature,0) && context>0);
+    record=find_context(context);assert(record && record->unlocked_count==3);
+    assert((record->unlocked[0]&0x7u)==0x7u);
+    assert(!sceNpTrophyCreateHandle(&handle));
+    assert(!sceNpTrophyGetTrophyUnlockState(context_other,handle,flags,&count) && !flags[0]);
+    assert(!sceNpTrophyGetTrophyUnlockState(context,handle,flags,&count) && flags[0]==0x7u);
     assert(!sceNpTrophyDestroyHandle(handle));
     assert(!sceNpTrophyTerm() && !SceNpTrophy_is_initialized());
     /* Uninstalling the mount leaves stale files unread: fresh state again. */
