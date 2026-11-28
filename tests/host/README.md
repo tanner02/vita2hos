@@ -271,6 +271,20 @@ https://developer.apple.com/documentation/quicktime-file-format/atoms .
 Container selection and full-box/sample-entry payload interpretation belong to
 the demuxer; this reader deliberately does not guess them from arbitrary bytes.
 
+mp4_movie.c tests version 0/1 movie, track and media timing metadata, preserving
+distinct movie/media time scales and unknown-duration sentinels. It exercises
+two handler types, arbitrary ordering, duplicate/zero IDs, missing headers,
+unknown versions/handlers, every positional-read failure, track and traversal
+limits, truncation, and failure-atomic outputs. An optional filename argument
+prints metadata for independent generated-file/ffprobe comparisons.
+The parser does not validate sample tables, apply edits, or claim playable media.
+Track dimensions are the original 16.16 display values. Fragmentation is flagged
+without inventing durations from unparsed fragments.
+Raw media-header duration can differ from ffprobe's presentation duration;
+sample timing and edit lists must be processed before scheduling playback.
+Field references: https://developer.apple.com/documentation/quicktime-file-format/movie_header_atom
+and https://developer.apple.com/documentation/quicktime-file-format/track_header_atom .
+
 Controller tests use a native pthread sampler driven by controlled timer ticks
 and deterministic pad states. Peek returns up to 64 actual cached samples;
 ReadBufferPositive waits for a fresh batch and consumes it. Both return newest
