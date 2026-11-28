@@ -32,7 +32,7 @@ atrac9_source=external/Vita3K/external/LibAtrac9/C/src
 python3 tools/prepare-atrac9.py --source "$atrac9_source" --output "$build_dir/atrac9"
 for source in "$atrac9_source"/*.c; do
     name=$(basename "$source")
-    case "$name" in utility.c|bit_reader.c|bit_allocation.c) source="$build_dir/atrac9/$name" ;; esac
+    case "$name" in utility.c|bit_reader.c|bit_allocation.c|unpack.c) source="$build_dir/atrac9/$name" ;; esac
     "${CC:-cc}" -std=c99 -O2 -fsanitize=address,undefined -fno-sanitize-recover=all \
         -I"$atrac9_source" -c "$source" -o "$build_dir/atrac9-${name%.c}.o"
 done

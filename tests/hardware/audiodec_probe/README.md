@@ -6,8 +6,9 @@ audio playback, graphics, or commercial content. It uses all eleven corrected
 runtime APIs in native library `SceAudiodec` NID `0x2AA62046`; the SDK's additional
 `DecodeNStreams` API is outside this runtime batch.
 
-Each run truncates `app0:/audiodec-probe-v1.txt`, writes
-`AUDIODEC_PROBE version=1`, and separately opens/writes/closes each result line.
+Each run truncates `app0:/audiodec-probe-v2.txt`, writes
+`AUDIODEC_PROBE version=2`, and separately opens/writes/closes each result line.
+The complete successful batch has43PASS tags, including guards/batch_complete.
 `batch_complete` and exit status0 indicate all checks passed; failures stop
 dependent checks, perform best-effort cleanup, and exit1. A missing, stale, or
 incomplete report is not a pass.
@@ -42,12 +43,27 @@ one frame produces512zero PCM bytes, SHA256
 `076a27c79e5ace2a3d47f9dd2e83e4ff6ea8872b3c2218f66c92b89b55f36560`.
 It establishes a positive silent decode, not general audio fidelity.
 
+Version2 retains all original checks and adds13tags. An original nonzero39-byte
+frame has bytes0..11 `00 00 04 20 07 c6 31 8c 63 18 c6 10`, remaining bytes zero.
+Its constant gradient16 and scale factors24 retain precision8; the first raw9-bit
+spectral coefficient is+128, remaining23zero. The batch requires nonzero PCM,
+39/512consumed/produced counts, guards and untouched output tail. A second
+streaming decode must remain nonzero and differ from the first frame, proving
+history is retained. ClearContext must reproduce the first frame byte-for-byte.
+No platform-specific PCM hash is asserted.
+
+Two separate invalid band-extension inputs are39bytes of zero except first
+byte02 or23. Each must fail with zero consumed/produced counts, untouched PCM
+and intact guards; ClearContext followed by the valid nonzero frame must recover
+the exact initial PCM. These checks require the runtime BEX group-index guard.
+They are PC-built probes until separately reviewed and executed on hardware.
+
 Build from WSL with the existing SDK:
 
 ```sh
 python3 tests/hardware/audiodec_probe/build.py \
   --sdk /work/vitasdk-hardware/vitasdk \
-  --output /mnt/c/Users/Tanner/Documents/Codex/work/audiodec-runtime-verification/probe-build
+  --output /mnt/c/Users/Tanner/Documents/Codex/work/audiodec-runtime-verification/probe-build-v2
 ```
 
 The builder uses `-Wall -Wextra -Werror -nostdlib`, validates the Vita ELF, and

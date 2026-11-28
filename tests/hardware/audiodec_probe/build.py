@@ -51,7 +51,8 @@ def build(sdk, output):
         assert (int(library, 16), int(nid, 16)) in exports, (library, nid, name)
     names = {name for library, _, name in imports if int(library, 16) == 0x2AA62046}
     assert names == EXPECTED and len(names) == 11, names
-    manifest = {'version': 1, 'report': 'app0:/audiodec-probe-v1.txt',
+    manifest = {'version': 2, 'report': 'app0:/audiodec-probe-v2.txt',
+                'expected_pass_tags': 43,
                 'imports': sorted({name for _, _, name in imports}),
                 'audiodec_library_nid': '0x2AA62046', 'audiodec_import_count': len(names),
                 'module_sha256': hashlib.sha256(guest.read_bytes()).hexdigest(),
@@ -59,7 +60,9 @@ def build(sdk, output):
                 'sdk_header_sha256': hashlib.sha256((sdk/'arm-vita-eabi/include/psp2/audiodec.h').read_bytes()).hexdigest(),
                 'fixture': {'config_hex': 'fe7004c0', 'frame_bytes': 39,
                             'pcm_bytes_per_frame': 512, 'channels': 1, 'sample_rate': 48000,
-                            'origin': 'Original parser-guided synthetic zero spectrum; no media input'},
+                            'origin': 'Original parser-guided synthetic zero and nonzero spectra; no media input',
+                            'nonzero_frame_hex': '0000042007c6318c6318c610000000000000000000000000000000000000000000000000000000',
+                            'invalid_bex_headers': ['02', '23']},
                 'hardware_execution': 'not performed by build script'}
     (output/'manifest.json').write_text(json.dumps(manifest, indent=2)+'\n')
     print(json.dumps(manifest, indent=2))

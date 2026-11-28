@@ -62,10 +62,10 @@ if(NOT ATRAC9_PREPARE_RESULT EQUAL 0)
 endif()
 file(GLOB ATRAC9_SOURCES CONFIGURE_DEPENDS "${ATRAC9_SOURCE}/*.c")
 list(REMOVE_ITEM ATRAC9_SOURCES "${ATRAC9_SOURCE}/utility.c" "${ATRAC9_SOURCE}/bit_reader.c"
-    "${ATRAC9_SOURCE}/bit_allocation.c")
+    "${ATRAC9_SOURCE}/bit_allocation.c" "${ATRAC9_SOURCE}/unpack.c")
 add_library(vita_atrac9 STATIC ${ATRAC9_SOURCES}
     "${ATRAC9_PREPARED}/utility.c" "${ATRAC9_PREPARED}/bit_reader.c"
-    "${ATRAC9_PREPARED}/bit_allocation.c")
+    "${ATRAC9_PREPARED}/bit_allocation.c" "${ATRAC9_PREPARED}/unpack.c")
 target_include_directories(vita_atrac9 PUBLIC "${ATRAC9_SOURCE}")
 target_compile_features(vita_atrac9 PRIVATE c_std_99)
 target_link_libraries(vita_atrac9 PUBLIC m)

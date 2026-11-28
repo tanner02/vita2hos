@@ -34,9 +34,16 @@ def prepare(source, output):
     assert allocation.count(old) == 3, 'Pinned gradient loops changed'
     allocation = allocation.replace(old,
         'i < block->GradientEndUnit && i <= block->QuantizationUnitCount; i++')
+    unpack = (source / 'unpack.c').read_text(encoding='utf-8')
+    old = '\t\tbexBand = BexGroupInfo[block->QuantizationUnitCount - 13].BandCount;'
+    assert unpack.count(old) == 1, 'Pinned BEX group lookup changed'
+    unpack = unpack.replace(old, '''\t\t/* The eight BEX groups cover coded units13..20 only. */
+\t\tif (block->QuantizationUnitCount < 13 || block->QuantizationUnitCount > 20)
+\t\t\treturn ERR_UNPACK_BAND_PARAMS_INVALID;
+''' + old)
     records = {}
     for name, data in [('utility.c', utility), ('bit_reader.c', reader),
-                       ('bit_allocation.c', allocation)]:
+                       ('bit_allocation.c', allocation), ('unpack.c', unpack)]:
         blob = data.encode('utf-8')
         target = output / name
         if not target.exists() or target.read_bytes() != blob:

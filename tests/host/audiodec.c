@@ -66,6 +66,34 @@ static void owned_silence(void)
     FramesAbi decode_frames=(FramesAbi)module_get_func_export(0x2aa62046,0x8018aa9b);assert(decode_frames);
     assert(!decode_frames(&ctrl,2) && ctrl.inputEsSize==78 && ctrl.outputPcmSize==1024);
     all_bytes(guarded,16,0xa5);all_bytes(guarded+16,1024,0);all_bytes(guarded+1040,16,0xa5);
+    /* Band headers can set BEX with ten or21 coded units, outside the eight
+     * groups for units13..20. Both bounds must reject before the lookup. */
+    const unsigned char band_headers[] = {2, 0x23};
+    for (unsigned i=0;i<sizeof(band_headers);++i) {
+        assert(!sceAudiodecClearContext(&ctrl));
+        unsigned char no_bex_group[128] = {0};no_bex_group[0]=band_headers[i];
+        ctrl.pEs=no_bex_group;memset(guarded,0xa5,sizeof(guarded));
+        assert(sceAudiodecDecode(&ctrl)<0 && ctrl.inputEsSize==0 && ctrl.outputPcmSize==0);
+        all_bytes(guarded,sizeof(guarded),0xa5);
+    }
+    assert(!sceAudiodecClearContext(&ctrl));ctrl.pEs=frame;
+    assert(!decode(&ctrl) && ctrl.inputEsSize==39 && ctrl.outputPcmSize==512);
+    /* Original raw-spectrum fixture: constant gradient16, scale factors24,
+     * coefficient0=+128, remaining23 zero. No media input or golden decode
+     * oracle: check real nonzero output, reset determinism and overlap state. */
+    unsigned char nonzero_frame[128] = {0,0,4,0x20,7,0xc6,0x31,0x8c,0x63,0x18,0xc6,0x10};
+    unsigned char first_pcm[512];
+    ctrl.pEs=nonzero_frame;assert(!sceAudiodecClearContext(&ctrl));
+    memset(guarded,0xa5,sizeof(guarded));
+    assert(!decode(&ctrl) && ctrl.inputEsSize==39 && ctrl.outputPcmSize==512);
+    unsigned nonzero_bytes=0;
+    for(unsigned i=0;i<512;++i)nonzero_bytes+=guarded[16+i]!=0;
+    assert(nonzero_bytes>0);memcpy(first_pcm,guarded+16,512);
+    all_bytes(guarded,16,0xa5);all_bytes(guarded+528,sizeof(guarded)-528,0xa5);
+    assert(!sceAudiodecClearContext(&ctrl));
+    assert(!decode(&ctrl) && !memcmp(first_pcm,guarded+16,512));
+    assert(!decode(&ctrl) && memcmp(first_pcm,guarded+16,512));
+    all_bytes(guarded,16,0xa5);all_bytes(guarded+528,sizeof(guarded)-528,0xa5);
     assert(!sceAudiodecDeleteDecoder(&ctrl));assert(!sceAudiodecTermLibrary(SCE_AUDIODEC_TYPE_AT9));
 }
 static void gradient_endpoints(void)

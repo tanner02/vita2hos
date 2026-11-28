@@ -5,7 +5,7 @@
 #include <psp2/io/fcntl.h>
 #include <psp2/kernel/processmgr.h>
 
-#define REPORT "app0:/audiodec-probe-v1.txt"
+#define REPORT "app0:/audiodec-probe-v2.txt"
 #define CANARY UINT32_C(0x6d219ac7)
 #define CODEC SCE_AUDIODEC_TYPE_AT9
 #define GUARDED(type,name) static struct { uint32_t before; type value; uint32_t after; } name
@@ -24,6 +24,7 @@ GUARDED(SceAudiodecCtrl, external);
 GUARDED(SceAudiodecCtrl, bad);
 GUARDED(Es, es);
 GUARDED(Pcm, pcm);
+GUARDED(Pcm, first_pcm);
 GUARDED(SceUIntVAddr, returned_va);
 GUARDED(SceInt32, internal_error);
 static unsigned failures,passes;
@@ -69,7 +70,7 @@ static int guards(void)
     if(context_allowed)for(unsigned i=context_allowed;i<sizeof(context.bytes);++i)
         if(context.bytes[i]!=0xa5)return 0;
     return GOOD(init)&&GOOD(info)&&GOOD(external_info)&&GOOD(bad_info)&&GOOD(ctrl)&&GOOD(external)&&
-        GOOD(bad)&&GOOD(es)&&GOOD(pcm)&&GOOD(returned_va)&&GOOD(internal_error);
+        GOOD(bad)&&GOOD(es)&&GOOD(pcm)&&GOOD(first_pcm)&&GOOD(returned_va)&&GOOD(internal_error);
 }
 #define REQUIRE(tag,expression) do{int ok=(expression);report(tag,ok,(uint32_t)rc);if(!ok)goto cleanup;}while(0)
 
@@ -79,11 +80,11 @@ int module_start(unsigned args,void *argp)
     int active=0,internal_live=0,external_live=0,bad_live=0,rc=0;
     int fd=sceIoOpen(REPORT,SCE_O_WRONLY|SCE_O_CREAT|SCE_O_TRUNC,0666);
     if(fd<0){sceKernelExitProcess(1);return -1;}
-    const char header[]="AUDIODEC_PROBE version=1\n";
+    const char header[]="AUDIODEC_PROBE version=2\n";
     int io=write_all(fd,header,sizeof(header)-1);if(sceIoClose(fd)<0)io=-1;
     if(io){sceKernelExitProcess(1);return -1;}
     ARM(init);ARM(info);ARM(external_info);ARM(bad_info);ARM(ctrl);ARM(external);ARM(bad);
-    ARM(es);ARM(pcm);ARM(returned_va);ARM(internal_error);
+    ARM(es);ARM(pcm);ARM(first_pcm);ARM(returned_va);ARM(internal_error);
     for(unsigned i=0;i<64;++i)context.lead[i]=context.tail[i]=CANARY;
     /* Source-guided original39Bframe, plus secondframe and decoder lookahead. */
     es.value.bytes[4]=0x07;es.value.bytes[5]=0x42;es.value.bytes[6]=0x10;
@@ -114,6 +115,53 @@ int module_start(unsigned args,void *argp)
     rc=sceAudiodecDecodeNFrames(&ctrl.value,2);
     REQUIRE("decode_two",rc==0 && ctrl.value.inputEsSize==78 && ctrl.value.outputPcmSize==1024);
     REQUIRE("decode_two_pcm",zero(1024) && GOOD(pcm));
+    /* Original coefficient0=+128, scale24/gradient16: raw9-bit precision8.
+     * Explicit bytes0..10; remaining28frame bytes and lookahead are zero. */
+    fill(es.value.bytes,sizeof(es.value.bytes),0);
+    const unsigned char nonzero_frame[11]={0,0,0x04,0x20,0x07,0xc6,0x31,0x8c,0x63,0x18,0xc6};
+    /* The coefficient starts at bit90: remaining bits continue in byte11. */
+    for(unsigned i=0;i<sizeof(nonzero_frame);++i)es.value.bytes[i]=nonzero_frame[i];
+    es.value.bytes[11]=0x10;
+    rc=sceAudiodecClearContext(&ctrl.value);
+    REQUIRE("nonzero_clear",rc==0);
+    fill(pcm.value.bytes,sizeof(pcm.value.bytes),0xa5);
+    rc=sceAudiodecDecode(&ctrl.value);
+    REQUIRE("nonzero_decode",rc==0 && ctrl.value.inputEsSize==39 && ctrl.value.outputPcmSize==512);
+    REQUIRE("nonzero_pcm",!zero(512) && tail_untouched(512) && guards());
+    for(unsigned i=0;i<512;++i)first_pcm.value.bytes[i]=pcm.value.bytes[i];
+    fill(pcm.value.bytes,sizeof(pcm.value.bytes),0xa5);
+    rc=sceAudiodecDecode(&ctrl.value);
+    REQUIRE("nonzero_stream_decode",rc==0 && ctrl.value.inputEsSize==39 && ctrl.value.outputPcmSize==512);
+    REQUIRE("nonzero_stream_history",!zero(512) && !same(pcm.value.bytes,first_pcm.value.bytes,512) &&
+        tail_untouched(512) && guards());
+    rc=sceAudiodecClearContext(&ctrl.value);
+    REQUIRE("nonzero_reset",rc==0);
+    fill(pcm.value.bytes,sizeof(pcm.value.bytes),0xa5);
+    rc=sceAudiodecDecode(&ctrl.value);
+    REQUIRE("nonzero_replay",rc==0 && ctrl.value.inputEsSize==39 && ctrl.value.outputPcmSize==512 &&
+        same(pcm.value.bytes,first_pcm.value.bytes,512) && tail_untouched(512) && guards());
+    for(unsigned test=0;test<2;++test){
+        fill(es.value.bytes,sizeof(es.value.bytes),0);
+        es.value.bytes[0]=test?0x23:0x02;
+        fill(pcm.value.bytes,sizeof(pcm.value.bytes),0xa5);
+        ctrl.value.inputEsSize=ctrl.value.outputPcmSize=123;
+        rc=sceAudiodecDecode(&ctrl.value);
+        REQUIRE(test?"bex_high_rejected":"bex_low_rejected",rc<0 &&
+            ctrl.value.inputEsSize==0 && ctrl.value.outputPcmSize==0 && tail_untouched(0) && guards());
+        rc=sceAudiodecClearContext(&ctrl.value);
+        REQUIRE(test?"bex_high_clear":"bex_low_clear",rc==0);
+        fill(es.value.bytes,sizeof(es.value.bytes),0);
+        for(unsigned i=0;i<sizeof(nonzero_frame);++i)es.value.bytes[i]=nonzero_frame[i];
+        es.value.bytes[11]=0x10;
+        rc=sceAudiodecDecode(&ctrl.value);
+        REQUIRE(test?"bex_high_recovered":"bex_low_recovered",rc==0 && ctrl.value.inputEsSize==39 &&
+            ctrl.value.outputPcmSize==512 && same(pcm.value.bytes,first_pcm.value.bytes,512) &&
+            tail_untouched(512) && guards());
+    }
+    fill(es.value.bytes,sizeof(es.value.bytes),0);
+    es.value.bytes[4]=0x07;es.value.bytes[5]=0x42;es.value.bytes[6]=0x10;
+    es.value.bytes[7]=0x84;es.value.bytes[8]=0x21;es.value.bytes[9]=0x08;es.value.bytes[10]=0x42;
+    for(unsigned i=0;i<39;++i)es.value.bytes[39+i]=es.value.bytes[i];
     SceAudiodecCtrl snapshot=ctrl.value;
     snapshot.inputEsSize=snapshot.outputPcmSize=0;
     fill(pcm.value.bytes,sizeof(pcm.value.bytes),0xa5);
