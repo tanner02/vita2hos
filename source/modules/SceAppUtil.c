@@ -1,6 +1,7 @@
 #include <psp2/apputil.h>
 #include <psp2/rtc.h>
 #include <psp2/kernel/error.h>
+#include <psp2/system_param.h>
 #include <switch.h>
 #include <errno.h>
 #include <stdio.h>
@@ -12,10 +13,14 @@
 #include <unistd.h>
 #include "config.h"
 #include "module.h"
+#include "log.h"
 #include "savedata_identity.h"
 #include "savedata_slots.h"
 #include "savedata_mount.h"
 #include "modules/SceAppUtil.h"
+
+/* Not exposed by vitasdk headers; value per Vita3K emuenv/app_util.h. */
+#define SCE_APPUTIL_APPPARAM_ID_SKU_FLAG 0u
 
 _Static_assert(sizeof(SceAppUtilSaveDataSlotParam)==SAVEDATA_SLOT_BYTES,"slot ABI");
 static Mutex app_lock;
@@ -214,4 +219,114 @@ EXPORT(SceAppUtil,0x607647BA,int,sceAppUtilSaveDataDataSave,SceAppUtilSaveDataFi
     }
     mutexUnlock(&app_lock);return result;
 }
+/* Boot-path parameter and DRM queries (ZCode ring-2 additions). */
+
+EXPORT(SceAppUtil,0xCD7FD67A,int,sceAppUtilAppParamGetInt,SceAppUtilAppParamId paramId,int *value)
+{
+    if(!value)return (int)SCE_APPUTIL_ERROR_PARAMETER;
+    if(paramId!=SCE_APPUTIL_APPPARAM_ID_SKU_FLAG)
+        return (int)SCE_APPUTIL_ERROR_PARAMETER;
+    /* Retail cartridge SKU; digital-only paths (store access) stay closed. */
+    *value=1;
+    LOG("sceAppUtilAppParamGetInt paramId=0x%x value=%d",(unsigned)paramId,*value);
+    return 0;
+}
+
+/* No addcont (DLC) content is provided, so a DRM mount request reports the
+ * same ENOENT real hardware returns for absent addcont directories. */
+EXPORT(SceAppUtil,0x2DB7BE3B,int,sceAppUtilDrmOpen,const uint8_t *dirName,const uint8_t *mountPoint)
+{
+    LOG("sceAppUtilDrmOpen dirName=%s mountPoint=%s",
+        dirName?(const char*)dirName:"(null)",
+        mountPoint?(const char*)mountPoint:"(null)");
+    return (int)0x80010002;
+}
+
+EXPORT(SceAppUtil,0x5DFB9CA0,int,sceAppUtilSystemParamGetInt,SceSystemParamId paramId,int *value)
+{
+    if(!value)return (int)SCE_APPUTIL_ERROR_PARAMETER;
+    switch(paramId) {
+    case SCE_SYSTEM_PARAM_ID_LANG:         *value=SCE_SYSTEM_PARAM_LANG_ENGLISH_US; break;
+    case SCE_SYSTEM_PARAM_ID_ENTER_BUTTON: *value=SCE_SYSTEM_PARAM_ENTER_BUTTON_CROSS; break;
+    case SCE_SYSTEM_PARAM_ID_DATE_FORMAT:  *value=SCE_SYSTEM_PARAM_DATE_FORMAT_YYYYMMDD; break;
+    case SCE_SYSTEM_PARAM_ID_TIME_FORMAT:  *value=SCE_SYSTEM_PARAM_TIME_FORMAT_24HR; break;
+    case SCE_SYSTEM_PARAM_ID_TIME_ZONE:
+    case SCE_SYSTEM_PARAM_ID_DAYLIGHT_SAVINGS: *value=0; break;
+    default:
+        return (int)SCE_APPUTIL_ERROR_PARAMETER;
+    }
+    LOG("sceAppUtilSystemParamGetInt paramId=%d value=%d",(int)paramId,*value);
+    return 0;
+}
+
+
+/* ZCode batch additions: addcont, events, store and background download.
+ * No addcont or events exist offline. */
+
+EXPORT(SceAppUtil,0x53B2C020,int,sceAppUtilAddcontMount,const uint8_t *dirName,const uint8_t *mountPoint)
+{
+    LOG("sceAppUtilAddcontMount dirName=%s -> ENOENT",dirName?(const char*)dirName:"(null)");
+    return (int)0x80010002;
+}
+
+EXPORT(SceAppUtil,0x1B36AF8C,int,sceAppUtilAddcontUmount,const uint8_t *mountPoint)
+{
+    LOG("sceAppUtilAddcontUmount mountPoint=%s",mountPoint?(const char*)mountPoint:"(null)");
+    return 0;
+}
+
+EXPORT(SceAppUtil,0x6A140498,int,sceAppUtilDrmClose,const uint8_t *path)
+{
+    LOG("sceAppUtilDrmClose path=%s",path?(const char*)path:"(null)");
+    return 0;
+}
+
+EXPORT(SceAppUtil,0x85FA94EE,int,sceAppUtilStoreBrowse,SceAppUtilStoreBrowseParam *param)
+{
+    LOG("sceAppUtilStoreBrowse -> unsupported");
+    return (int)SCE_APPUTIL_ERROR_PARAMETER;
+}
+
+EXPORT(SceAppUtil,0x96F478D6,int,sceAppUtilBgdlGetStatus,SceAppUtilBgdlStatus *stat)
+{
+    return (int)SCE_APPUTIL_ERROR_PARAMETER;
+}
+
+EXPORT(SceAppUtil,0xD1C6AB8E,int,sceAppUtilSaveDataDataRemove,SceAppUtilSaveDataFileSlot *slot,SceAppUtilSaveDataRemoveItem *files,unsigned int fileNum,SceAppUtilSaveDataMountPoint *mount)
+{
+    LOG("sceAppUtilSaveDataDataRemove id=%u",slot?slot->id:0);
+    return app_error(-ENOENT);
+}
+
+EXPORT(SceAppUtil,0xEE0DBED9,int,sceAppUtilReceiveAppEvent,SceAppUtilAppEventParam *event)
+{
+    /* No system events are queued. */
+    return 1;
+}
+
+EXPORT(SceAppUtil,0x0F4EE55F,int,sceAppUtilAppEventParseLiveArea,const SceAppUtilAppEventParam *eventParam,char *buffer)
+{
+    return 1;
+}
+
+EXPORT(SceAppUtil,0x28C7D4F6,int,sceAppUtilAppEventParseNpBasicJoinablePresence,const SceAppUtilAppEventParam *eventParam,void *buffer)
+{
+    return 1;
+}
+
+EXPORT(SceAppUtil,0x6BED9B58,int,sceAppUtilAppEventParseNpAppDataMessage,const SceAppUtilAppEventParam *eventParam,void *buffer)
+{
+    return 1;
+}
+
+EXPORT(SceAppUtil,0x77380601,int,sceAppUtilAppEventParseNearGift,const SceAppUtilAppEventParam *eventParam,void *buffer)
+{
+    return 1;
+}
+
+EXPORT(SceAppUtil,0xA2496814,int,sceAppUtilAppEventParseNpInviteMessage,const SceAppUtilAppEventParam *eventParam,void *buffer)
+{
+    return 1;
+}
+
 DECLARE_LIBRARY(SceAppUtil,0x48E01D74);

@@ -5,6 +5,7 @@
 #include <psp2/kernel/error.h>
 #include <psp2/kernel/threadmgr/thread.h>
 #include "module.h"
+#include "log.h"
 
 /* Explicit guest addresses keep the syscall packet independent of host pointer
  * width. The bundled wrapper initializes the first four words only. */
@@ -95,6 +96,99 @@ EXPORT(SceFios2Kernel,0x8CCA471A,int,_sceFiosKernelOverlayResolveWithRangeSync,
        SceUID pid,int write,const char *input,SceFiosResolveWithRangeSyncSyscallArgs *args)
 {
     return resolve_empty_overlays(pid,write,input,args,true);
+}
+
+
+/* ZCode batch additions: kernel overlay management. Overlays are accepted
+ * (no-op) and data-handler operations report ENOENT since no overlay
+ * backends are registered. */
+
+EXPORT(SceFios2Kernel,0x6DBCF0B2,int,_sceFiosKernelOverlayAdd,const SceFiosKernelOverlay *overlay,SceFiosKernelOverlayID *out_id)
+{
+    LOG("sceFiosKernelOverlayAdd overlay=%p",overlay);
+    return 0;
+}
+
+EXPORT(SceFios2Kernel,0x2A381357,int,_sceFiosKernelOverlayAddForProcess,SceUID target_process,const SceFiosKernelOverlay *overlay,SceFiosKernelOverlayID *out_id)
+{
+    LOG("sceFiosKernelOverlayAddForProcess pid=%d",target_process);
+    return 0;
+}
+
+EXPORT(SceFios2Kernel,0xB4927173,int,_sceFiosKernelOverlayRemove,SceFiosKernelOverlayID id)
+{
+    LOG("sceFiosKernelOverlayRemove id=%u",id);
+    return 0;
+}
+
+EXPORT(SceFios2Kernel,0xF8277E07,int,_sceFiosKernelOverlayRemoveForProcess,SceUID target_process,SceFiosKernelOverlayID id)
+{
+    LOG("sceFiosKernelOverlayRemoveForProcess pid=%d",target_process);
+    return 0;
+}
+
+EXPORT(SceFios2Kernel,0x6D6CDE05,int,_sceFiosKernelOverlayModify,SceFiosKernelOverlayID id,const SceFiosKernelOverlay *new_value)
+{
+    LOG("sceFiosKernelOverlayModify id=%u",id);
+    return 0;
+}
+
+EXPORT(SceFios2Kernel,0x6DF2FC05,int,_sceFiosKernelOverlayModifyForProcess,SceUID target_process,SceFiosKernelOverlayID id,const SceFiosKernelOverlay *new_value)
+{
+    LOG("sceFiosKernelOverlayModifyForProcess pid=%d",target_process);
+    return 0;
+}
+
+EXPORT(SceFios2Kernel,0xF44F3505,int,_sceFiosKernelOverlayGetInfo,SceFiosKernelOverlayID id,SceFiosKernelOverlay *out_overlay)
+{
+    return (int)SCE_KERNEL_ERROR_UNSUP;
+}
+
+EXPORT(SceFios2Kernel,0xBC6B3CC5,int,_sceFiosKernelOverlayGetInfoForProcess,SceUID target_process,SceFiosKernelOverlayID id,SceFiosKernelOverlay *out_overlay)
+{
+    return (int)SCE_KERNEL_ERROR_UNSUP;
+}
+
+EXPORT(SceFios2Kernel,0x3E9172EA,int,_sceFiosKernelOverlayThreadSetDisabled,SceInt32 disabled)
+{
+    LOG("sceFiosKernelOverlayThreadSetDisabled disabled=%d",disabled);
+    return 0;
+}
+
+EXPORT(SceFios2Kernel,0x629F4FE4,int,_sceFiosKernelOverlayThreadIsDisabled,void)
+{
+    /* Overlay thread disabled by default: all overlay DH work is refused. */
+    return 1;
+}
+
+EXPORT(SceFios2Kernel,0x5D6A1CCE,int,_sceFiosKernelOverlayDHOpenSync,SceFiosKernelOverlayDH *out_dh,const char *path,SceUInt8 from_order,SceFiosDHOpenSyncSyscallArgs *args)
+{
+    return (int)0x80010002;
+}
+
+EXPORT(SceFios2Kernel,0x2F06ADC6,int,_sceFiosKernelOverlayDHReadSync,SceFiosKernelOverlayDH dh,SceFiosNativeDirEntry *out_entry)
+{
+    return (int)0x80010002;
+}
+
+EXPORT(SceFios2Kernel,0x2A9724C9,int,_sceFiosKernelOverlayDHSyncSync,SceFiosKernelOverlayDH dh,int flag)
+{
+    return 0;
+}
+
+EXPORT(SceFios2Kernel,0x021B4AF7,int,_sceFiosKernelOverlayDHCloseSync,SceFiosKernelOverlayDH dh)
+{
+    return 0;
+}
+
+EXPORT(SceFios2Kernel,0x759EBEE6,int,_sceFiosKernelOverlayDHStatSync,SceFiosKernelOverlayDH dh,SceFiosNativeStat *out_stat)
+{
+    return (int)0x80010002;
+}
+
+EXPORT(SceFios2Kernel,0xF6A3E335,int,_sceFiosKernelOverlayDHChstatSync,SceFiosKernelOverlayDH dh,const SceFiosNativeStat *new_stat,unsigned int cbit)
+{
+    return (int)0x80010002;
 }
 
 DECLARE_LIBRARY(SceFios2Kernel,0x8757B742);

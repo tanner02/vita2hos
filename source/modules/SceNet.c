@@ -105,5 +105,55 @@ EXPORT(SceNetCtl,0x6D26AC68,int,sceNetCtlInetGetState,int *state)
     mutexUnlock(&net_lock);
     return result;
 }
+/* The inet callback is recorded but never fired: without a host network
+ * event source the guest just observes a quiet, registered callback. */
+EXPORT(SceNetCtl,0xEAEE6185,int,sceNetCtlInetRegisterCallback,SceNetCtlCallback func,void *arg,int *cid)
+{
+    mutexLock(&net_lock);
+    int result=0;
+    if(!ctl_initialized)result=CTL_NOT_INITIALIZED;
+    else if(!func||!cid)result=CTL_INVALID_ADDR;
+    else {
+        *cid=0;
+        LOG("sceNetCtlInetRegisterCallback callback=%p arg=%p",(void*)func,arg);
+    }
+    mutexUnlock(&net_lock);
+    return result;
+}
+EXPORT(SceNetCtl,0xD0C3BF3F,int,sceNetCtlInetUnregisterCallback,int cid)
+{
+    mutexLock(&net_lock);
+    int result=0;
+    if(!ctl_initialized)result=CTL_NOT_INITIALIZED;
+    else if(cid<0)result=CTL_INVALID_ADDR;
+    else LOG("sceNetCtlInetUnregisterCallback cid=%d",cid);
+    mutexUnlock(&net_lock);
+    return result;
+}
+
+/* ZCode batch additions: NetCtl info getters. */
+EXPORT(SceNetCtl,0x6B20EC02,int,sceNetCtlInetGetResult,int eventType,int *errorCode)
+{
+    LOG("sceNetCtlInetGetResult eventType=0x%x -> 0",eventType);
+    if(errorCode)*errorCode=0;
+    return 0;
+}
+
+EXPORT(SceNetCtl,0xB26D07F3,int,sceNetCtlInetGetInfo,int code,SceNetCtlInfo *info)
+{
+    LOG("sceNetCtlInetGetInfo code=0x%x -> unsupported",code);
+    return (int)0x80412102;
+}
+
+EXPORT(SceNetCtl,0x4DDD6149,int,sceNetCtlGetNatInfo,SceNetCtlNatInfo *natinfo)
+{
+    return (int)0x80412102;
+}
+
+EXPORT(SceNetCtl,0xDFFC3ED4,int,sceNetCtlCheckCallback,void)
+{
+    return 0;
+}
+
 DECLARE_LIBRARY(SceNet,0x6BF8B2A2);
 DECLARE_LIBRARY(SceNetCtl,0xC6083AE1);

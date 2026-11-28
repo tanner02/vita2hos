@@ -3,6 +3,7 @@
 #include "modules/SceProcessmgr.h"
 #include "modules/SceSysmem.h"
 #include "module.h"
+#include "log.h"
 
 static atomic_uint process_parameter_address;
 static atomic_int guest_process_uid;
@@ -55,6 +56,14 @@ EXPORT(SceThreadmgr,0x9DCB4B7A,SceUID,sceKernelGetProcessId,void)
 {
     SceUID uid=atomic_load(&guest_process_uid);
     return uid>0 ? uid : (SceUID)SCE_KERNEL_ERROR_UNKNOWN_UID;
+}
+
+/* LittleBigPlanet invokes this during boot; no host abort handler is wired up
+ * so a no-op success keeps the guest going. Not logged: this file is compiled
+ * into host tests without a log backend. */
+EXPORT(SceProcessmgr,0xEB6E50BB,int,sceKernelCallAbortHandler,uint32_t param1,uint32_t param2)
+{
+    return 0;
 }
 
 DECLARE_LIBRARY(SceProcessmgr,0x2DD91812);
