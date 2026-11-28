@@ -262,6 +262,15 @@ from the two sources share a library/NID/stub site, not a call counter.
 Duplicates are log occurrences, not call counts; only the first caller per
 traced import/lifetime is recorded. Missing records do not prove an API was unused.
 
+mp4_box.c tests the allocation-free positional MP4/QuickTime box reader with
+owned byte fixtures, nested bounds, extended and UUID headers, skipped media
+payloads beyond 4 GiB, truncation, I/O failures, and unchanged outputs on errors.
+This is a container parsing primitive, not a demuxer or video decoder. Size-zero
+atoms currently follow the top-level-only QuickTime convention documented in
+https://developer.apple.com/documentation/quicktime-file-format/atoms .
+Container selection and full-box/sample-entry payload interpretation belong to
+the demuxer; this reader deliberately does not guess them from arbitrary bytes.
+
 Controller tests use a native pthread sampler driven by controlled timer ticks
 and deterministic pad states. Peek returns up to 64 actual cached samples;
 ReadBufferPositive waits for a fresh batch and consumes it. Both return newest

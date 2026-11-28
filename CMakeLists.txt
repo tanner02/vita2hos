@@ -95,6 +95,7 @@ add_executable(vita2hos
     source/launch_mode.c
     source/missing_imports.c
     source/media_probe.c
+    source/mp4_box.c
     source/modules/SceMp4.c
     source/missing_import_stubs.cpp
     source/load_module_info.c
