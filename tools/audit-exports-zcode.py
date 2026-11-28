@@ -1,7 +1,7 @@
 import re, struct
 from pathlib import Path
 
-repo = Path(r"C:/Users/Tanner/Documents/ZCode/work/vita2hos")
+repo = Path(__file__).resolve().parents[1]
 db = repo/"external/vita-headers/db/360"
 
 # nid -> (name, library_name) from db (functions only)
