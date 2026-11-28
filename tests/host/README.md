@@ -534,3 +534,11 @@ queues, sample-interval pacing, null-buffer drains, validation and retirement.
 No real sleeps are required by this host test. Trophy unlock persistence is
 also built with pattern initialization so unused identity bytes cannot happen
 to look correct on an otherwise zero-filled stack.
+
+The `gxm_texture_packing` fixture compares swizzled output against an independent
+bit-by-bit Morton oracle for 3,115 layouts, including rectangular power-of-two
+textures, arbitrary odd dimensions, 1/2/4/8-byte texels and BC1/2/3 blocks.
+Sources and destinations are deliberately unaligned; row padding and allocation
+guards must remain correct. Constant-size copies remove variable-size memcpy
+calls from common swizzled inner loops. Host timing does not establish native
+conversion speed or gameplay FPS.

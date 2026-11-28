@@ -284,15 +284,30 @@ int gxm_texture_pack_linear(const GxmTextureLayout *layout, const void *source, 
         uint32_t bits = 0;
         while ((1U << bits) < minimum)
             bits++;
-        for (uint32_t y = 0; y < height; y++) {
-            uint32_t y_part = spread_bits(y & (minimum - 1));
-            y_part |= (y >> bits) << (2 * bits);
-            for (uint32_t x = 0; x < width; x++) {
-                uint32_t index = y_part | (spread_bits(x & (minimum - 1)) << 1) |
-                                 ((x >> bits) << (2 * bits));
-                memcpy(dst + y * layout->pitch + x * bytes, src + index * bytes, bytes);
-            }
+        /* Keep memcpy's size constant in the texel loop so the compiler can
+         * use inline loads/stores, including for unaligned source addresses.
+         * The generic branch preserves support for other element sizes. */
+#define PACK_SWIZZLED(element_bytes) do { \
+        for (uint32_t y = 0; y < height; y++) { \
+            uint32_t y_part = spread_bits(y & (minimum - 1)); \
+            y_part |= (y >> bits) << (2 * bits); \
+            for (uint32_t x = 0; x < width; x++) { \
+                uint32_t index = y_part | (spread_bits(x & (minimum - 1)) << 1) | \
+                                 ((x >> bits) << (2 * bits)); \
+                memcpy(dst + y * layout->pitch + x * (element_bytes), \
+                       src + index * (element_bytes), (element_bytes)); \
+            } \
+        } \
+    } while (0)
+        switch (bytes) {
+        case 1: PACK_SWIZZLED(1); break;
+        case 2: PACK_SWIZZLED(2); break;
+        case 4: PACK_SWIZZLED(4); break;
+        case 8: PACK_SWIZZLED(8); break;
+        case 16: PACK_SWIZZLED(16); break;
+        default: PACK_SWIZZLED(bytes); break;
         }
+#undef PACK_SWIZZLED
     } else {
         return SCE_GXM_ERROR_UNSUPPORTED;
     }
