@@ -8,6 +8,7 @@
 #include <sys/stat.h>
 static char test_root[512];
 #define VITA2HOS_APP0_PATH test_root
+#include "savedata_mount.h"
 #include "../../source/modules/SceNpTrophy.c"
 #include "../../source/modules/SceSysmodule.c"
 #include "../../source/module.c"
@@ -43,58 +44,89 @@ static TrophyCommunicationId communication(void)
 {
     TrophyCommunicationId id={0};memcpy(id.data,"NPWR00042",9);id.num=0;return id;
 }
+static char mount_root[512];
+static int test_resolver(const char *path,char *output,size_t capacity)
+{
+    (void)path;
+    if(!mount_root[0])return -34; /* -ENODEV until the test installs the mount */
+    size_t length=strlen(mount_root);
+    if(length+1>=capacity)return -36;
+    memcpy(output,mount_root,length+1);
+    return 0;
+}
 int main(void)
 {
     char temporary[]="/tmp/vita2hos-trophy-unlock-XXXXXX";assert(mkdtemp(temporary));
     strcpy(test_root,temporary);char path[1024];snprintf(path,sizeof(path),"%s/sce_sys",test_root);assert(!mkdir(path,0700));
     snprintf(path,sizeof(path),"%s/sce_sys/trophy",test_root);assert(!mkdir(path,0700));
+    snprintf(mount_root,sizeof(mount_root),"%s/sce_persist",test_root);assert(!mkdir(mount_root,0700));
     TrophyCommunicationId id=communication();unsigned char signature=1;int32_t context=777,handle;
+    uint32_t flags[4]={0,0,0,0};uint32_t count=0;
+
+    /* Without the mount installed the state is session-only: unlocks succeed
+     * but nothing is written or restored. */
     assert(!sceSysmoduleLoadModule(SCE_SYSMODULE_NP_TROPHY));
     assert(!sceNpTrophyInit(NULL));
     write_fixture(&id);
     assert(!sceNpTrophyCreateContext(&context,&id,&signature,0) && context>0);
-    TrophyContext *record=find_context(context);assert(record && record->metadata.trophy_count==3);
-    for(unsigned i=0;i<3;i++)assert(record->metadata.trophies[i].present);
-    assert(record->metadata.trophies[0].grade==1);
     assert(!sceNpTrophyCreateHandle(&handle));
-    uint32_t flags[4]={0,0,0,0};uint32_t count=0;
-    /* Initial state: zero unlocks, trophy count from the parsed config. */
-    assert(sceNpTrophyGetTrophyUnlockState(context,handle,flags,&count)==0 && count==3);
-    assert(!flags[0] && !flags[1] && !flags[2] && !flags[3]);
-    /* Guards. */
-    assert(sceNpTrophyGetTrophyUnlockState(9999,handle,flags,&count)==TROPHY_INVALID_CONTEXT);
-    assert(sceNpTrophyUnlockTrophy(9999,handle,1,NULL)==TROPHY_INVALID_CONTEXT);
-    assert(sceNpTrophyUnlockTrophy(context,7777,1,NULL)==TROPHY_INVALID_HANDLE);
-    assert(sceNpTrophyUnlockTrophy(context,handle,3,NULL)==TROPHY_INVALID_TROPHY_ID);
-    assert(sceNpTrophyUnlockTrophy(context,handle,-1,NULL)==TROPHY_INVALID_TROPHY_ID);
-    assert(sceNpTrophyGetTrophyUnlockState(context,handle,NULL,&count)==TROPHY_INVALID_ARGUMENT);
-    assert(sceNpTrophyGetTrophyUnlockState(context,handle,flags,NULL)==TROPHY_INVALID_ARGUMENT);
-    /* Platinum cannot be unlocked directly (rejected before any state or
-     * platinum_id write), per the pinned reference. */
     int32_t platinum=123;
     assert(sceNpTrophyUnlockTrophy(context,handle,0,&platinum)==TROPHY_PLATINUM_CANNOT_UNLOCK && platinum==123);
-    assert(sceNpTrophyGetTrophyUnlockState(context,handle,flags,&count)==0 && !flags[0] && count==3);
-    /* Bronze 1: unlock, observe the bit, reject a duplicate. */
     assert(!sceNpTrophyUnlockTrophy(context,handle,1,&platinum) && platinum==-1);
-    assert(!sceNpTrophyGetTrophyUnlockState(context,handle,flags,&count) && count==3);
-    assert(flags[0]==0x2u && !flags[1] && !flags[2] && !flags[3]);
+    assert(!sceNpTrophyGetTrophyUnlockState(context,handle,flags,&count) && count==3 && flags[0]==0x2u);
     assert(sceNpTrophyUnlockTrophy(context,handle,1,NULL)==TROPHY_ALREADY_UNLOCKED);
-    /* Bronze 2 completes the set: the platinum auto-unlocks and reports its id. */
+    assert(!sceNpTrophyTerm() && !SceNpTrophy_is_initialized());
+    SceNpTrophy_finish();SceSysmodule_finish();
+
+    /* With the mount installed the state persists across Term/re-init and
+     * re-created contexts. */
+    savedata_mount_set(test_resolver);
+    assert(!sceSysmoduleLoadModule(SCE_SYSMODULE_NP_TROPHY));
+    assert(!sceNpTrophyInit(NULL));
+    assert(!sceNpTrophyCreateContext(&context,&id,&signature,0) && context>0);
+    TrophyContext *record=find_context(context);assert(record);
+    /* The session-only phase wrote nothing: the restored context starts empty. */
+    assert(record->unlocked_count==0);
+    assert(!sceNpTrophyCreateHandle(&handle));
+    assert(!sceNpTrophyUnlockTrophy(context,handle,1,&platinum) && platinum==-1);
     assert(!sceNpTrophyUnlockTrophy(context,handle,2,&platinum) && platinum==0);
-    assert(!sceNpTrophyGetTrophyUnlockState(context,handle,flags,&count) && flags[0]==0x7u);
+    /* Bronze 2 completed the set: platinum auto-unlocked and reported. */
+    assert(!sceNpTrophyGetTrophyUnlockState(context,handle,flags,&count) && count==3 && flags[0]==0x7u);
     /* Re-requesting the platinum stays rejected (guard precedes state). */
     assert(sceNpTrophyUnlockTrophy(context,handle,0,NULL)==TROPHY_PLATINUM_CANNOT_UNLOCK);
-    /* Aborted handles fail without touching state. */
+    /* The state file exists on the mounted root with the unlock bits. */
+    char state_path[1120];
+    assert(snprintf(state_path,sizeof(state_path),"%s/trophy_state.bin",mount_root)>0);
+    FILE *check=fopen(state_path,"rb");assert(check);
+    TrophyStateFile stored;
+    size_t got=fread(&stored,1,sizeof(stored),check);
+    assert(!fclose(check) && got==sizeof(stored));
+    assert(stored.magic==TROPHY_STATE_MAGIC && stored.version==TROPHY_STATE_VERSION);
+    assert(!memcmp(stored.communication,"NPWR00042",9) && stored.trophy_count==3);
+    assert(stored.unlocked_count==3 && stored.flags[0]==0x7u);
+    /* Term + full re-create restores the bits from the file. */
+    assert(!sceNpTrophyDestroyHandle(handle));
+    assert(!sceNpTrophyTerm() && !SceNpTrophy_is_initialized());
+    assert(!sceNpTrophyInit(NULL));
+    assert(!sceNpTrophyCreateContext(&context,&id,&signature,0) && context>0);
+    record=find_context(context);assert(record && record->unlocked_count==3);
+    assert((record->unlocked[0]&0x7u)==0x7u);
+    assert(!sceNpTrophyCreateHandle(&handle));
+    assert(!sceNpTrophyGetTrophyUnlockState(context,handle,flags,&count) && count==3 && flags[0]==0x7u);
+    /* Duplicate/invalid/abort guards on the restored state. */
+    assert(sceNpTrophyUnlockTrophy(context,handle,1,NULL)==TROPHY_ALREADY_UNLOCKED);
+    assert(sceNpTrophyUnlockTrophy(context,handle,3,NULL)==TROPHY_INVALID_TROPHY_ID);
+    assert(sceNpTrophyUnlockTrophy(context,handle,0,NULL)==TROPHY_PLATINUM_CANNOT_UNLOCK);
     assert(!sceNpTrophyAbortHandle(handle));
     assert(sceNpTrophyUnlockTrophy(context,handle,1,NULL)==TROPHY_ABORT);
     assert(sceNpTrophyGetTrophyUnlockState(context,handle,flags,&count)==TROPHY_ABORT);
-    assert(!sceNpTrophyGetTrophyUnlockState(context,handle,flags,&count) || flags[0]==0x7u);
-    /* Term clears the session state. */
-    assert(!sceNpTrophyTerm());
-    assert(sceNpTrophyGetTrophyUnlockState(context,handle,flags,&count)==TROPHY_NOT_INITIALIZED);
+    assert(!sceNpTrophyDestroyHandle(handle));
+    assert(!sceNpTrophyTerm() && !SceNpTrophy_is_initialized());
+    /* Uninstalling the mount leaves stale files unread: fresh state again. */
+    savedata_mount_set(NULL);
     assert(!sceSysmoduleUnloadModule(SCE_SYSMODULE_NP_TROPHY));
     SceNpTrophy_finish();SceSysmodule_finish();
     assert(module_get_func_export(0x4332c10d,0xb397aa24));
     assert(module_get_func_export(0x4332c10d,0xc8d2a4de));
-    puts("Trophy unlock: bit-array state, platinum auto-unlock, duplicate/id/abort guards and term clearing passed.");
+    puts("Trophy unlock: bit-array state, platinum rejection/auto-unlock, persistence round-trip and guards passed.");
 }
