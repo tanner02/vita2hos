@@ -7,6 +7,9 @@
 #include <cstring>
 #include <memory>
 #include <unistd.h>
+#ifndef __SWITCH__
+#include <mutex>
+#endif
 
 #include "uam_compiler_iface_c.h"
 #include "config.h"
@@ -17,6 +20,64 @@
 #ifndef UAM_TEMP_FILE_TEMPLATE
 #define UAM_TEMP_FILE_TEMPLATE VITA2HOS_ROOT_PATH "/.uam-XXXXXX"
 #endif
+#ifndef UAM_CAPTURE_PREFIX
+#define UAM_CAPTURE_PREFIX VITA2HOS_ROOT_PATH "/uam-pending"
+#endif
+
+namespace {
+/* UAM owns process-global GLSL context/type caches. Its destructor releases
+ * those caches, so the protected lifetime must include construction/destruction. */
+#ifdef __SWITCH__
+Mutex compiler_lock;
+struct CompilerGuard {
+    CompilerGuard() { mutexLock(&compiler_lock); }
+    ~CompilerGuard() { mutexUnlock(&compiler_lock); }
+};
+#else
+std::mutex compiler_lock;
+using CompilerGuard = std::lock_guard<std::mutex>;
+#endif
+
+/* Opt-in, bounded crash evidence. Only the input currently being compiled is
+ * retained; successful compilation removes it. No shader corpus is accumulated. */
+bool capture_input(pipeline_stage stage, const char *source)
+{
+    FILE *enabled = fopen(UAM_CAPTURE_PREFIX ".enabled", "rb");
+    if (!enabled) return false;
+    fclose(enabled);
+    /* A failed/oversized capture must never leave an older input looking like
+     * evidence for the next compile. */
+    unlink(UAM_CAPTURE_PREFIX ".glsl");
+    unlink(UAM_CAPTURE_PREFIX ".txt");
+    const size_t limit = 2 * 1024 * 1024;
+    size_t length = strnlen(source, limit + 1);
+    if (length > limit) return false;
+    unsigned long long hash = 14695981039346656037ULL;
+    for (size_t i = 0; i < length; ++i) {
+        hash ^= (unsigned char)source[i];
+        hash *= 1099511628211ULL;
+    }
+    FILE *file = fopen(UAM_CAPTURE_PREFIX ".glsl.tmp", "wb");
+    if (!file) return false;
+    bool ok = fwrite(source, 1, length, file) == length;
+    if (fclose(file) != 0) ok = false;
+    if (!ok || rename(UAM_CAPTURE_PREFIX ".glsl.tmp", UAM_CAPTURE_PREFIX ".glsl") != 0) {
+        unlink(UAM_CAPTURE_PREFIX ".glsl.tmp");
+        return false;
+    }
+    file = fopen(UAM_CAPTURE_PREFIX ".txt", "wb");
+    if (!file) return false;
+    ok = fprintf(file, "stage=%d\nbytes=%zu\nfnv1a64=%016llx\n", (int)stage, length, hash) > 0;
+    if (fclose(file) != 0) ok = false;
+#ifdef __SWITCH__
+    uint64_t tid = 0;
+    svcGetThreadId(&tid, CUR_THREAD_HANDLE);
+    LOG("UAM_CAPTURE stage=%d bytes=%zu fnv1a64=%016llx tid=%" PRIu64 " saved=%u",
+        (int)stage, length, hash, tid, (unsigned)ok);
+#endif
+    return ok;
+}
+}
 
 extern "C" {
 
@@ -29,6 +90,23 @@ static bool compile_alloc(pipeline_stage stage, const char *glsl_source, void **
         *size = 0;
     if (!glsl_source || !buffer || !size || !capacity)
         return false;
+#ifdef __SWITCH__
+    CompilerGuard guard;
+#else
+    CompilerGuard guard(compiler_lock);
+#endif
+    struct CaptureCleanup {
+        bool captured, success = false;
+        ~CaptureCleanup() {
+            if (captured && success) {
+                unlink(UAM_CAPTURE_PREFIX ".glsl");
+                unlink(UAM_CAPTURE_PREFIX ".txt");
+            }
+        }
+    } capture{capture_input(stage, glsl_source)};
+#ifdef __SWITCH__
+    LOG("UAM_COMPILE_ENTER stage=%d captured=%u", (int)stage, (unsigned)capture.captured);
+#endif
 #ifdef __SWITCH__
     /* Destroyed after the compiler: output_cleanup includes the temporary
      * file round trip, validation, unlink and compiler teardown. Both phases
@@ -80,6 +158,7 @@ static bool compile_alloc(pipeline_stage stage, const char *glsl_source, void **
         return false;
     *buffer = data.release();
     *size = (uint32_t)length;
+    capture.success = true;
 #ifdef __SWITCH__
     timing.success = true;
 #endif

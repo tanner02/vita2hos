@@ -3,12 +3,24 @@
 #include <cstring>
 #include <cstdio>
 #include <string>
+#include <atomic>
+#include <thread>
+#include <vector>
+#include <fstream>
 
 unsigned int test_compilations, test_outputs;
 int test_output_mode;
 uint32_t test_code_size = 8;
 std::string test_output_path;
+std::atomic<unsigned> active_compilers{0}, overlapping_compilers{0};
+void test_compiler_enter()
+{
+    if (active_compilers.fetch_add(1) != 0) ++overlapping_compilers;
+    for (unsigned i = 0; i < 100; ++i) std::this_thread::yield();
+}
+void test_compiler_leave() { --active_compilers; }
 #define UAM_TEMP_FILE_TEMPLATE "/tmp/vita2hos-uam-XXXXXX"
+#define UAM_CAPTURE_PREFIX "/tmp/vita2hos-uam-test-pending"
 #include "../../source/uam_compiler_iface_c.cpp"
 
 int main()
@@ -63,5 +75,39 @@ int main()
         assert(!uam_compiler_compile_glsl_alloc(pipeline_stage_vertex, "valid", &allocated, &size));
         assert(allocated == nullptr && size == 0);
     }
+    /* Real overlapping callers must never overlap frontend lifetimes, even
+     * when one compiler fails before output or teardown is reached. */
+    test_output_mode = 0;
+    test_code_size = 8;
+    std::vector<std::thread> callers;
+    for (unsigned i = 0; i < 8; ++i) callers.emplace_back([i] {
+        void *data = nullptr;
+        uint32_t bytes = 0;
+        bool ok = uam_compiler_compile_glsl_alloc(pipeline_stage_vertex,
+                                                  i % 2 ? "valid" : "invalid", &data, &bytes);
+        assert(ok == (i % 2 != 0));
+        std::free(data);
+    });
+    for (auto &caller : callers) caller.join();
+    assert(active_compilers == 0 && overlapping_compilers == 0);
+    {
+        std::ofstream enabled(UAM_CAPTURE_PREFIX ".enabled");
+        assert(enabled.good());
+    }
+    assert(!uam_compiler_compile_glsl_alloc(pipeline_stage_vertex, "invalid", &allocated, &size));
+    std::ifstream input(UAM_CAPTURE_PREFIX ".glsl");
+    std::string captured((std::istreambuf_iterator<char>(input)), {});
+    assert(captured == "invalid");
+    input.close();
+    assert(access(UAM_CAPTURE_PREFIX ".txt", F_OK) == 0);
+    std::string oversized(2 * 1024 * 1024 + 1, 'x');
+    assert(!uam_compiler_compile_glsl_alloc(pipeline_stage_vertex, oversized.c_str(), &allocated, &size));
+    assert(access(UAM_CAPTURE_PREFIX ".glsl", F_OK) != 0);
+    assert(access(UAM_CAPTURE_PREFIX ".txt", F_OK) != 0);
+    assert(uam_compiler_compile_glsl_alloc(pipeline_stage_vertex, "valid", &allocated, &size));
+    std::free(allocated);
+    assert(access(UAM_CAPTURE_PREFIX ".glsl", F_OK) != 0);
+    assert(access(UAM_CAPTURE_PREFIX ".txt", F_OK) != 0);
+    unlink(UAM_CAPTURE_PREFIX ".enabled");
     std::puts("Shader compiler failure-contract checks passed.");
 }

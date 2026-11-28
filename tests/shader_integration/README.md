@@ -147,3 +147,22 @@ Release suppresses their output and argument evaluation. Both configurations
 retain INFO/WARN/ERROR/CRITICAL formatting. The tests explicitly check counters
 in Release, where assert is disabled. They cover logging behavior, not runtime
 startup speed or shader rendering correctness.
+
+## Native UAM lifetime and crash input capture
+
+Runtime UAM calls serialize the entire compiler lifetime, including construction
+and destruction, because its GLSL frontend uses process-global context/type
+caches. Host tests overlap successful and failed callers and check that those
+lifetimes never overlap. This guards shared compiler state; it does not establish
+the cause of any particular shader compilation failure.
+
+For a bounded diagnostic run, create `/vita2hos/uam-pending.enabled` before
+launch. The wrapper saves the current generated input as `uam-pending.glsl` and
+its stage, byte count and FNV-1a identity as `uam-pending.txt` in that directory,
+before constructing UAM. Successful compiler teardown removes both files. A
+failed or interrupted call retains its input for private serial replay. Only one
+input is retained, with a 2-MiB source limit; capture errors or oversized inputs
+clear old evidence and do not block compilation. `UAM_COMPILE_ENTER` reports
+whether capture succeeded. Remove the enabled file after collection to avoid
+per-shader SD writes during ordinary runs. The identity is diagnostic, not a
+cryptographic integrity check. Game-derived inputs must remain private.

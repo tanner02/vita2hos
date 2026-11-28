@@ -9,9 +9,12 @@ extern unsigned int test_compilations, test_outputs;
 extern int test_output_mode;
 extern uint32_t test_code_size;
 extern std::string test_output_path;
+void test_compiler_enter();
+void test_compiler_leave();
 class DekoCompiler {
 public:
-    explicit DekoCompiler(pipeline_stage) {}
+    explicit DekoCompiler(pipeline_stage) { test_compiler_enter(); }
+    ~DekoCompiler() { test_compiler_leave(); }
     bool CompileGlsl(const char *source)
     {
         ++test_compilations;
