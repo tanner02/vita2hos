@@ -2324,3 +2324,25 @@ its45-slot plan were verified; the old failure report was saved and removed
 before launching LittleBigPlanet on c6d2dd9. The game entered after layout
 retry3 and is compiling shaders at this checkpoint. No new Audio-post result
 or interactive3D boot is established yet.
+
+## Paced silent microphone verification (9564496)
+
+The AudioIn provider now exposes one silent mono capture port with validated
+VOICE/RAW configurations and sample deadlines. Reads reject concurrent capture,
+release the mutex while waiting, and revalidate the handle before writing. Input
+and output ports use distinct monotonic handles. No physical audio is recorded.
+
+The full host ASan/UBSan suite and native Release build passed. The exact committed
+source archive, ARM32 executable, runtime stamp and all three package content
+archives were verified before installation. The owned AudioIn v1 probe produced
+32 fresh PASS lines, process return 0 and cleanup return 0 on Switch. Four captures
+took 48015, 96015, 48015 and 48014 microseconds for VOICE 256/16000, VOICE 512/16000,
+RAW 256/16000 and RAW 768/48000 respectively. Report I/O was outside the timed
+capture sequence; guard bytes and silent samples passed for every configuration.
+
+The same installed runtime independently passed the unchanged visible cube v11's
+54 fresh checks with process return 0 and cleanup return 0. A textured cube was
+observed, followed by HOME with the title closed. Original game/modules/mode were
+restored by exact readback; observer v3 and its 45-record plan were verified and
+the previous startup report preserved before removal. The subsequent game run is
+separate evidence: these probe passes do not establish menu or gameplay progress.
