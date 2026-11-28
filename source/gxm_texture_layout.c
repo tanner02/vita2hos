@@ -284,6 +284,10 @@ int gxm_texture_pack_linear(const GxmTextureLayout *layout, const void *source, 
         uint32_t bits = 0;
         while ((1U << bits) < minimum)
             bits++;
+        /* X uses odd Morton bits within the square, then contiguous bits in
+         * the rectangular tail. Subtracting the mask and masking again advances
+         * one coordinate with carry across those selected bit positions. */
+        const uint32_t x_mask = (spread_bits(minimum - 1) << 1) | (~0U << (2 * bits));
         /* Keep memcpy's size constant in the texel loop so the compiler can
          * use inline loads/stores, including for unaligned source addresses.
          * The generic branch preserves support for other element sizes. */
@@ -291,11 +295,12 @@ int gxm_texture_pack_linear(const GxmTextureLayout *layout, const void *source, 
         for (uint32_t y = 0; y < height; y++) { \
             uint32_t y_part = spread_bits(y & (minimum - 1)); \
             y_part |= (y >> bits) << (2 * bits); \
+            uint32_t x_part = 0; \
             for (uint32_t x = 0; x < width; x++) { \
-                uint32_t index = y_part | (spread_bits(x & (minimum - 1)) << 1) | \
-                                 ((x >> bits) << (2 * bits)); \
+                uint32_t index = y_part | x_part; \
                 memcpy(dst + y * layout->pitch + x * (element_bytes), \
                        src + index * (element_bytes), (element_bytes)); \
+                x_part = (x_part - x_mask) & x_mask; \
             } \
         } \
     } while (0)

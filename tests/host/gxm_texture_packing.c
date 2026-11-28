@@ -56,6 +56,11 @@ int main(void)
         for(unsigned w=1;w<=1024;w*=2)for(unsigned h=1;h<=1024;h*=2) {
             check(w,h,formats[f],false);++cases;
         }
+    for(unsigned f=0;f<sizeof(formats)/sizeof(*formats);++f) {
+        check(4096,1,formats[f],false);check(1,4096,formats[f],false);
+        check(4096,8,formats[f],false);check(8,4096,formats[f],false);cases+=4;
+        check(4095,7,formats[f],true);check(7,4095,formats[f],true);cases+=2;
+    }
     printf("Morton packing: %u independent byte/row-padding/unaligned/guard cases passed.\n",cases);
     return 0;
 }
