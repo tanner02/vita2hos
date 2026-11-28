@@ -85,6 +85,34 @@ The remaining single-threaded checks do not validate Switch ABI details, locking
 concurrent close operations, or hardware behavior. A Switch build and console
 testing are still required for those.
 
+The shader-output cache uses `shader-cache` under the runtime root. An entry
+must match the exact GLSL source, stage and build-derived backend revision;
+its payload checksum and the shared DKSH structural checks must pass before
+returning independently owned storage. Missing, corrupt, incompatible or
+unreadable entries follow the normal compiler path. Cache writes never turn a
+successful compilation into failure. The backend revision includes the SDK,
+deko3d library, compiler patches, toolchain/options and wrapper, allowing reuse
+across unrelated HLE changes. The current-input diagnostic flag bypasses cache
+reads so compiler timing and crash evidence remain meaningful.
+
+Completed managed entries are capped at 128 MiB and 16,384 files; larger-than-
+2-MiB source strings and larger-than-8-MiB binaries compile without caching.
+Writes publish a completed same-directory temporary file, with at most one
+additional entry's temporary storage during replacement. Strictly named
+abandoned cache temporaries are cleaned during the initial budget scan; unknown
+files are preserved. Once full, existing entries still load and new writes are
+skipped. Cache budgets and files are managed under the serialized compiler lock.
+
+Cache checks flip every byte of an entry, truncate at every offset, append data,
+reject a structurally invalid DKSH with a matching checksum, and cover source,
+stage, revision, capacity, allocation, write/rename failures, budgets and temporary
+cleanup. Compiler integration covers cold/hit behavior, caller-buffer guards,
+diagnostic bypass, corrupted-entry fallback, unavailable cache storage and eight
+cold concurrent callers producing only one compilation. The original compiler
+failure-contract fixture disables disk caching so invalid SDK output and compiler
+failure paths continue to execute. Native cold/warm rendering remains a hardware
+validation requirement.
+
 Silent AudioIn checks cover VOICE and RAW configurations, exact guarded mono
 buffer writes, first and subsequent capture deadlines, delayed consumers,
 overlapping-read rejection, close/reopen during a pending read, stale handles,

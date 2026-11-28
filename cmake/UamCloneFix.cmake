@@ -83,4 +83,25 @@ function(vita2hos_fix_uam_clone nx_root)
     add_library(vita_uam STATIC IMPORTED)
     set_target_properties(vita_uam PROPERTIES IMPORTED_LOCATION "${fixed_archive}")
     add_dependencies(vita_uam vita_uam_archive)
+    # Reuse cache entries across unrelated runtime changes, but invalidate them
+    # whenever the SDK/backend patches, compiler options or wrapper change.
+    get_directory_property(directory_options COMPILE_OPTIONS)
+    get_target_property(codegen_options vita_uam_codegen COMPILE_OPTIONS)
+    get_target_property(codegen_definitions vita_uam_codegen COMPILE_DEFINITIONS)
+    set(cache_signature "opt3-cache1:${CMAKE_CXX_COMPILER_ID}:${CMAKE_CXX_COMPILER_VERSION}:${CMAKE_BUILD_TYPE}:${CMAKE_CXX_FLAGS}:${CMAKE_CXX_FLAGS_RELEASE}:${CMAKE_CXX_FLAGS_DEBUG}:${directory_options}:${codegen_options}:${codegen_definitions}")
+    set(deko_library "${nx_root}/lib/libdeko3d.a")
+    if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+        set(deko_library "${nx_root}/lib/libdeko3dd.a")
+    endif()
+    foreach(input "${archive}" "${original}" "${util_original}" "${util_patch}"
+            "${CMAKE_SOURCE_DIR}/cmake/UamCloneFix.cmake"
+            "${CMAKE_SOURCE_DIR}/source/uam_compiler_iface_c.cpp"
+            "${CMAKE_SOURCE_DIR}/source/uam_shader_cache.c"
+            "${CMAKE_SOURCE_DIR}/include/uam_dksh.h" "${deko_library}")
+        set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${input}")
+        file(SHA256 "${input}" input_hash)
+        string(APPEND cache_signature ":${input_hash}")
+    endforeach()
+    string(SHA256 cache_revision "${cache_signature}")
+    set(VITA2HOS_UAM_CACHE_REVISION "${cache_revision}" PARENT_SCOPE)
 endfunction()

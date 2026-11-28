@@ -13,6 +13,16 @@
 
 #include "uam_compiler_iface_c.h"
 #include "config.h"
+#include "uam_dksh.h"
+#ifndef UAM_DISABLE_DISK_CACHE
+#include "uam_shader_cache.h"
+#ifndef UAM_CACHE_DIRECTORY
+#define UAM_CACHE_DIRECTORY VITA2HOS_ROOT_PATH "/shader-cache"
+#endif
+#ifndef UAM_CACHE_REVISION
+#error "The shader cache requires a build-derived backend revision"
+#endif
+#endif
 #ifdef __SWITCH__
 #include "log.h"
 #endif
@@ -102,6 +112,23 @@ static bool compile_alloc(pipeline_stage stage, const char *glsl_source, void **
 #else
     CompilerGuard guard(compiler_lock);
 #endif
+#ifndef UAM_DISABLE_DISK_CACHE
+    /* Explicit compiler-input diagnostics must execute the compiler even when
+     * this input is already cached, so their timing/evidence stays meaningful. */
+    if (access(UAM_CAPTURE_PREFIX ".enabled", F_OK) != 0) {
+#ifdef __SWITCH__
+        uint64_t cache_start=armGetSystemTick();
+#endif
+        if (uam_cache_load(UAM_CACHE_DIRECTORY,UAM_CACHE_REVISION,(uint32_t)stage,
+                           glsl_source,capacity,buffer,size)) {
+#ifdef __SWITCH__
+            LOG("UAM_CACHE_HIT stage=%d bytes=%u load_us=%" PRIu64,(int)stage,*size,
+                armTicksToNs(armGetSystemTick()-cache_start)/1000);
+#endif
+            return true;
+        }
+    }
+#endif
     struct CaptureCleanup {
         bool captured, success = false;
         ~CaptureCleanup() {
@@ -159,14 +186,14 @@ static bool compile_alloc(pipeline_stage stage, const char *glsl_source, void **
     std::unique_ptr<void, decltype(&free)> data(malloc((size_t)length), free);
     if (!data || fread(data.get(), 1, (size_t)length, file.get()) != (size_t)length)
         return false;
-    uint32_t header[6];
-    memcpy(header, data.get(), sizeof(header));
-    if (memcmp(data.get(), "DKSH", 4) || header[1] < sizeof(header) ||
-        header[1] > header[2] || header[2] > (uint32_t)length ||
-        header[3] != (uint32_t)length - header[2])
+    if (!uam_dksh_valid(data.get(),(uint32_t)length))
         return false;
     *buffer = data.release();
     *size = (uint32_t)length;
+#ifndef UAM_DISABLE_DISK_CACHE
+    uam_cache_store(UAM_CACHE_DIRECTORY,UAM_CACHE_REVISION,(uint32_t)stage,
+                    glsl_source,*buffer,*size);
+#endif
     capture.success = true;
 #ifdef __SWITCH__
     timing.success = true;

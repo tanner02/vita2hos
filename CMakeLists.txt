@@ -54,6 +54,7 @@ add_executable(vita2hos
     source/savedata_mount.c
     source/savedata_slots.c
     source/vita_sha1.c
+    source/uam_shader_cache.c
     source/trophy_archive.c
     source/guest_tls.c
     source/thread_events.c
@@ -184,6 +185,7 @@ target_compile_definitions(vita2hos PRIVATE
 
 include("${CMAKE_SOURCE_DIR}/cmake/UamCloneFix.cmake")
 vita2hos_fix_uam_clone("${NX_ROOT}")
+target_compile_definitions(vita2hos PRIVATE UAM_CACHE_REVISION="${VITA2HOS_UAM_CACHE_REVISION}")
 
 target_link_libraries(vita2hos PRIVATE
     vita_mspace

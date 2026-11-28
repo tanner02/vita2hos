@@ -22,6 +22,7 @@ void test_compiler_enter()
 void test_compiler_leave() { --active_compilers; }
 #define UAM_TEMP_FILE_TEMPLATE "/tmp/vita2hos-uam-XXXXXX"
 #define UAM_CAPTURE_PREFIX "/tmp/vita2hos-uam-test-pending"
+#define UAM_DISABLE_DISK_CACHE
 #include "../../source/uam_compiler_iface_c.cpp"
 
 int main()
