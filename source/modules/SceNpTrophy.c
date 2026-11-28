@@ -14,7 +14,8 @@
 #include "modules/SceSysmem.h"
 /* The pinned SDK lacks trophy declarations. These errors/signatures match the
  * pinned public reference. Contexts own verified archive/configuration data;
- * trophy progress, unlocks and online services remain unsupported. */
+ * unlock state is session-only (bit array per context) and online services
+ * remain unsupported. */
 #define TROPHY_NOT_INITIALIZED ((int)0x80551601)
 #define TROPHY_ALREADY_INITIALIZED ((int)0x80551602)
 #define TROPHY_NO_MEMORY ((int)0x80551603)
@@ -39,12 +40,19 @@
 #define TROPHY_ABORT ((int)0x80551607)
 typedef struct {char data[9],term;uint8_t num;char reserved;} TrophyCommunicationId;
 _Static_assert(sizeof(TrophyCommunicationId)==12,"Trophy communication ID ABI");
+#define TROPHY_UNLOCK_WORDS (TROPHY_METADATA_MAX_TROPHIES/32u)
+#define TROPHY_ALREADY_UNLOCKED ((int)0x8055160f)
+#define TROPHY_INVALID_TROPHY_ID ((int)0x8055160e)
 typedef struct {
     int32_t uid;
     TrophyCommunicationId communication;
     uint8_t *bytes;
     TrophyArchive archive;
     TrophyMetadata metadata;
+    /* Session-only unlock state: bit i = trophy i unlocked. Persisting to
+     * savedata stays open; progress resets when the process exits. */
+    uint32_t unlocked[TROPHY_UNLOCK_WORDS];
+    uint32_t unlocked_count;
 } TrophyContext;
 static TrophyContext *trophy_contexts;
 static size_t context_bytes;
@@ -238,4 +246,64 @@ EXPORT(SceNpTrophy,0xFE382529,int,sceNpTrophyGetGameIcon,int32_t context_uid,int
     }
     mutexUnlock(&trophy_lock);return result;
 }
+/* ZCode additions: unlock lifecycle the game imports (Vita3K reference
+ * semantics; state is session-only and derived from the parsed metadata). */
+
+EXPORT(SceNpTrophy,0xB397AA24,int,sceNpTrophyUnlockTrophy,int32_t context_uid,
+       int32_t handle_uid,int32_t trophy_id,int32_t *platinum_id)
+{
+    mutexLock(&trophy_lock);
+    TrophyContext *context=find_context(context_uid);TrophyHandle *handle=find_handle(handle_uid);
+    int result=0;
+    if(!trophy_handles)result=TROPHY_NOT_INITIALIZED;
+    else if(!context)result=TROPHY_INVALID_CONTEXT;
+    else if(!handle)result=TROPHY_INVALID_HANDLE;
+    else if(handle->aborted)result=TROPHY_ABORT;
+    else if(trophy_id<0 || (unsigned)trophy_id>=TROPHY_METADATA_MAX_TROPHIES
+            || (unsigned)trophy_id>=context->metadata.trophy_count
+            || !context->metadata.trophies[trophy_id].present)
+        result=TROPHY_INVALID_TROPHY_ID;
+    else if(context->unlocked[trophy_id>>5]&(1u<<(trophy_id&31)))
+        result=TROPHY_ALREADY_UNLOCKED;
+    else {
+        context->unlocked[trophy_id>>5]|=1u<<(trophy_id&31);
+        context->unlocked_count++;
+        LOG("sceNpTrophyUnlockTrophy trophy=%d count=%u",trophy_id,context->unlocked_count);
+        /* Auto-unlock the platinum when every non-platinum trophy is held. */
+        int32_t platinum=-1;unsigned non_platinum=0,non_platinum_unlocked=0;
+        for(unsigned i=0;i<context->metadata.trophy_count && i<TROPHY_METADATA_MAX_TROPHIES;i++) {
+            if(!context->metadata.trophies[i].present)continue;
+            if(context->metadata.trophies[i].grade==1)platinum=(int32_t)i;
+            else {non_platinum++;
+                if(context->unlocked[i>>5]&(1u<<(i&31)))non_platinum_unlocked++;}
+        }
+        if(platinum>=0 && non_platinum_unlocked==non_platinum
+           && !(context->unlocked[platinum>>5]&(1u<<(platinum&31)))) {
+            context->unlocked[platinum>>5]|=1u<<(platinum&31);
+            context->unlocked_count++;
+            LOG("sceNpTrophyUnlockTrophy platinum=%d auto-unlocked",platinum);
+            if(platinum_id)*platinum_id=platinum;
+        } else if(platinum_id)*platinum_id=-1;
+    }
+    mutexUnlock(&trophy_lock);return result;
+}
+
+EXPORT(SceNpTrophy,0xC8D2A4DE,int,sceNpTrophyGetTrophyUnlockState,int32_t context_uid,
+       int32_t handle_uid,uint32_t *flag_array,uint32_t *count)
+{
+    mutexLock(&trophy_lock);
+    TrophyContext *context=find_context(context_uid);TrophyHandle *handle=find_handle(handle_uid);
+    int result=0;
+    if(!trophy_handles)result=TROPHY_NOT_INITIALIZED;
+    else if(!context)result=TROPHY_INVALID_CONTEXT;
+    else if(!handle)result=TROPHY_INVALID_HANDLE;
+    else if(handle->aborted)result=TROPHY_ABORT;
+    else if(!flag_array || !count)result=TROPHY_INVALID_ARGUMENT;
+    else {
+        memcpy(flag_array,context->unlocked,sizeof(context->unlocked));
+        *count=context->metadata.trophy_count;
+    }
+    mutexUnlock(&trophy_lock);return result;
+}
+
 DECLARE_LIBRARY(SceNpTrophy,0x4332C10D);
