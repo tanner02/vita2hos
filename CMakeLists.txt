@@ -94,6 +94,7 @@ add_executable(vita2hos
     source/load_process_run.c
     source/launch_mode.c
     source/missing_imports.c
+    source/media_probe.c
     source/missing_import_stubs.cpp
     source/load_module_info.c
     source/modules/SceNpTrophy.c

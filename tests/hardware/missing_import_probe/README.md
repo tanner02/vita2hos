@@ -28,3 +28,14 @@ the private LittleBigPlanet library diagnostic remains active on the Switch.
 This does not verify floating/aggregate unsupported return conventions, actual
 missing API implementations, trace-pool exhaustion on hardware, or a game boot.
 It contains no proprietary code or assets.
+
+With `--media-probe`, the builder emits an optional v2 media-gate variant with
+a distinct `missing-import-media-probe-v2.txt` report. It checks that MP4 load
+returns the normal fatal/unloaded results without `media-probe.enabled`, or
+that the explicit presence-only probe permits load/unload when the flag exists.
+Both modes still require the original ARM/Thumb missing calls to return
+NO_FUNC_NID with R1 preserved. With the flag enabled, also verify the runtime
+media-probe report has one module record and two first-use owned-import records.
+This exercises diagnostic plumbing, not MP4 parsing, decoding, video playback
+or a game-specific failure path. Preserve reports and remove the diagnostic flag
+after the requested experiment.

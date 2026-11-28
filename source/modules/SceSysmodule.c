@@ -4,6 +4,7 @@
 #include <string.h>
 #include "module.h"
 #include "log.h"
+#include "media_probe.h"
 #include "modules/SceNet.h"
 #include "modules/SceAppUtil.h"
 #include "modules/SceNpTrophy.h"
@@ -17,6 +18,10 @@ static bool stub_loaded[SCE_SYSMODULE_JSON + 1];
 static bool stub_loadable_module(SceSysmoduleModuleId id)
 {
     switch(id) {
+    case SCE_SYSMODULE_MP4:
+        /* Diagnostic only: pass this gate to capture the first missing media
+         * calls. Import stubs still return NO_FUNC_NID and write no outputs. */
+        return media_probe_active();
     case SCE_SYSMODULE_HTTPS:          /* 0x04 */
     case SCE_SYSMODULE_NGS:            /* 0x0B: LBP's Audio post-stage aborts
         * startup when this load fails (call chain audited by Codex:
@@ -45,6 +50,7 @@ static bool stub_loadable_module(SceSysmoduleModuleId id)
 }
 void SceSysmodule_finish(void)
 {
+    media_probe_finish();
     mutexLock(&sysmodule_lock);net_module_loaded=false;trophy_module_loaded=false;apputil_module_loaded=false;memset(stub_loaded,0,sizeof(stub_loaded));mutexUnlock(&sysmodule_lock);
 }
 static bool valid_module(SceSysmoduleModuleId id)
@@ -60,6 +66,10 @@ EXPORT(SceSysmodule,0x79A0160A,int,sceSysmoduleLoadModule,SceSysmoduleModuleId i
     if(stub_loadable_module(id)){stub_loaded[id]=true;result=0;}
     mutexUnlock(&sysmodule_lock);
     LOG("sceSysmoduleLoadModule id=0x%x result=0x%x",(unsigned)id,result);
+    if(id==SCE_SYSMODULE_MP4)
+        media_probe_record("SYSMODULE_LOAD id=0x002d result=0x%08x caller=0x%08" PRIxPTR
+            " module_presence_only=1 decoder_implemented=0",(unsigned)result,
+            (uintptr_t)__builtin_extract_return_addr(__builtin_return_address(0)));
     return result;
 }
 EXPORT(SceSysmodule,0x53099B7A,int,sceSysmoduleIsLoaded,SceSysmoduleModuleId id)

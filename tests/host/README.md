@@ -554,3 +554,17 @@ budget. The host fixture verifies opt-in behavior, connection and Cross mapping,
 actual delivery, heartbeat counters, the budget, continued input after the budget
 and reset on shutdown/reinitialization. Missing hardware records remain unknown;
 these diagnostics do not prove input reached any specific game state.
+
+The media gate probe is explicit: `/vita2hos/media-probe.enabled` is sampled
+once per sysmodule lifecycle. Only this diagnostic permits MP4 module presence
+to reach missing media calls; it supplies no decoder. The original unsupported
+import result and output/register contracts remain intact. At most 256 first-use
+call/module records per sysmodule lifecycle (512 bytes each) are appended to `media-probe.txt`; report
+IO is best effort and must not change API results. Fresh reports are staged
+before a probe run. The host fixture covers absent/default behavior, loaded and
+unloaded state, raw unsupported arguments/results, first-use suppression,
+concurrent record budgeting, report IO failure and lifecycle reset.
+
+Controller trace guest-poll counts cover valid positive read/peek requests;
+invalid arguments are rejected before this counter. A frozen counter alone
+cannot rule out invalid requests or other APIs.

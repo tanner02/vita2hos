@@ -2,6 +2,7 @@
 #include <psp2/kernel/error.h>
 #include "missing_imports.h"
 #include "log.h"
+#include "media_probe.h"
 typedef struct {const void *owner;uint32_t library,nid,stub;bool reported;} MissingSlot;
 static MissingSlot slots[MISSING_IMPORT_SLOTS];
 static Mutex missing_guard;
@@ -41,5 +42,10 @@ int missing_import_report(unsigned index,uintptr_t return_address,
         " nid=0x%08" PRIx32 " stub=0x%08" PRIx32 " return_address=0x%08" PRIxPTR
         " r0=0x%08" PRIx32 " r1=0x%08" PRIx32 " r2=0x%08" PRIx32 " r3=0x%08" PRIx32,
         library,nid,stub,return_address,r0,r1,r2,r3);
+    if(report)media_probe_record("UNSUPPORTED_CALL library=0x%08" PRIx32
+        " nid=0x%08" PRIx32 " stub=0x%08" PRIx32 " return_address=0x%08" PRIxPTR
+        " r0=0x%08" PRIx32 " r1=0x%08" PRIx32 " r2=0x%08" PRIx32 " r3=0x%08" PRIx32
+        " result=0x%08x",library,nid,stub,return_address,r0,r1,r2,r3,
+        (unsigned)SCE_KERNEL_ERROR_MODULEMGR_NO_FUNC_NID);
     return (int)SCE_KERNEL_ERROR_MODULEMGR_NO_FUNC_NID;
 }

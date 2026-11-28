@@ -9,6 +9,9 @@ trap 'rm -rf "$build_dir"' EXIT HUP INT TERM
 "${CC:-cc}" -std=gnu11 -O2 -fsanitize=address,undefined -fno-sanitize-recover=all \
     -DTEST_THREADED_MUTEX -Itests/host/stubs -Iinclude -Iexternal/vita-headers/include \
     -c source/missing_imports.c -o "$build_dir/missing_imports.o"
+"${CC:-cc}" -std=gnu11 -O2 -fsanitize=address,undefined -fno-sanitize-recover=all \
+    -DTEST_THREADED_MUTEX -Itests/host/stubs -Iinclude \
+    -c source/media_probe.c -o "$build_dir/media_probe.o"
 "${CXX:-c++}" -std=c++17 -O2 -fsanitize=address,undefined -fno-sanitize-recover=all \
     -Iinclude -c source/missing_import_stubs.cpp -o "$build_dir/missing_import_stubs.o"
 "${CC:-cc}" -std=gnu11 -O2 -fsanitize=address,undefined -fno-sanitize-recover=all \
@@ -40,7 +43,7 @@ for source in "$atrac9_source"/*.c; do
 done
 ar rcs "$build_dir/libvita_atrac9.a" "$build_dir"/atrac9-*.o
 
-for test in apputil_slots savedata_identity savedata_slots gxm_ring display_state vita_sha1 trophy_context trophy_archive trophy_lifecycle trophy_unlock net_lifecycle ngs audio_out audio_in audiodec ctrl fios_overlay file_paths file_metadata standard_io file_io file_io_threads file_io_positioned util_io log_file module_exports missing_imports module_info process_params power_tick gxm_uniform gxm_uniform_layout gxm_uniform_staging gxm_staging_pool uam_shader_cache gxm_draw gxm_driver_memory gxm_render_surface gxm_viewport gxm_region_clip gxm_blend gxm_surface gxm_diagnostics gxm_depth_transfer gxm_depth_staging gxm_notification gxm_fragment_control gxm_shader_code gxm_program_registry gxm_program_ref gxm_program gxm_texture gxm_texture_layout gxm_texture_packing gxm_texture_usage gxm_texture_mips gxm_texture_bc gxm_texture_staging libc_exports clib_exports libm_exports sysmem sysmem_threads event_flags semaphores lwmutex mutex lwcond cond rwlock mspace kernel_time rtc load_exports load_module_info load_bind load_process load_process_run launch_mode load_module_paths load_layout load_fixed load_retry load_format load_relocate guest_tls guest_tp guest_tp_plan thread_events thread_runtime module_start_threads tls_probe; do
+for test in apputil_slots savedata_identity savedata_slots gxm_ring display_state vita_sha1 trophy_context trophy_archive trophy_lifecycle trophy_unlock net_lifecycle ngs audio_out audio_in audiodec ctrl fios_overlay file_paths file_metadata standard_io file_io file_io_threads file_io_positioned util_io log_file module_exports missing_imports media_probe module_info process_params power_tick gxm_uniform gxm_uniform_layout gxm_uniform_staging gxm_staging_pool uam_shader_cache gxm_draw gxm_driver_memory gxm_render_surface gxm_viewport gxm_region_clip gxm_blend gxm_surface gxm_diagnostics gxm_depth_transfer gxm_depth_staging gxm_notification gxm_fragment_control gxm_shader_code gxm_program_registry gxm_program_ref gxm_program gxm_texture gxm_texture_layout gxm_texture_packing gxm_texture_usage gxm_texture_mips gxm_texture_bc gxm_texture_staging libc_exports clib_exports libm_exports sysmem sysmem_threads event_flags semaphores lwmutex mutex lwcond cond rwlock mspace kernel_time rtc load_exports load_module_info load_bind load_process load_process_run launch_mode load_module_paths load_layout load_fixed load_retry load_format load_relocate guest_tls guest_tp guest_tp_plan thread_events thread_runtime module_start_threads tls_probe; do
 extra_objects=
 test_cflags=
 if [ "$test" = trophy_unlock ]; then test_cflags="-ftrivial-auto-var-init=pattern"; fi
@@ -55,6 +58,10 @@ trophy_lifecycle|trophy_context|trophy_unlock)
 missing_imports|load_bind|load_fixed|load_process)
     extra_objects="$build_dir/missing_imports.o $build_dir/missing_import_stubs.o -lstdc++" ;;
 esac
+  case "$test" in
+  apputil_slots|net_lifecycle|trophy_lifecycle|trophy_unlock|missing_imports|load_bind|load_fixed|load_process)
+      extra_objects="$extra_objects $build_dir/media_probe.o" ;;
+  esac
 "${CC:-cc}" -std=gnu11 -O2 -Wall -Wextra -Wno-unused-parameter \
     -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer -g \
     -Itests/host/stubs -Iinclude -Iexternal/mlib -Iexternal/vita-headers/include \
