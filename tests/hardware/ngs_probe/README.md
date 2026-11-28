@@ -4,7 +4,8 @@ Freestanding Vita `module_start` batch, using the public native32 declarations i
 `include/modules/SceNgs.h`. It does not use Vita libc startup, create threads,
 produce audio, or draw a frame. Every report line is separately opened, written
 and closed at `app0:/ngs-probe-v2.txt`; each run truncates the report and writes
-`NGS_PROBE version=2`. `batch_complete` and exit status 0 mean all checks passed.
+`NGS_PROBE version=2`. Expect49 PASS tags including `guards` and `batch_complete`, plus runtime process0
+and cleanup0. `batch_complete` and exit status0 mean all checks passed.
 On failure, prerequisite-dependent checks stop and cleanup is best effort;
 exit status is 1. An absent or incomplete report is not a pass.
 

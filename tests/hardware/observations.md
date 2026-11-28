@@ -2289,3 +2289,38 @@ selector palette and direct-native comparison would further isolate decoding.
 HOME/title closed was observed, the original game/modules/mode were restored
 and byte-for-byte readback verified, and capture was stopped. Runtime e5 and
 the saved45-slot observer plan remain unchanged.
+
+
+## Integrated silent audio startup verification
+
+Codex took ownership of all HLE work and merged it into the main checkout.
+Runtime c6d2dd9 replaces all25 NGS API declarations with the reviewed native32
+contract, checked handle registries and per-voice parameter storage. EQ's88byte
+capacity includes the audited write at0x54. Parameter streams are bounded and
+snapshotted before publication; release invalidates voices and routes. DSP,
+configured playback positions, looping and asynchronous callbacks are not
+implemented. Failure diagnostics are capped at64 per process.
+
+The same runtime corrects AudioOut's public signatures and keeps independent
+per-port deadlines while dropping PCM. It also zero-initializes every compared
+trophy identity byte. The full host suite passed on84013d5; after adding only
+bounded NGS diagnostics, its focused sanitizers passed again on c6d2dd9. Native
+builds and archive/source/stamp/ARM32/three-content-archive package checks passed.
+
+The owned v2 NGS/Audio batch had no existing report before launch and passed
+all49 checks on Switch. All25 NGS imports were exercised, including guarded
+output structs, parameter persistence/isolation, routing and stale handles.
+Main second submission waited2671us, BGM waited0us and NULL flushes waited
+2670us (total5341us after initial queues). These are diagnostic timings, not
+audio fidelity measurements. Runtime process0/cleanup0 and HOME were observed.
+
+On that same installed runtime, unchanged visible cube v11 independently
+passed54 fresh checks, including360frames, four mip formats and ring guards,
+with process0/cleanup0 and HOME observed. It excludes the separate strict-ideal
+v12 BC3 interpolation diagnostic. Both capture logs remain separate.
+
+Original game/modules/mode were restored by exact readback. Observerv3 and
+its45-slot plan were verified; the old failure report was saved and removed
+before launching LittleBigPlanet on c6d2dd9. The game entered after layout
+retry3 and is compiling shaders at this checkpoint. No new Audio-post result
+or interactive3D boot is established yet.
