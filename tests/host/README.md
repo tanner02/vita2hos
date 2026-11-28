@@ -257,6 +257,8 @@ encoding, legacy fallback and cleanup retry. Compiled ARM inspection checks r1
 save/restore; native execution remains a hardware test requirement.
 
 report-imports.py separates binding inventory from runtime first-use records.
+It accepts both UDP records and persistent media-probe records; repeated records
+from the two sources share a library/NID/stub site, not a call counter.
 Duplicates are log occurrences, not call counts; only the first caller per
 traced import/lifetime is recorded. Missing records do not prove an API was unused.
 

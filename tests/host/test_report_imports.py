@@ -10,6 +10,28 @@ spec.loader.exec_module(module)
 
 
 class ReportTests(unittest.TestCase):
+    def test_persistent_and_udp_calls_share_library_scoped_sites(self):
+        persistent = (
+            "UNSUPPORTED_CALL library=0x8feacabd nid=0x05474af0 "
+            "stub=0x8177bad0 return_address=0x8153b80f "
+            "r0=0xc074ab54 r1=0xc074af30 r2=0xc074af48 r3=0xc08ca580 "
+            "result=0x8002d00b\n")
+        udp = persistent.replace("UNSUPPORTED_CALL ", "UNSUPPORTED_CALL kind=function ")
+        other_library = persistent.replace("library=0x8feacabd", "library=0x12345678")
+        rows = module.called_imports(persistent + udp + other_library,
+                                    {0x8feacabd: "SceMp4"},
+                                    {(0x8feacabd, "function", 0x05474af0): "sceMp4OpenFile"})
+        self.assertEqual(len(rows), 2)
+        self.assertIsNone(rows[0]["library"])
+        self.assertIsNone(rows[0]["symbol"])
+        self.assertEqual(rows[1]["symbol"], "sceMp4OpenFile")
+        self.assertEqual(rows[1]["log_occurrences"], 2)
+        self.assertEqual(rows[1]["first_return_address"], "0x8153b80f")
+        self.assertEqual(rows[1]["first_argument_registers"]["r0"], "0xc074ab54")
+        self.assertEqual(module.report(persistent, {}, {}), [])
+        self.assertEqual(module.called_imports(
+            persistent.replace("UNSUPPORTED_CALL ", "UNSUPPORTED_CALL kind=variable "), {}, {}), [])
+
     def test_argument_registers_are_optional_and_first_use_only(self):
         prefix = ("UNSUPPORTED_CALL kind=function library=0x12345678 "
                   "nid=0x11111111 stub=0x81000000 return_address=0x81002001")

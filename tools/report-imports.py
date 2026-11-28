@@ -69,7 +69,9 @@ def report(log, libraries, symbols):
 
 
 CALL = re.compile(
-    r"UNSUPPORTED_CALL kind=function library=(0x[0-9a-fA-F]{8}) "
+    # UDP includes kind=function; the bounded persistent media probe predates
+    # that field. Both emit only missing function calls, never variables.
+    r"UNSUPPORTED_CALL (?:kind=function )?library=(0x[0-9a-fA-F]{8}) "
     r"nid=(0x[0-9a-fA-F]{8}) stub=(0x[0-9a-fA-F]{8}) "
     r"return_address=(0x[0-9a-fA-F]{8,16})\b"
     r"(?: r0=(0x[0-9a-fA-F]{8}) r1=(0x[0-9a-fA-F]{8})"
