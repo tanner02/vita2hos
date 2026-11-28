@@ -74,6 +74,12 @@ The remaining single-threaded checks do not validate Switch ABI details, locking
 concurrent close operations, or hardware behavior. A Switch build and console
 testing are still required for those.
 
+Silent AudioIn checks cover VOICE and RAW configurations, exact guarded mono
+buffer writes, first and subsequent capture deadlines, delayed consumers,
+overlapping-read rejection, close/reopen during a pending read, stale handles,
+and shutdown. A fake clock and a sleep hook make the timing and interleavings
+deterministic; these do not establish Switch scheduling or game startup progress.
+
 Executable layout checks cover actual arena-base alignment, successive segment
 placement, ELF alignments 0/1, power-of-two validation, capacity limits, and
 pointer/integer overflow. They exercise the production placement helper rather
