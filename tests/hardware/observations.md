@@ -2243,3 +2243,49 @@ callbacks) passed the v3 source guard and completed all33 game initializers
 with raw1. At this checkpoint it is still compiling shaders on the loading
 screen, with alpha artifacts visible. No later-callback result or interactive
 3D boot has been observed. The game is left active for this diagnostic.
+
+
+## Audio post-initialization failure localized
+
+The e5f48ec/v3 run completed all33 game initializers with raw1. Later NGfx,
+NHUD,PreloadNeededFiles andICache callbacks returned1, then Audio returned0.
+The same run logged NGS module0xb load result0x805a10ff and ordered shutdown.
+The fresh crash report again shows PC810461b8 reading NULL+d64 with a healthy
+1MiB stack. No interactive3D scene was reached. Original code/return values
+were retained; v3 report guard was0 and the report was absent before launch.
+
+Private owned-ELF import/Capstone analysis identifies a call that accepts only
+zero from sceSysmoduleLoadModule(NGS); nonzero propagates through audio plugin
+initialization to the observed Audio callback's zero result. This is ordinary
+static analysis plus hardware return evidence, not a native instruction trace.
+Both e5 and the reviewed owner f80899f contain the same25-export silent NGS
+provider; neither permits its module load. A load-only change is insufficient:
+VoiceLockParams leaves its output unwritten, while VoiceGetStateData and
+PatchCreateRouting have argument counts/output positions incompatible with
+the pinned definitions and actual call sites. These findings were returned
+through the shared HLE verification record; no HLE body was changed.
+
+## Sampled transparency diagnostic results
+
+The opt-in v12 alpha batch ran on unchanged e5f48ec with a fresh report. It
+completed360cube frames and all26 alpha cases, then returned process1/cleanup0
+with75 PASS tags and3 alpha pixel failures. BC1 transparency/opaque-control,
+BC2 zero/partial/full, RGBA8 and BC3 special zero/full cases passed. BC3
+eight-alpha interpolation read177 versus ideal176; six-alpha interpolation
+read159 versus ideal153, and its blended readback differed accordingly.
+The report and native log were preserved; this is a controlled diagnostic
+failure, not a native crash or an80-check pass.
+
+Independent selector extraction confirms the intended compressed bytes.
+The observed177/159 and blended0xcf2418ab match the NVIDIA decoder model in
+Fabian Giesen's original GPU measurements:
+https://fgiesen.wordpress.com/2021/10/04/gpu-bcn-decoding/
+This supports native interpolation precision as the explanation; it does not
+establish Vita SGX equivalence or explain the game's black rectangles. Ideal
+expectations/tolerances remain unchanged. Raw pixel equality here is a strict
+diagnostic comparison, not proof of BC3 platform conformance. A complete
+selector palette and direct-native comparison would further isolate decoding.
+
+HOME/title closed was observed, the original game/modules/mode were restored
+and byte-for-byte readback verified, and capture was stopped. Runtime e5 and
+the saved45-slot observer plan remain unchanged.

@@ -143,3 +143,12 @@ presumed fix for game artifacts. It does not cover varying block selectors,
 filtered edges, premultiplied texture data or commercial assets. Compilation
 and import audits establish no hardware pixel result; require all prior tags,
 all 26 new tags, runtime process0/cleanup0 and a fresh versioned report.
+
+
+The strict ideal BC3 interpolation checks are diagnostic: native GPUs can
+produce different interpolation values. On e5f48ec/Maxwell, the initial v12
+run read177 versus ideal176 and159 versus ideal153; the latter also changes
+the blend result. These match a published NVIDIA decoder model, but guest
+Vita equivalence is unverified. Preserve such failures and report raw values;
+do not treat an ideal-value mismatch alone as a runtime regression or silently
+widen the thresholds. See the hardware observations for the measured scope.
