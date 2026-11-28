@@ -46,3 +46,26 @@ add_library(vita_trophy_xml STATIC
 target_compile_definitions(vita_trophy_xml PUBLIC PUGIXML_NO_EXCEPTIONS PUGIXML_NO_XPATH)
 target_include_directories(vita_trophy_xml PUBLIC ${PROJECT_SOURCE_DIR}/include
     PRIVATE Vita3K/external/pugixml/src)
+
+# Public ATRAC9 decoder, pinned by the existing recursive Vita3K submodule.
+set(ATRAC9_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/Vita3K/external/LibAtrac9/C/src")
+if(NOT EXISTS "${ATRAC9_SOURCE}/libatrac9.c")
+    message(FATAL_ERROR "Initialize recursive submodules to build ATRAC9 support")
+endif()
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+set(ATRAC9_PREPARED "${CMAKE_CURRENT_BINARY_DIR}/atrac9-compat")
+execute_process(COMMAND "${Python3_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tools/prepare-atrac9.py"
+    --source "${ATRAC9_SOURCE}" --output "${ATRAC9_PREPARED}"
+    RESULT_VARIABLE ATRAC9_PREPARE_RESULT)
+if(NOT ATRAC9_PREPARE_RESULT EQUAL 0)
+    message(FATAL_ERROR "ATRAC9 compatibility preparation failed")
+endif()
+file(GLOB ATRAC9_SOURCES CONFIGURE_DEPENDS "${ATRAC9_SOURCE}/*.c")
+list(REMOVE_ITEM ATRAC9_SOURCES "${ATRAC9_SOURCE}/utility.c" "${ATRAC9_SOURCE}/bit_reader.c"
+    "${ATRAC9_SOURCE}/bit_allocation.c")
+add_library(vita_atrac9 STATIC ${ATRAC9_SOURCES}
+    "${ATRAC9_PREPARED}/utility.c" "${ATRAC9_PREPARED}/bit_reader.c"
+    "${ATRAC9_PREPARED}/bit_allocation.c")
+target_include_directories(vita_atrac9 PUBLIC "${ATRAC9_SOURCE}")
+target_compile_features(vita_atrac9 PRIVATE c_std_99)
+target_link_libraries(vita_atrac9 PUBLIC m)

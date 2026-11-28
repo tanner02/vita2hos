@@ -49,6 +49,7 @@ def main():
         raise ValueError("NSP does not have the expected PFS0 header")
 
     files = {"sd/vita2hos/vita2hos.nsp": nsp}
+    files["LICENSES/LibAtrac9.txt"] = (repository / "external/Vita3K/external/LibAtrac9/LICENSE").read_bytes()
     samples = []
     for name, expected in SAMPLES.items():
         url = f"https://github.com/xerpi/vita2hos/releases/download/alpha-0.4/{name}.zip"

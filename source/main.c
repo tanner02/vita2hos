@@ -28,6 +28,7 @@
 #include "modules/SceNpTrophy.h"
 #include "modules/SceNgs.h"
 #include "modules/SceAudioInOut.h"
+#include "modules/SceAudiodec.h"
 #include "modules/SceSysmodule.h"
 #include "modules/SceDisplay.h"
 #include "modules/SceGxm.h"
@@ -144,6 +145,7 @@ static int launch(LoadProcess *process)
     SceDisplay_finish();
     SceKernelThreadMgr_finish();
 
+    SceAudiodec_finish();
     SceSysmem_finish();
 
     dkDeviceDestroy(dk_device);
@@ -156,6 +158,7 @@ done:
         svcExitProcess();
     }
     SceNgs_finish();
+    SceAudiodec_finish();
     SceAudioInOut_finish();
     SceAppUtil_finish();
     SceNet_finish();

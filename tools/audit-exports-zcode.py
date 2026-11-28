@@ -17,7 +17,7 @@ for f in db.glob("*.yml"):
 # parse all EXPORT(...) in my files
 files = ["SceAppUtil.c","SceNpManager.c","SceNpCommon.c","SceNpSignaling.c","SceNpActivity.c",
          "SceSysmodule.c","SceProcessmgr.c","SceLibKernel.c","SceNet.c","SceLibHttp.c","SceLibSsl.c",
-         "SceCommonDialog.c","SceNgs.c","SceAvcodec.c","SceNpUtility.c","SceNpBasic.c","SceNpMessage.c",
+         "SceCommonDialog.c","SceNgs.c","SceAvcodec.c","SceAudiodec.c","SceNpUtility.c","SceNpBasic.c","SceNpMessage.c",
          "SceCamera.c","SceIme.c","SceAudioInOut.c","SceFiber.c","SceNearUtil.c","SceSystemMisc.c",
          "SceFios2Kernel.c","SceRtc.c","SceTouch.c"]
 bad = []

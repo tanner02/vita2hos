@@ -85,6 +85,27 @@ def installed_contents(data):
     return result
 
 
+def bundle_licenses(bundle):
+    # Keep notices readable without extracting archive-controlled paths.
+    notices = []
+    with zipfile.ZipFile(bundle) as archive:
+        seen = set()
+        for entry in sorted(archive.infolist(), key=lambda entry: entry.filename):
+            name = entry.orig_filename
+            if not name.startswith("LICENSES/"): continue
+            parts = name.rstrip("/").split("/")
+            if (any(part in ("", ".", "..") for part in parts) or
+                    "\\" in name or any(":" in part for part in parts) or
+                    any(ord(char) < 32 for char in name)):
+                raise ValueError("Unsafe license archive path")
+            if entry.is_dir(): continue
+            if name in seen: raise ValueError("Duplicate license archive path")
+            seen.add(name)
+            notices.append(("===== " + name + " =====\n").encode("utf-8") +
+                           archive.read(entry) + b"\n")
+    return b"\n".join(notices)
+
+
 def run_tool(command, directory):
     result = subprocess.run([str(arg) for arg in command], cwd=directory,
                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
@@ -131,8 +152,11 @@ def main():
     for path in (args.packer, args.nacptool, args.keyset):
         if not path.is_file(): raise ValueError("Required packaging input missing: " + str(path))
     manifest, files = runtime_files(args.bundle, program)
+    licenses = bundle_licenses(args.bundle)
+    license_output = args.output.with_suffix(".licenses.txt")
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    if args.output.exists() or args.output.with_suffix(".json").exists():
+    if (args.output.exists() or args.output.with_suffix(".json").exists() or
+            (licenses and license_output.exists())):
         raise ValueError("Output already exists; use a new path")
     with tempfile.TemporaryDirectory(prefix="vita2hos-home-title-") as temp:
         root = Path(temp)
@@ -163,6 +187,8 @@ def main():
         if (exefs / "main").read_bytes() != files["main"]:
             raise ValueError("Runtime NSO changed during packaging")
         shutil.copyfile(nsp, args.output)
+    if licenses:
+        license_output.write_bytes(licenses)
     evidence = {"runtime_commit": manifest["runtime_commit"], "program_id": f"{program:016x}",
                 "display_name": "vita2hos", "process_architecture": "ARM32 / 32-bit address space",
                 "package_type": "installable homebrew NSP", "nsp_sha256": hashlib.sha256(data).hexdigest(),

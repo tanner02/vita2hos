@@ -2,87 +2,11 @@
 #include "module.h"
 #include "log.h"
 
-/* Codec engine bring-up: LittleBigPlanet decodes intro/logo video (H.264)
- * and audio streams. Three libraries in the SceAvcodecUser module per
- * vitasdk db/360. No host decoders exist: decoder creation succeeds with
- * local ids, decode calls report failure so the game skips streams. */
+/* Video and codec-engine stubs. The typed audio decoder provider is in
+ * SceAudiodec.c; these remaining interfaces have no decoder backend. */
 
 static Mutex codec_lock;
 static int codec_next_decoder_id,codec_next_memblock_id;
-
-/* --- SceAudiodecUser (0x2AA62046) --- */
-
-EXPORT(SceAudiodecUser,0x445C2CEF,int,sceAudiodecInitLibrary,unsigned int codec,unsigned int codecSpecific,void *memBlock,unsigned int *size)
-{
-    LOG("sceAudiodecInitLibrary codec=0x%x memBlock=%p",(unsigned)codec,memBlock);
-    return 0;
-}
-
-EXPORT(SceAudiodecUser,0x45719B9D,int,sceAudiodecTermLibrary,unsigned int codec)
-{
-    LOG("sceAudiodecTermLibrary codec=0x%x",(unsigned)codec);
-    return 0;
-}
-
-EXPORT(SceAudiodecUser,0xDB712ABC,unsigned int,sceAudiodecGetContextSize,unsigned int codec,unsigned int codecSpecific)
-{
-    return 0x400;
-}
-
-EXPORT(SceAudiodecUser,0x4DFD3AAA,int,sceAudiodecCreateDecoder,void *context,void *info)
-{
-    mutexLock(&codec_lock);
-    int id=++codec_next_decoder_id;
-    mutexUnlock(&codec_lock);
-    LOG("sceAudiodecCreateDecoder context=%p -> decoder=%d",context,id);
-    return id;
-}
-
-EXPORT(SceAudiodecUser,0xE7A24E16,int,sceAudiodecDeleteDecoder,void *decoder)
-{
-    LOG("sceAudiodecDeleteDecoder decoder=%p",decoder);
-    return 0;
-}
-
-EXPORT(SceAudiodecUser,0x56085DFB,int,sceAudiodecCreateDecoderExternal,void *context,void *info)
-{
-    mutexLock(&codec_lock);
-    int id=++codec_next_decoder_id;
-    mutexUnlock(&codec_lock);
-    LOG("sceAudiodecCreateDecoderExternal context=%p -> decoder=%d",context,id);
-    return id;
-}
-
-EXPORT(SceAudiodecUser,0xE4EA05BB,int,sceAudiodecDeleteDecoderExternal,void *decoder)
-{
-    LOG("sceAudiodecDeleteDecoderExternal decoder=%p",decoder);
-    return 0;
-}
-
-/* Without a decoder backend the output stays as-is; callers treat zero
- * decoded frames as end-of-stream and stop pumping. */
-EXPORT(SceAudiodecUser,0xCCDABA04,int,sceAudiodecDecode,void *decoder,void *source,void *destination)
-{
-    LOG("sceAudiodecDecode decoder=%p -> no frames",decoder);
-    return 0;
-}
-
-EXPORT(SceAudiodecUser,0x8018AA9B,int,sceAudiodecDecodeNFrames,void *decoder,void *source,void *destination,unsigned int frames)
-{
-    LOG("sceAudiodecDecodeNFrames decoder=%p frames=%u -> no frames",decoder,(unsigned)frames);
-    return 0;
-}
-
-EXPORT(SceAudiodecUser,0xF72F9B64,int,sceAudiodecClearContext,void *context)
-{
-    return 0;
-}
-
-EXPORT(SceAudiodecUser,0x883B0CF5,int,sceAudiodecGetInternalError,void *decoder,unsigned int *error)
-{
-    if(error)*error=0;
-    return 0;
-}
 
 /* --- SceVideodecUser (0x163C3727) --- */
 
@@ -175,6 +99,5 @@ EXPORT(SceCodecEngineUser,0x6A31831D,int,sceCodecEngineFreeMemoryFromUnmapMemBlo
     return 0;
 }
 
-DECLARE_LIBRARY(SceAudiodecUser,0x2AA62046);
 DECLARE_LIBRARY(SceVideodecUser,0x163C3727);
 DECLARE_LIBRARY(SceCodecEngineUser,0x469AB062);

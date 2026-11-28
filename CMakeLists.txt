@@ -101,6 +101,7 @@ add_executable(vita2hos
     source/modules/SceNpManager.c
     source/modules/SceNgs.c
     source/modules/SceAvcodec.c
+    source/modules/SceAudiodec.c
     source/modules/SceNpUtility.c
     source/modules/SceNpBasic.c
     source/modules/SceNpMessage.c
@@ -184,6 +185,7 @@ target_compile_definitions(vita2hos PRIVATE
 target_link_libraries(vita2hos PRIVATE
     vita_mspace
     vita_trophy_xml
+    vita_atrac9
     shader
     spirv-cross-core
     fmt
