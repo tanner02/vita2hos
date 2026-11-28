@@ -135,7 +135,7 @@ static void trophy_state_load(TrophyContext *context)
     fclose(file);
     /* Stored identity is data[9] + zero-padded num (no separator), 11
      * characters; byte 12 stays zero from the save's zero-init. */
-    char expected[13];
+    char expected[13]={0};
     snprintf(expected,sizeof(expected),"%.9s%02u",context->communication.data,
              (unsigned)context->communication.num);
     if(read!=sizeof(state) || state.magic!=TROPHY_STATE_MAGIC

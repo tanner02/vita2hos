@@ -27,8 +27,10 @@ done
 "$build_dir/trophy_metadata"
 "${CC:-cc}" -std=gnu11 -O2 -fsanitize=address,undefined -Iinclude \
     -c source/savedata_mount.c -o "$build_dir/savedata_mount.o"
-for test in apputil_slots savedata_identity savedata_slots gxm_ring display_state vita_sha1 trophy_context trophy_archive trophy_lifecycle trophy_unlock net_lifecycle ctrl fios_overlay file_paths file_metadata standard_io file_io file_io_threads file_io_positioned util_io log_file module_exports missing_imports module_info process_params power_tick gxm_uniform gxm_uniform_layout gxm_uniform_staging gxm_draw gxm_driver_memory gxm_render_surface gxm_viewport gxm_region_clip gxm_blend gxm_surface gxm_diagnostics gxm_depth_transfer gxm_depth_staging gxm_notification gxm_fragment_control gxm_shader_code gxm_program_registry gxm_program_ref gxm_program gxm_texture gxm_texture_layout gxm_texture_usage gxm_texture_mips gxm_texture_bc gxm_texture_staging libc_exports clib_exports libm_exports sysmem sysmem_threads event_flags semaphores lwmutex mutex lwcond cond rwlock mspace kernel_time rtc load_exports load_module_info load_bind load_process load_process_run launch_mode load_module_paths load_layout load_fixed load_retry load_format load_relocate guest_tls guest_tp guest_tp_plan thread_events thread_runtime module_start_threads tls_probe; do
+for test in apputil_slots savedata_identity savedata_slots gxm_ring display_state vita_sha1 trophy_context trophy_archive trophy_lifecycle trophy_unlock net_lifecycle ngs audio_out ctrl fios_overlay file_paths file_metadata standard_io file_io file_io_threads file_io_positioned util_io log_file module_exports missing_imports module_info process_params power_tick gxm_uniform gxm_uniform_layout gxm_uniform_staging gxm_draw gxm_driver_memory gxm_render_surface gxm_viewport gxm_region_clip gxm_blend gxm_surface gxm_diagnostics gxm_depth_transfer gxm_depth_staging gxm_notification gxm_fragment_control gxm_shader_code gxm_program_registry gxm_program_ref gxm_program gxm_texture gxm_texture_layout gxm_texture_usage gxm_texture_mips gxm_texture_bc gxm_texture_staging libc_exports clib_exports libm_exports sysmem sysmem_threads event_flags semaphores lwmutex mutex lwcond cond rwlock mspace kernel_time rtc load_exports load_module_info load_bind load_process load_process_run launch_mode load_module_paths load_layout load_fixed load_retry load_format load_relocate guest_tls guest_tp guest_tp_plan thread_events thread_runtime module_start_threads tls_probe; do
 extra_objects=
+test_cflags=
+if [ "$test" = trophy_unlock ]; then test_cflags="-ftrivial-auto-var-init=pattern"; fi
 if [ "$test" = mspace ]; then extra_objects="$build_dir/mspace_backend.o -lstdc++"; fi
 case "$test" in
 apputil_slots|savedata_slots) extra_objects="$build_dir/vita_sha1.o" ;;
@@ -41,7 +43,7 @@ esac
 "${CC:-cc}" -std=gnu11 -O2 -Wall -Wextra -Wno-unused-parameter \
     -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer -g \
     -Itests/host/stubs -Iinclude -Iexternal/mlib -Iexternal/vita-headers/include \
-    "tests/host/$test.c" $extra_objects "$build_dir/savedata_mount.o" -o "$build_dir/$test" -lm -pthread
+    $test_cflags "tests/host/$test.c" $extra_objects "$build_dir/savedata_mount.o" -o "$build_dir/$test" -lm -pthread
 "$build_dir/$test"
 done
 

@@ -473,3 +473,18 @@ allocation failures leave the output null, preserve the existing staging list
 and release temporary storage. Descriptor-data and GPU-only allocations retain
 their previous policies. Native cache-operation correctness and performance
 still require hardware verification; host coherence is a model.
+
+
+NGS now has an owned silent backend with typed public ABI declarations. The
+`ngs` fixture exercises all25 exports, isolated system/rack/voice identities,
+parameter borrowing and EQ writes through offset0x54, atomic parameter streams,
+bounded state queries, routing, stale handles and allocation-failure rollback.
+It runs under ASan/UBSan; native32 structure assertions and the owned hardware
+probe supply separate ABI coverage. Silence, synthetic progress and unsupported
+asynchronous callbacks do not establish DSP or audio fidelity.
+
+The `audio_out` fixture uses a fake monotonic clock to verify independent port
+queues, sample-interval pacing, null-buffer drains, validation and retirement.
+No real sleeps are required by this host test. Trophy unlock persistence is
+also built with pattern initialization so unused identity bytes cannot happen
+to look correct on an otherwise zero-filled stack.

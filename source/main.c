@@ -26,6 +26,8 @@
 #include "modules/SceNet.h"
 #include "modules/SceAppUtil.h"
 #include "modules/SceNpTrophy.h"
+#include "modules/SceNgs.h"
+#include "modules/SceAudioInOut.h"
 #include "modules/SceSysmodule.h"
 #include "modules/SceDisplay.h"
 #include "modules/SceGxm.h"
@@ -153,6 +155,8 @@ done:
         LOG("PROCESS_EXIT_WITH_CTRL_SAMPLER status=0x%x launch_rollback=1 native_process_exit=1 teardown_skipped=1",ret);
         svcExitProcess();
     }
+    SceNgs_finish();
+    SceAudioInOut_finish();
     SceAppUtil_finish();
     SceNet_finish();
     SceNpTrophy_finish();
