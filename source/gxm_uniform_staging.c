@@ -3,9 +3,7 @@
 #include <psp2/gxm.h>
 #include "gxm/uniform_staging.h"
 
-struct GxmUniformStaging { DkMemBlock block; GxmUniformStaging *next; };
-
-int gxm_uniform_stage(DkDevice device, GxmUniformStaging **list,
+int gxm_uniform_stage_pooled(DkDevice device, GxmUniformStaging **list, GxmStagingPool *pool,
                       const GxmUniformLayout *layout,
                       const GxmUniformSource sources[GXM_UNIFORM_LAYOUT_SLOTS], DkMemBlock *block)
 {
@@ -25,16 +23,12 @@ int gxm_uniform_stage(DkDevice device, GxmUniformStaging **list,
     if (layout->size > UINT32_MAX - (DK_MEMBLOCK_ALIGNMENT - 1U))
         return SCE_GXM_ERROR_OUT_OF_MEMORY;
     uint32_t size = (layout->size + DK_MEMBLOCK_ALIGNMENT - 1U) & ~(DK_MEMBLOCK_ALIGNMENT - 1U);
-    GxmUniformStaging *entry = malloc(sizeof(*entry));
+    GxmUniformStaging *entry=gxm_staging_acquire(pool,device,size,
+        DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached);
     if (!entry) return SCE_GXM_ERROR_OUT_OF_MEMORY;
-    DkMemBlockMaker maker;
-    dkMemBlockMakerDefaults(&maker, device, size);
-    maker.flags = DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached;
-    entry->block = dkMemBlockCreate(&maker);
-    if (!entry->block) { free(entry); return SCE_GXM_ERROR_OUT_OF_MEMORY; }
     void *destination = dkMemBlockGetCpuAddr(entry->block);
     if (!destination) {
-        dkMemBlockDestroy(entry->block); free(entry);
+        gxm_staging_block_destroy(entry);
         return SCE_GXM_ERROR_INVALID_POINTER;
     }
     memset(destination, 0, size);
@@ -49,11 +43,9 @@ int gxm_uniform_stage(DkDevice device, GxmUniformStaging **list,
 
 void gxm_uniform_staging_release(GxmUniformStaging **list)
 {
-    if (!list) return;
-    while (*list) {
-        GxmUniformStaging *entry = *list;
-        *list = entry->next;
-        dkMemBlockDestroy(entry->block);
-        free(entry);
-    }
+    gxm_staging_retire(NULL,list);
 }
+
+int gxm_uniform_stage(DkDevice device,GxmUniformStaging **list,const GxmUniformLayout *layout,
+    const GxmUniformSource sources[GXM_UNIFORM_LAYOUT_SLOTS],DkMemBlock *block)
+{ return gxm_uniform_stage_pooled(device,list,NULL,layout,sources,block); }

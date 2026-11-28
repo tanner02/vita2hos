@@ -8,12 +8,13 @@
 #include "../../source/gxm_texture_staging.c"
 
 typedef struct { unsigned char *cpu, *gpu; uint32_t flags, size; } TestBlock;
-static unsigned int live_blocks, flush_calls;
+static unsigned int live_blocks, flush_calls, create_calls;
 static bool fail_create, fail_mapping, fail_flush;
 static GxmTextureStaging **pending_list, *pending_head;
 static DkMemBlock *pending_output;
 DkMemBlock dkMemBlockCreate(const DkMemBlockMaker *maker)
 {
+    ++create_calls;
     assert(maker->size % DK_MEMBLOCK_ALIGNMENT == 0);
     bool cached = (maker->flags & DkMemBlockFlags_CpuCached) != 0;
     assert(cached != ((maker->flags & DkMemBlockFlags_CpuUncached) != 0));
@@ -315,6 +316,50 @@ int main(void)
     fail_create = false;
     gxm_texture_staging_release(&list);
     assert(!list && !live_blocks);
+    /* Each scene retains distinct immutable snapshots, then reuses the exact
+     * allocations after simulated GPU retirement. No source-data cache is used. */
+    GxmStagingPool pool={.max_bytes=3*DK_MEMBLOCK_ALIGNMENT,.max_count=3};
+    unsigned calls=create_calls;
+    for(unsigned scene=0;scene<100;++scene) {
+        memset(descriptors,0x12,sizeof(descriptors));
+        assert(!gxm_texture_stage_data_pooled(NULL,&list,&pool,descriptors,sizeof(descriptors),&first));
+        memset(descriptors,0x34,sizeof(descriptors));
+        assert(!gxm_texture_stage_data_pooled(NULL,&list,&pool,descriptors,sizeof(descriptors),&second));
+        assert(first!=second && gpu_bytes(first)[0]==0x12 && gpu_bytes(second)[0]==0x34);
+        assert(create_calls==calls+2 && live_blocks==2 && !pool.count);
+        gxm_staging_retire(&pool,&list);
+        assert(!list && pool.count==2 && pool.bytes==2*DK_MEMBLOCK_ALIGNMENT);
+    }
+    /* Identical byte size cannot alias an image allocation with descriptors. */
+    assert(!gxm_texture_allocate_image_pooled(NULL,&list,&pool,1,&block));
+    assert(create_calls==calls+3 && pool.count==2);
+    gxm_staging_retire(&pool,&list);
+    assert(pool.count==3);
+    gxm_staging_pool_release(&pool);
+    assert(!live_blocks && !pool.bytes && !pool.count);
+
+    assert(!sceGxmTextureInitLinear(&texture,NULL,SCE_GXM_TEXTURE_FORMAT_UBC1_ABGR,9,5,1));
+    assert(!gxm_texture_get_linear_layout(inner,&layout));
+    memset(source,0x55,64);calls=create_calls;saved_flushes=flush_calls;
+    assert(!gxm_texture_stage_pooled(NULL,&list,&pool,&layout,source,64,&first));
+    assert(gpu_bytes(first)[0]==0x55);
+    gxm_staging_retire(&pool,&list);
+    memset(source,0x66,64);
+    assert(!gxm_texture_stage_pooled(NULL,&list,&pool,&layout,source,64,&second));
+    assert(first==second && create_calls==calls+1 && flush_calls==saved_flushes+2);
+    assert(gpu_bytes(second)[0]==0x66);
+    gxm_staging_retire(&pool,&list);
+    fail_flush=true;
+    assert((uint32_t)gxm_texture_stage_pooled(NULL,&list,&pool,&layout,source,64,&block)
+        ==SCE_GXM_ERROR_INVALID_VALUE && !block && !list && !pool.count && !live_blocks);
+    fail_flush=false;
+    assert(!gxm_texture_stage_data_pooled(NULL,&list,&pool,descriptors,sizeof(descriptors),&block));
+    gxm_staging_retire(&pool,&list);
+    fail_mapping=true;
+    assert((uint32_t)gxm_texture_stage_data_pooled(NULL,&list,&pool,descriptors,sizeof(descriptors),&block)
+        ==SCE_GXM_ERROR_INVALID_POINTER && !block && !list && !pool.count && !live_blocks);
+    fail_mapping=false;
+    gxm_staging_pool_release(&pool);
     puts("GXM texture staging and descriptor snapshot regression checks passed.");
     return 0;
 }

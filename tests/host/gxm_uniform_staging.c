@@ -87,5 +87,31 @@ int main(void)
     assert(!list && !live_blocks);
     gxm_uniform_staging_release(&list);
     gxm_uniform_staging_release(NULL);
+    GxmStagingPool pool={.max_bytes=2*DK_MEMBLOCK_ALIGNMENT,.max_count=2};
+    calls=create_calls;
+    for(unsigned scene=0;scene<100;++scene) {
+        defaults[0]=11;
+        assert(!gxm_uniform_stage_pooled((DkDevice)1,&list,&pool,&layout,sources,&first));
+        defaults[0]=22;
+        assert(!gxm_uniform_stage_pooled((DkDevice)1,&list,&pool,&layout,sources,&second));
+        assert(first!=second && live_blocks==2 && create_calls==calls+2);
+        assert(((uint32_t *)((Block *)first)->data)[0]==11);
+        assert(((uint32_t *)((Block *)second)->data)[0]==22);
+        gxm_staging_retire(&pool,&list);
+        assert(!list && pool.count==2 && pool.bytes==2*DK_MEMBLOCK_ALIGNMENT);
+    }
+    uint32_t small_counts[15]={1};GxmUniformLayout small;
+    assert(gxm_uniform_layout_build(small_counts,&small));
+    assert(!gxm_uniform_stage_pooled((DkDevice)1,&list,&pool,&small,sources,&first));
+    assert(create_calls==calls+2);
+    for(unsigned i=4;i<((Block *)first)->size;i++)
+        assert(!((unsigned char *)((Block *)first)->data)[i]);
+    gxm_staging_retire(&pool,&list);
+    fail_mapping=true;
+    assert((uint32_t)gxm_uniform_stage_pooled((DkDevice)1,&list,&pool,&small,sources,&out)
+        ==SCE_GXM_ERROR_INVALID_POINTER && !out && !list && pool.count==1 && live_blocks==1);
+    fail_mapping=false;
+    gxm_staging_pool_release(&pool);
+    assert(!pool.bytes && !pool.count && !live_blocks);
     puts("Uniform snapshot packing, isolation and cleanup checks passed.");
 }

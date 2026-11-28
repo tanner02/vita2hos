@@ -39,6 +39,17 @@ invalid and freed UIDs, interior/end address lookup, malformed options, mapping
 failure cleanup, and 1,000 allocation/free cycles. GPU mapping is simulated;
 these checks do not establish real GPU visibility or cache behavior.
 
+Staging-pool checks cover exact device/size/memory-flag matching, active ownership,
+reuse only after retirement, failed allocations, byte/count limits and final
+cleanup. Texture/descriptor and uniform checks run 100 simulated scenes with
+different data in each draw: two snapshots remain distinct within a scene and
+reuse two native blocks across scenes. Reused texture memory is flushed again;
+reused uniform and descriptor padding is cleared, and mapping/flush failures
+do not publish a snapshot. Native integration retains the GPU-idle retirement
+wait and invalidates GPU shader/data, image and descriptor caches before reuse.
+The idle pool is capped at 32 MiB and 256 blocks per context. Host checks establish
+ownership and contents, not native cache visibility or a frame-rate improvement.
+
 SceLibm checks call float and double exports by NID, including trigonometry,
 roots, powers, output-pointer arguments, mixed float/integer arguments, signed
 zero, infinities and NaNs. They use the host math library; target newlib's

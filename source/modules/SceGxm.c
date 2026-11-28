@@ -54,6 +54,7 @@ typedef struct SceGxmContext {
     GxmTextureStaging *texture_staging;
     GxmDepthStaging *depth_staging;
     GxmUniformStaging *uniform_staging;
+    GxmStagingPool staging_pool;
     struct {
         uint64_t scene_start, retire_wait, retire_release, textures, uniforms;
         unsigned draws, texture_batches;
@@ -363,6 +364,8 @@ EXPORT(SceGxm, 0xE84CE5B4, int, sceGxmCreateContext, const SceGxmContextParams *
     }
     SceGxmContext *ctx=snapshot.hostMem;
     memset(ctx,0,sizeof(*ctx)); ctx->params=snapshot;
+    ctx->staging_pool.max_bytes=32U*1024U*1024U;
+    ctx->staging_pool.max_count=256;
     ctx->cmdbuf_memblock=blocks[0];
     dkCmdBufMakerDefaults(&cmdbuf_maker,g_dk_device);
     ctx->cmdbuf=dkCmdBufCreate(&cmdbuf_maker);
@@ -424,6 +427,7 @@ EXPORT(SceGxm, 0xEDDC5FB2, int, sceGxmDestroyContext, SceGxmContext *context)
     gxm_texture_staging_release(&context->texture_staging);
     gxm_depth_staging_release(&context->depth_staging,g_render_queue);
     gxm_uniform_staging_release(&context->uniform_staging);
+    gxm_staging_pool_release(&context->staging_pool);
     dkMemBlockDestroy(context->gxm_vert_unif_block_memblock);
     dkMemBlockDestroy(context->gxm_frag_unif_block_memblock);
     dkCmdBufDestroy(context->cmdbuf);
@@ -1210,14 +1214,15 @@ EXPORT(SceGxm, 0x8734FF4E, int, sceGxmBeginScene, SceGxmContext *context, unsign
                                          validRegion ? validRegion->yMax : rt_height - 1U);
 
     if (context->texture_staging || context->uniform_staging || context->depth_staging) {
-        /* The previous scene was submitted by EndScene. Retire its temporary
-         * images and uniform snapshots only after the GPU is finished. */
+        /* The previous scene was submitted by EndScene. Reuse its temporary
+         * blocks only after the GPU is finished; every new draw still gets
+         * its own snapshot. Idle storage is bounded per context. */
         uint64_t retire_start=armGetSystemTick();
         dkQueueWaitIdle(g_render_queue);
         context->timing.retire_wait=armGetSystemTick()-retire_start;
         retire_start=armGetSystemTick();
-        gxm_texture_staging_release(&context->texture_staging);
-        gxm_uniform_staging_release(&context->uniform_staging);
+        gxm_staging_retire(&context->staging_pool,&context->texture_staging);
+        gxm_staging_retire(&context->staging_pool,&context->uniform_staging);
         gxm_depth_staging_release(&context->depth_staging,g_render_queue);
         context->timing.retire_release=armGetSystemTick()-retire_start;
     }
@@ -1232,6 +1237,11 @@ EXPORT(SceGxm, 0x8734FF4E, int, sceGxmBeginScene, SceGxmContext *context, unsign
         gxm_color_surface_data(color_surface_inner));
 
     dkCmdBufClear(context->cmdbuf);
+    /* Retired allocations may now carry different contents at the same GPU
+     * addresses. Drop data/uniform, texture and descriptor cache state before
+     * any of this scene's draws can consume those refreshed snapshots. */
+    dkCmdBufBarrier(context->cmdbuf,DkBarrier_Full,DkInvalidateFlags_L2Cache |
+        DkInvalidateFlags_Shader | DkInvalidateFlags_Image | DkInvalidateFlags_Descriptors);
     DkImageView color_view=renderTarget->shadow_color_surface.view;
     /* Keep load/store copies byte-preserving. Only render attachment access
      * decodes the destination for blending and encodes RGB on write. */
@@ -1971,7 +1981,8 @@ static int upload_texture_mip_chain(SceGxmContext *context, const GxmTextureMipC
         if (chain->offsets[i] > source_size ||
             chain->levels[i].source_size > source_size - chain->offsets[i])
             return SCE_GXM_ERROR_INVALID_VALUE;
-        int ret = gxm_texture_stage(g_dk_device, &context->texture_staging, &chain->levels[i],
+        int ret = gxm_texture_stage_pooled(g_dk_device, &context->texture_staging,
+                                     &context->staging_pool, &chain->levels[i],
             (const char *)source + chain->offsets[i], source_size - chain->offsets[i], &levels[i]);
         if (ret) return ret;
     }
@@ -1993,7 +2004,8 @@ static int upload_texture_mip_chain(SceGxmContext *context, const GxmTextureMipC
      * packed linear level into its own image view. */
     dkImageLayoutInitialize(&layout, &maker);
     DkMemBlock destination;
-    int ret = gxm_texture_allocate_image(g_dk_device, &context->texture_staging,
+    int ret = gxm_texture_allocate_image_pooled(g_dk_device, &context->texture_staging,
+                                          &context->staging_pool,
                                           dkImageLayoutGetSize(&layout), &destination);
     if (ret) return ret;
     dkImageInitialize(image, &layout, destination, 0);
@@ -2092,7 +2104,8 @@ static int upload_texture_descriptors(SceGxmContext *context)
             if ((type != SCE_GXM_TEXTURE_LINEAR && type != SCE_GXM_TEXTURE_LINEAR_STRIDED) ||
                 texture_layout.pitch != texture_layout.source_pitch ||
                 offset % dkImageLayoutGetAlignment(&image_layout) != 0) {
-                ret = gxm_texture_stage(g_dk_device, &context->texture_staging, &texture_layout,
+                ret = gxm_texture_stage_pooled(g_dk_device, &context->texture_staging,
+                                         &context->staging_pool, &texture_layout,
                                          tex_data, tex_block->size - offset, &image_block);
                 if (ret != 0)
                     return ret;
@@ -2117,7 +2130,8 @@ static int upload_texture_descriptors(SceGxmContext *context)
     /* Each recorded update owns immutable descriptor storage until scene
      * retirement. Reusing one table could change pending draws' textures. */
     DkMemBlock descriptor_block;
-    ret = gxm_texture_stage_data(g_dk_device, &context->texture_staging,
+    ret = gxm_texture_stage_data_pooled(g_dk_device, &context->texture_staging,
+                                  &context->staging_pool,
                                   &descriptors, sizeof(descriptors), &descriptor_block);
     if (ret) return ret;
     dkCmdBufBarrier(context->cmdbuf, DkBarrier_Full,
@@ -2168,7 +2182,8 @@ static int stage_uniforms(SceGxmContext *context, DkStage stage,
         sources[i] = (GxmUniformSource){(const char *)cpu + offset, block->size - offset};
     }
     DkMemBlock snapshot;
-    int ret = gxm_uniform_stage(g_dk_device, &context->uniform_staging, layout, sources, &snapshot);
+    int ret = gxm_uniform_stage_pooled(g_dk_device, &context->uniform_staging,
+        &context->staging_pool, layout, sources, &snapshot);
     if (ret) return ret;
     dkCmdBufBindStorageBuffer(context->cmdbuf, stage, stage == DkStage_Vertex ? 0 : 1,
                               snapshot ? dkMemBlockGetGpuAddr(snapshot) : 0, layout->size);
