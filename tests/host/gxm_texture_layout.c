@@ -112,6 +112,18 @@ int main(void)
     assert(!sceGxmTextureSetGammaMode(&texture,SCE_GXM_TEXTURE_GAMMA_R));
     assert((uint32_t)gxm_texture_get_linear_layout(inner,&layout)==SCE_GXM_ERROR_UNSUPPORTED);
     assert((uint32_t)sceGxmTextureSetGammaMode(NULL,SCE_GXM_TEXTURE_GAMMA_NONE)==SCE_GXM_ERROR_INVALID_POINTER);
+    /* The SDK's row-count boundary applies to physical blocks, not texels. */
+    assert(!gxm_texture_native_one_gob(NULL));
+    GxmTextureLayout native={0};
+    for (unsigned h=0;h<=40;++h) {
+        native.height=h;native.block_bytes=0;
+        assert(gxm_texture_native_one_gob(&native)==(h>=6 && h<=8));
+        native.block_bytes=8;
+        assert(gxm_texture_native_one_gob(&native)==(h>=21 && h<=32));
+        native.block_bytes=16;
+        assert(gxm_texture_native_one_gob(&native)==(h>=21 && h<=32));
+    }
+    native.height=UINT32_MAX;assert(!gxm_texture_native_one_gob(&native));
     puts("GXM texture-layout regression checks passed.");
     return 0;
 }

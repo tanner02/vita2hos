@@ -2,6 +2,7 @@
 #define GXM_TEXTURE_LAYOUT_H
 
 #include <deko3d.h>
+#include <stdbool.h>
 #include "gxm/texture.h"
 
 typedef struct {
@@ -25,6 +26,9 @@ typedef struct {
 int gxm_texture_get_mip_chain(const SceGxmTextureInner *texture, GxmTextureMipChain *chain);
 
 int gxm_texture_get_linear_layout(const SceGxmTextureInner *texture, GxmTextureLayout *layout);
+/* Native tiled images with six to eight physical rows need an explicit one-GOB
+ * base tile in the installed SDK, so level offsets and transfer tiling agree. */
+bool gxm_texture_native_one_gob(const GxmTextureLayout *layout);
 /* Layout must come from the function above; source and destination must not overlap. */
 int gxm_texture_pack_linear(const GxmTextureLayout *layout, const void *source, size_t source_size,
                             void *destination, size_t destination_size);

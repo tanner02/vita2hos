@@ -95,3 +95,17 @@ the two new PASS tags, all prior pixel/guard/cube checks, and runtime process0
 and cleanup0. Runtime `GXM_TEXTURE_USAGE` logs must show bounded extraction
 (mask0 for the vertex and flat-fragment fixtures, mask1 for the texture fragment).
 Compilation, import audit and source review alone establish no hardware pass.
+
+
+## Optional small mip-chain batch
+
+Also enable `-DVITA2HOS_TEXTURE_MIP_PROBE=ON` (requires texture-usage mode).
+Visible cube v11/draw probe v14 add four owned-pixel cases after the existing
+checks. The expected successful visible-cube report contains54checks. RGBA8
+uses a64x8 base, whileBC1/BC2/BC3 use64x32. Each texture has two levels: solid
+red base and solid green mip1. The64pixel viewport selectsLOD0; nine interior
+samples must all remain red. Pixel failures accumulate across all four formats.
+Require PASS texture_mip_rgba8, texture_mip_bc1, texture_mip_bc2 and
+texture_mip_bc3, plus all prior tags and clean runtime exit/cleanup. This batch
+exercises native tiled mip offsets and staging; build success alone proves no
+pixel result. A baseline mismatch is evidence to retain, not a graphics pass.

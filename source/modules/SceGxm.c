@@ -1982,6 +1982,13 @@ static int upload_texture_mip_chain(SceGxmContext *context, const GxmTextureMipC
     maker.dimensions[0] = chain->levels[0].width;
     maker.dimensions[1] = chain->levels[0].height;
     maker.mipLevels = chain->count;
+    /* The installed SDK's automatic base tile can be two GOBs while its level
+     * offset calculation shrinks level zero to one. Subsequent mip uploads then
+     * overlap the base image. Keep allocation, transfer and sampler tiling equal. */
+    if (gxm_texture_native_one_gob(&chain->levels[0])) {
+        maker.flags |= DkImageFlags_CustomTileSize;
+        maker.tileSize = DkTileSize_OneGob;
+    }
     /* Mip chains and compressed images use native tiled storage. Copy each
      * packed linear level into its own image view. */
     dkImageLayoutInitialize(&layout, &maker);

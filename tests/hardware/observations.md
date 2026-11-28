@@ -2173,3 +2173,32 @@ frames. Median framebuffer submission gap33333us is not physical scanout FPS.
 HOME was observed; original executable/modules/mode were restored exactly.
 Observerv2/62plan was then staged for a separate realgame run. No game speedup,
 cleared alpha artifacts or interactive3D boot is established by this batch.
+
+
+## Full startup-table diagnostic and late exit
+
+On09047b8, observer v2 passed its source guard and recorded61 BEGIN/END pairs,
+all returning raw1, matching every planned record except the enable-gated
+SmallGfxMemPools entry. ProfileCache and RequestInitialLevel completed. The
+game remained on its loading/autosave screen and later closed with an error
+after1099captured shader timing markers. The trace ends during shutdown and
+sceKernelCallModuleExit; that is not a verified normal exit. The new crash
+report/DTI2 agree on registers and exact EOF: PC810461b8, NULL pool table plus
+0xd64, healthy1MiB stack. This is a guest pool access after teardown, not the
+old native stack exhaustion. No interactive3D boot or shutdown cause is proven.
+
+## Small tiled mip-layout candidate
+
+Read-only nm/objdump of installed libdeko3d.a (SHA256
+5dd45a9186147537601bb535e666477e3da324b7d33b0999a1b7769dc8cf32ff) shows
+auto layout choosing twoGOBs for6-8physical base rows. calcLevelOffset shrinks
+level0 to oneGOB, while base ImageInfo transfer keeps twoGOBs. ForBC1 64x32,
+mip1 begins at1024, also the inferred second GOB column of the base image.
+This is static inferred overlap, not an observed cause of the game failure.
+The primary fork source agrees: https://github.com/xerpi/deko3d/blob/master/source/dk_image.cpp
+
+The candidate explicitly selects oneGOB for affected native tiled base layouts
+(6-8uncompressed rows or21-32BC texel rows), leaving source packing unchanged.
+Focused ASan/UBSan row-boundary tests pass. A separate opt-in cubev11 batch adds
+red-base/green-mip tests forRGBA8,BC1,BC2,BC3; all use controlled4096byte backing.
+Its native build/import audit passed. Baseline and fixed hardware runs pending.

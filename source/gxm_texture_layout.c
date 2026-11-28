@@ -235,6 +235,13 @@ int gxm_texture_get_mip_chain(const SceGxmTextureInner *texture, GxmTextureMipCh
     return 0;
 }
 
+bool gxm_texture_native_one_gob(const GxmTextureLayout *layout)
+{
+    if (!layout) return false;
+    uint32_t rows=layout->block_bytes ? layout->height/4+(layout->height%4!=0) : layout->height;
+    return rows>=6 && rows<=8;
+}
+
 static uint32_t spread_bits(uint32_t value)
 {
     value = (value | (value << 8)) & 0x00ff00ffU;

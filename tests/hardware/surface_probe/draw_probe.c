@@ -530,6 +530,10 @@ int probe_draw(SceGxmContext *context, SceGxmRenderTarget *target,
 #ifdef VITA2HOS_VISIBLE_CUBE
     if (!texture_failures) ret = probe_cube(context, vertex, fragment, matrix, sampler, hooks);
 #endif
+#ifdef VITA2HOS_TEXTURE_MIP_PROBE
+    if (!ret) ret=probe_texture_mips(context,target,surface,pixels,vertex,fragment,
+        matrix,sampler,vertices,indices,hooks);
+#endif
 done:
 #ifdef VITA2HOS_TEXTURE_USAGE_PROBE
     if (flat_fragment) sceGxmShaderPatcherReleaseFragmentProgram(patcher,flat_fragment);

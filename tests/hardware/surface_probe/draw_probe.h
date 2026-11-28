@@ -13,6 +13,11 @@ int probe_vertex_fetch(SceGxmContext *context, SceGxmRenderTarget *target,
     const SceGxmProgramParameter *position, const SceGxmProgramParameter *uv,
     const SceGxmProgramParameter *matrix, const SceGxmProgramParameter *sampler,
     const ProbeHooks *hooks);
+int probe_texture_mips(SceGxmContext *context, SceGxmRenderTarget *target,
+    SceGxmColorSurface *surface, uint32_t *pixels, SceGxmVertexProgram *vertex,
+    SceGxmFragmentProgram *fragment, const SceGxmProgramParameter *matrix,
+    const SceGxmProgramParameter *sampler, float vertices[][8], uint16_t *indices,
+    const ProbeHooks *hooks);
 int probe_draw(SceGxmContext *context, SceGxmRenderTarget *target,
                SceGxmColorSurface *surface, uint32_t *pixels, const ProbeHooks *hooks);
 int probe_cube(SceGxmContext *context, SceGxmVertexProgram *vertex,
