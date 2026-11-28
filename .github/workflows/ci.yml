@@ -33,7 +33,7 @@ jobs:
         run: |
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           git submodule update --init --depth 1 external/mlib external/dlmalloc external/vita-headers external/Vita3K
-          git -C external/Vita3K submodule update --init --depth 1 external/glslang
+          git -C external/Vita3K submodule update --init --depth 1 external/glslang external/pugixml external/LibAtrac9
 
       - name: Configure
         run: |

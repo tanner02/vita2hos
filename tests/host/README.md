@@ -4,7 +4,8 @@ Run on Linux or WSL with a C compiler that supports AddressSanitizer and
 UndefinedBehaviorSanitizer:
 
 ```sh
-git submodule update --init external/mlib external/dlmalloc external/vita-headers
+git submodule update --init external/mlib external/dlmalloc external/vita-headers external/Vita3K
+git -C external/Vita3K submodule update --init --depth 1 external/pugixml external/LibAtrac9
 sh tests/host/run.sh
 ```
 

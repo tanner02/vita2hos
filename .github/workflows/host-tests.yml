@@ -15,7 +15,7 @@ jobs:
       - name: Fetch test dependencies
         run: |
           git submodule update --init external/mlib external/dlmalloc external/vita-headers external/Vita3K
-          git -C external/Vita3K submodule update --init --depth 1 external/pugixml
+          git -C external/Vita3K submodule update --init --depth 1 external/pugixml external/LibAtrac9
       - name: Install host archive-test crypto dependency
         run: sudo apt-get update && sudo apt-get install -y libssl-dev
       - name: Run I/O tests with sanitizers
