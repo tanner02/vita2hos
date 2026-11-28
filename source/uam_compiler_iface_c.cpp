@@ -129,7 +129,12 @@ static bool compile_alloc(pipeline_stage stage, const char *glsl_source, void **
         }
     } timing;
 #endif
-    DekoCompiler compiler{ stage };
+    /* UAM level >= 2 can lose the indirect address of an SSBO load during
+     * optimization, then dereference it in GM107 emitLDG. The captured
+     * Pipeline vertex shader reproduces this serially at levels 2/3 and
+     * compiles at 0/1. Keep level 1 until the optimizer is fixed upstream;
+     * a null check in the emitter would encode the wrong memory address. */
+    DekoCompiler compiler{ stage, 1 };
     bool rc = compiler.CompileGlsl(glsl_source);
     if (!rc)
         return false;

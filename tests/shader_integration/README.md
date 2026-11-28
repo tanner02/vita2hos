@@ -166,3 +166,14 @@ clear old evidence and do not block compilation. `UAM_COMPILE_ENTER` reports
 whether capture succeeded. Remove the enabled file after collection to avoid
 per-shader SD writes during ordinary runs. The identity is diagnostic, not a
 cryptographic integrity check. Game-derived inputs must remain private.
+
+## UAM SSBO optimization workaround
+
+The runtime explicitly selects UAM optimization level 1. A private captured
+vertex shader crashes serially at levels 2 and 3 in GM107 `emitLDG`: an SSBO
+load reaches emission without its indirect address. The same input compiles
+at levels 0 and 1. The wrapper regression checks that every compiler receives
+level 1, including failed and overlapping calls. This avoids the reproduced
+optimizer fault without changing the installed SDK or encoding a missing
+address as zero. It does not establish rendered correctness or performance;
+those require hardware checks. Captured game input remains outside the repo.

@@ -1,5 +1,6 @@
 #ifndef TEST_UAM_COMPILER_IFACE_H
 #define TEST_UAM_COMPILER_IFACE_H
+#include <cassert>
 #include <cstdint>
 #include <cstring>
 #include <cstdio>
@@ -13,7 +14,10 @@ void test_compiler_enter();
 void test_compiler_leave();
 class DekoCompiler {
 public:
-    explicit DekoCompiler(pipeline_stage) { test_compiler_enter(); }
+    explicit DekoCompiler(pipeline_stage, int optLevel = 3) {
+        assert(optLevel == 1); /* Higher levels reproduce the native SSBO fault. */
+        test_compiler_enter();
+    }
     ~DekoCompiler() { test_compiler_leave(); }
     bool CompileGlsl(const char *source)
     {
