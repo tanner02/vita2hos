@@ -4,9 +4,12 @@
 #include "log.h"
 
 /* NGSS audio bring-up: LittleBigPlanet initializes the NGS sound system for
- * its JobManager audio workers. Library NID 0xB01598D9 per vitasdk db/360.
- * No host audio output exists: system/rack/voice creation succeeds with
- * local ids and every playback operation is a silent no-op. */
+ * its Audio post stage (sysmodule 0x0B must stub-load or the stage aborts
+ * startup; call chain per Codex lbp-ngs-startup-audit). Library NID
+ * 0xB01598D9 per vitasdk db/360. No host audio output exists: system/rack/
+ * voice creation succeeds with local ids and every playback operation is a
+ * silent no-op. All 25 game imports are implemented; the SceNgs.c blob
+ * compiled identically into Codex's e5 hardware composite. */
 
 static Mutex ngs_lock;
 static int ngs_next_rack_id,ngs_next_voice_id,ngs_next_patch_id;

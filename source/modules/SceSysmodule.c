@@ -18,6 +18,12 @@ static bool stub_loadable_module(SceSysmoduleModuleId id)
 {
     switch(id) {
     case SCE_SYSMODULE_HTTPS:          /* 0x04 */
+    case SCE_SYSMODULE_NGS:            /* 0x0B: LBP's Audio post-stage aborts
+        * startup when this load fails (call chain audited by Codex:
+        * lbp-ngs-startup-audit - SystemGetRequiredMemorySize/SystemInit/
+        * SetFlags/VoiceDefGetMasterBuss/RackGetRequiredMemorySize/RackInit/
+        * RackGetVoiceHandle/VoiceDefGetSimpleVoice/VoicePlay, each accepting
+        * exactly zero); the silent SceNgs.c provider backs these imports */
     case SCE_SYSMODULE_FIBER:          /* 0x06 */
     case SCE_SYSMODULE_IME:            /* 0x11 */
     case SCE_SYSMODULE_LIVEAREA:       /* 0x23: LBP aborts online bring-up when this fails */
