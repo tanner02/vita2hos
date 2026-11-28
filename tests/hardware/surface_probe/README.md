@@ -109,3 +109,37 @@ Require PASS texture_mip_rgba8, texture_mip_bc1, texture_mip_bc2 and
 texture_mip_bc3, plus all prior tags and clean runtime exit/cleanup. This batch
 exercises native tiled mip offsets and staging; build success alone proves no
 pixel result. A baseline mismatch is evidence to retain, not a graphics pass.
+
+## Optional texture alpha batch
+
+Enable `-DVITA2HOS_TEXTURE_USAGE_PROBE=ON`, `-DVITA2HOS_TEXTURE_MIP_PROBE=ON`
+and `-DVITA2HOS_TEXTURE_ALPHA_PROBE=ON`. Alpha mode requires mip mode and runs only
+after successful prior checks. It produces visible cube v12/draw probe v15;
+all defaults remain unchanged. A successful visible-cube report has **80 PASS
+tags** (54 prior plus 26 alpha cases); draw probe v15 has **77 PASS tags**.
+
+Require both `PASS texture_alpha_<case>_raw` and
+`PASS texture_alpha_<case>_blend` for each of these 13 case names:
+`rgba8_zero`, `rgba8_partial`, `rgba8_full`, `bc1_opaque`, `bc1_transparent`,
+`bc1_1bgr_opaque`, `bc2_zero`, `bc2_partial`, `bc2_full`,
+`bc3_eight_interpolated`, `bc3_six_interpolated`, `bc3_six_zero`,
+`bc3_six_full`. BC1 transparent uses color0<=color1/selector3; the 1BGR
+control requires opaque black. BC2 alpha nibbles are 0/8/15. BC3 tests
+240>16 with selector3 (alpha176), and 0<=255 with selector4 (alpha153),
+selector6 (zero) and selector7 (full).
+
+One additional tracked 4096-byte texture allocation is reused for all formats;
+existing tracked texture shaders and vertex/index storage are reused. An
+additional straight-alpha fragment-program variant is released on success or
+failure. Each case samples nine interior pixels, first without blending and
+then over CPU background ABGR `0x80604020`. RGB factors are source alpha and
+one-minus-source-alpha; alpha factors are one and one-minus-source-alpha.
+Expected values use independent integer codec/blend arithmetic. Raw samples
+must match exactly; blending permits one UNORM8 rounding step per channel.
+Pixel failures accumulate across all formats; API errors stop the batch.
+
+This is positive coverage of uniform nearest-sampled alpha blocks, not a
+presumed fix for game artifacts. It does not cover varying block selectors,
+filtered edges, premultiplied texture data or commercial assets. Compilation
+and import audits establish no hardware pixel result; require all prior tags,
+all 26 new tags, runtime process0/cleanup0 and a fresh versioned report.

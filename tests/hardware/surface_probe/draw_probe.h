@@ -18,6 +18,12 @@ int probe_texture_mips(SceGxmContext *context, SceGxmRenderTarget *target,
     SceGxmFragmentProgram *fragment, const SceGxmProgramParameter *matrix,
     const SceGxmProgramParameter *sampler, float vertices[][8], uint16_t *indices,
     const ProbeHooks *hooks);
+int probe_texture_alpha(SceGxmContext *context,SceGxmRenderTarget *target,
+    SceGxmColorSurface *surface,uint32_t *pixels,SceGxmVertexProgram *vertex,
+    SceGxmFragmentProgram *fragment,SceGxmShaderPatcher *patcher,
+    SceGxmShaderPatcherId fragment_id,const SceGxmProgram *vertex_source,
+    const SceGxmProgramParameter *matrix,const SceGxmProgramParameter *sampler,
+    float vertices[][8],uint16_t *indices,const ProbeHooks *hooks);
 int probe_draw(SceGxmContext *context, SceGxmRenderTarget *target,
                SceGxmColorSurface *surface, uint32_t *pixels, const ProbeHooks *hooks);
 int probe_cube(SceGxmContext *context, SceGxmVertexProgram *vertex,

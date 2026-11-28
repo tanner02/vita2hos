@@ -10,7 +10,9 @@
 #include "draw_probe.h"
 #ifdef VITA2HOS_VISIBLE_CUBE
 #define PROBE_NAME "visible_cube"
-#ifdef VITA2HOS_TEXTURE_MIP_PROBE
+#ifdef VITA2HOS_TEXTURE_ALPHA_PROBE
+#define PROBE_VERSION "12"
+#elif defined(VITA2HOS_TEXTURE_MIP_PROBE)
 #define PROBE_VERSION "11"
 #elif defined(VITA2HOS_TEXTURE_USAGE_PROBE)
 #define PROBE_VERSION "10"
@@ -20,7 +22,9 @@
 #define PROBE_REPORT "app0:/visible-cube.txt"
 #else
 #define PROBE_NAME "draw_probe"
-#ifdef VITA2HOS_TEXTURE_MIP_PROBE
+#ifdef VITA2HOS_TEXTURE_ALPHA_PROBE
+#define PROBE_VERSION "15"
+#elif defined(VITA2HOS_TEXTURE_MIP_PROBE)
 #define PROBE_VERSION "14"
 #elif defined(VITA2HOS_TEXTURE_USAGE_PROBE)
 #define PROBE_VERSION "13"
