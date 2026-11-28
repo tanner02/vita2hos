@@ -2,8 +2,8 @@
 
 An optional, owned diagnostic module for a **reviewed table of no-argument,
 uint32-returning Thumb startup callbacks**. This is not a general function hook.
-It records BEGIN/END and the unchanged raw return value, leaving finalizers and
-guest instructions untouched. It does not turn failed initialization into success.
+It records BEGIN/END and the unchanged raw return value, restoring each table
+pointer on entry and leaving finalizers and guest instructions untouched. It does not turn failed initialization into success.
 
 Build with `python3 build.py --sdk /path/to/vitasdk --output /path/to/output`.
 The builder checks guest structure and native imports, and never deploys files.
@@ -17,6 +17,13 @@ record and original word before changing any callback pointer. FNV is a mistake
 guard, not authentication: the plan and its declared memory ranges are trusted
 diagnostic input. They must correspond to the loaded executable's layout.
 Module startup must complete before any thread can call the observed table.
+Callbacks must be dispatched serially. Review any dispatcher that selects entries
+by function address: no observed entry may be selected by its original address
+before its first wrapped invocation. Version 2 restores each pointer **before**
+calling the guest, preserving original-address lookups on subsequent dispatches.
+A compare/exchange leaves an independently replaced pointer untouched. This is
+one-shot table instrumentation; subsequent calls through a restored slot bypass
+the observer. A caller that cached a wrapper can still invoke it again.
 
 Plan format (little endian): a 32-byte header with magic `STI1`, source FNV64 at
 offset 4, record count at 12, then code base/size and data base/size at 16/20/24/28.
@@ -25,7 +32,7 @@ callback address, then a 48-byte printable ASCII name with a NUL terminator.
 Slots must be distinct aligned data words; originals must lie in the declared
 code region. There must be no trailing bytes. Source path is `app0:/executable`.
 
-The fresh report is `app0:/startup-init-v1.txt`. GUARD must be zero. A BEGIN with
+The version-2 fresh report is `app0:/startup-init-v2.txt`. GUARD must be zero. A BEGIN with
 no END means the callback has not returned; a zero END is only failure if the
 reviewed dispatcher interprets zero that way. After installation, report I/O is
 best effort so a logging failure cannot change the original callback result.

@@ -14,7 +14,7 @@
 #define ROW 56
 #define PLAN "app0:/startup-init.plan"
 #define SOURCE "app0:/executable"
-#define REPORT "app0:/startup-init-v1.txt"
+#define REPORT "app0:/startup-init-v2.txt"
 typedef uint32_t (*callback)(void);
 struct stage { volatile uint32_t *slot; callback original; char name[48]; };
 static struct stage stages[LIMIT];
@@ -47,8 +47,10 @@ static int line(const char *event, const char *name, uint32_t value)
     if (sceIoClose(fd) < 0) result = -1;
     return result;
 }
+static void restore(unsigned i);
 static uint32_t invoke(unsigned i)
 {
+    restore(i);
     line("BEGIN", stages[i].name, i);
     uint32_t result = stages[i].original();
     line("END", stages[i].name, result);
@@ -67,6 +69,15 @@ static uint32_t invoke(unsigned i)
 EACH(WRAP)
 #define ENTRY(N) wrap_##N,
 static callback const wrappers[LIMIT] = { EACH(ENTRY) };
+static void restore(unsigned i)
+{
+    /* Dispatchers may later locate records by their original callback address.
+     * Restore before calling the guest; do not clobber a concurrent replacement. */
+    uint32_t expected=(uint32_t)(uintptr_t)wrappers[i];
+    __atomic_compare_exchange_n(stages[i].slot,&expected,
+        (uint32_t)(uintptr_t)stages[i].original,0,__ATOMIC_RELEASE,__ATOMIC_RELAXED);
+}
+
 
 static int fingerprint(uint64_t *value)
 {
@@ -140,7 +151,7 @@ int module_start(unsigned args, void *argp)
     if (fd < 0) return -2;
     if (sceIoClose(fd) < 0) return -2;
     int result = prepare();
-    if (line("GUARD", "startup_observer_v1", (uint32_t)result) || result) return -3;
+    if (line("GUARD", "startup_observer_v2", (uint32_t)result) || result) return -3;
     /* This module starts before the main executable and creates no threads. */
     __sync_synchronize();
     for (unsigned i = 0; i < stage_count; ++i)
